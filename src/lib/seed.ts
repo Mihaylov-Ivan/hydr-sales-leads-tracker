@@ -20,6 +20,7 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Green hydrogen production for blending into the district heating gas supply, targeting a 10% H2 blend in the first phase.",
     createdAt: daysAgo(120),
+    todos: [],
     comments: [
       {
         id: "c1",
@@ -54,6 +55,7 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "E Series system to feed hydrogen and oxygen into the glass furnace combustion process to cut natural gas consumption.",
     createdAt: daysAgo(14),
+    todos: [],
     comments: [
       {
         id: "c1",
@@ -75,6 +77,7 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Hydrogen production and compression for a municipal bus refuelling station, initial fleet of 12 fuel-cell buses.",
     createdAt: daysAgo(21),
+    todos: [],
     comments: [
       {
         id: "c1",
@@ -102,6 +105,7 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "On-site hydrogen generation replacing trucked-in cylinders for the bright annealing line, with metal hydride buffer storage.",
     createdAt: daysAgo(300),
+    todos: [],
     comments: [
       {
         id: "c1",
@@ -136,6 +140,7 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Small E Series unit to enrich the CHP combustion for a tomato greenhouse complex, improving burner efficiency and CO2 dosing.",
     createdAt: daysAgo(7),
+    todos: [],
     comments: [],
   },
 ];

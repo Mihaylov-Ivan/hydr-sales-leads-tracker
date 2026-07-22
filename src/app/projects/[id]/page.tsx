@@ -7,6 +7,7 @@ import { useProjects } from "@/lib/store";
 import { Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import { generateSummary } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
+import TodoList from "@/components/TodoList";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -284,6 +285,9 @@ export default function ProjectPage() {
           <SummaryText text={summary} />
         </div>
       </section>
+
+      {/* To-dos */}
+      <TodoList projectId={project.id} todos={project.todos} />
 
       {/* New comment */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">

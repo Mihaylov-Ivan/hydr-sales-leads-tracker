@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Project, ProjectComment, Series, Stage } from "./types";
+import { Project, ProjectComment, ProjectTodo, Series, Stage } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,6 +36,26 @@ export interface CommentRow {
   created_at: string;
 }
 
+/** Shape of a row in public.project_todos */
+export interface TodoRow {
+  id: string;
+  project_id: string;
+  text: string;
+  done: boolean;
+  created_at: string;
+  done_at: string | null;
+}
+
+export function todoFromRow(row: TodoRow): ProjectTodo {
+  return {
+    id: row.id,
+    text: row.text,
+    done: row.done,
+    createdAt: row.created_at,
+    ...(row.done_at ? { doneAt: row.done_at } : {}),
+  };
+}
+
 export function commentFromRow(row: CommentRow): ProjectComment {
   return {
     id: row.id,
@@ -46,7 +66,11 @@ export function commentFromRow(row: CommentRow): ProjectComment {
   };
 }
 
-export function projectFromRow(row: ProjectRow, comments: ProjectComment[]): Project {
+export function projectFromRow(
+  row: ProjectRow,
+  comments: ProjectComment[],
+  todos: ProjectTodo[],
+): Project {
   return {
     id: row.id,
     name: row.name,
@@ -59,6 +83,7 @@ export function projectFromRow(row: ProjectRow, comments: ProjectComment[]): Pro
     baseDescription: row.base_description,
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
     comments,
+    todos,
     createdAt: row.created_at,
   };
 }

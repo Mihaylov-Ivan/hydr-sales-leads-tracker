@@ -1,0 +1,193 @@
+"use client";
+
+import { useState } from "react";
+import { useProjects } from "@/lib/store";
+import { ProjectTodo } from "@/lib/types";
+
+function Checkbox({ done }: { done: boolean }) {
+  return (
+    <span
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition ${
+        done
+          ? "border-teal-accent bg-teal-accent"
+          : "border-line bg-surface group-hover/item:border-teal-accent/60"
+      }`}
+    >
+      <svg
+        viewBox="0 0 12 12"
+        className={`h-3 w-3 transition ${done ? "opacity-100" : "opacity-0"}`}
+      >
+        <path
+          d="M2 6.5 4.5 9 10 3.5"
+          fill="none"
+          stroke="white"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function TodoItem({
+  todo,
+  onToggle,
+  onSave,
+  onDelete,
+}: {
+  todo: ProjectTodo;
+  onToggle: () => void;
+  onSave: (text: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(todo.text);
+
+  function commit() {
+    setEditing(false);
+    const next = draft.trim();
+    if (next && next !== todo.text) onSave(next);
+    else setDraft(todo.text);
+  }
+
+  return (
+    <li className="group/item flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-teal-soft/50">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={todo.done ? "Mark as not done" : "Mark as done"}
+        className="cursor-pointer"
+      >
+        <Checkbox done={todo.done} />
+      </button>
+
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") {
+              setDraft(todo.text);
+              setEditing(false);
+            }
+          }}
+          className="w-full rounded border border-teal-accent bg-surface px-1.5 py-0.5 text-sm text-ink outline-none"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title="Click to edit"
+          className={`flex-1 cursor-text rounded px-0.5 text-left text-sm transition ${
+            todo.done ? "text-muted line-through decoration-muted/60" : "text-ink"
+          }`}
+        >
+          {todo.text}
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Delete to-do"
+        title="Delete"
+        className="rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
+      >
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
+          <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
+        </svg>
+      </button>
+    </li>
+  );
+}
+
+export default function TodoList({ projectId, todos }: { projectId: string; todos: ProjectTodo[] }) {
+  const { addTodo, toggleTodo, updateTodo, deleteTodo } = useProjects();
+  const [text, setText] = useState("");
+
+  const open = todos.filter((t) => !t.done);
+  const done = todos.filter((t) => t.done);
+  const doneCount = done.length;
+  const progress = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const t = text.trim();
+    if (!t) return;
+    addTodo(projectId, t);
+    setText("");
+  }
+
+  return (
+    <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
+      <div className="mb-3 flex items-center gap-3">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+          To-Do
+        </h2>
+        {todos.length > 0 && (
+          <>
+            <span className="text-xs font-semibold text-muted">
+              {doneCount}/{todos.length} done
+            </span>
+            <div className="h-1.5 max-w-32 flex-1 overflow-hidden rounded-full bg-line/60">
+              <div
+                className="h-full rounded-full bg-teal-accent transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      <form onSubmit={submit} className="mb-2 flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Add a to-do and press Enter… e.g. Send revised offer"
+          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
+        />
+        <button
+          type="submit"
+          disabled={!text.trim()}
+          className="shrink-0 rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Add
+        </button>
+      </form>
+
+      {todos.length === 0 ? (
+        <p className="px-2 py-3 text-sm text-muted/80">
+          Nothing to do yet. Add the next step so it doesn&apos;t slip.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {open.map((t) => (
+            <TodoItem
+              key={t.id}
+              todo={t}
+              onToggle={() => toggleTodo(projectId, t.id)}
+              onSave={(text) => updateTodo(projectId, t.id, text)}
+              onDelete={() => deleteTodo(projectId, t.id)}
+            />
+          ))}
+          {open.length > 0 && done.length > 0 && (
+            <li className="mx-2 my-1.5 border-t border-dashed border-line" aria-hidden />
+          )}
+          {done.map((t) => (
+            <TodoItem
+              key={t.id}
+              todo={t}
+              onToggle={() => toggleTodo(projectId, t.id)}
+              onSave={(text) => updateTodo(projectId, t.id, text)}
+              onDelete={() => deleteTodo(projectId, t.id)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}

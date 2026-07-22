@@ -33,6 +33,16 @@ create table if not exists public.project_comments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.project_todos (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  text text not null,
+  done boolean not null default false,
+  created_at timestamptz not null default now(),
+  -- Set when the item is checked off, cleared when unchecked
+  done_at timestamptz
+);
+
 -- ---------- Indexes ----------
 
 create index if not exists projects_created_at_idx
@@ -41,12 +51,16 @@ create index if not exists projects_created_at_idx
 create index if not exists project_comments_project_created_idx
   on public.project_comments (project_id, created_at);
 
+create index if not exists project_todos_project_created_idx
+  on public.project_todos (project_id, created_at);
+
 -- ---------- Row Level Security ----------
 -- The app has no user accounts yet, so the browser (anon key) gets full
 -- access. If you add Supabase Auth later, tighten these policies.
 
 alter table public.projects enable row level security;
 alter table public.project_comments enable row level security;
+alter table public.project_todos enable row level security;
 
 drop policy if exists "anon full access" on public.projects;
 create policy "anon full access"
@@ -59,6 +73,14 @@ create policy "anon full access"
 drop policy if exists "anon full access" on public.project_comments;
 create policy "anon full access"
   on public.project_comments
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.project_todos;
+create policy "anon full access"
+  on public.project_todos
   for all
   to anon, authenticated
   using (true)

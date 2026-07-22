@@ -19,6 +19,15 @@ export interface ProjectComment {
   stageChange?: Stage;
 }
 
+export interface ProjectTodo {
+  id: string;
+  text: string;
+  done: boolean;
+  createdAt: string; // ISO
+  /** Set when the item was checked off */
+  doneAt?: string; // ISO
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -34,5 +43,6 @@ export interface Project {
   /** AI-generated living summary, refreshed after each new comment */
   aiSummary?: string;
   comments: ProjectComment[];
+  todos: ProjectTodo[];
   createdAt: string; // ISO
 }

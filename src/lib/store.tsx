@@ -8,10 +8,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { Project, ProjectComment, Stage } from "./types";
+import { Project, ProjectComment, ProjectTodo, Stage } from "./types";
 import { SEED_PROJECTS } from "./seed";
-import { supabase, commentFromRow, projectFromRow, projectToRow } from "./supabase";
-import type { CommentRow, ProjectRow } from "./supabase";
+import {
+  supabase,
+  commentFromRow,
+  projectFromRow,
+  projectToRow,
+  todoFromRow,
+} from "./supabase";
+import type { CommentRow, ProjectRow, TodoRow } from "./supabase";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 
@@ -47,6 +53,10 @@ interface ProjectsApi {
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
   deleteProject: (projectId: string) => void;
+  addTodo: (projectId: string, text: string) => void;
+  toggleTodo: (projectId: string, todoId: string) => void;
+  updateTodo: (projectId: string, todoId: string, text: string) => void;
+  deleteTodo: (projectId: string, todoId: string) => void;
 }
 
 const ProjectsContext = createContext<ProjectsApi | null>(null);
@@ -54,7 +64,11 @@ const ProjectsContext = createContext<ProjectsApi | null>(null);
 function loadLocal(): Project[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Project[];
+    if (raw) {
+      const parsed = JSON.parse(raw) as Project[];
+      // Data saved before the todos feature has no `todos` field
+      return parsed.map((p) => ({ ...p, todos: p.todos ?? [] }));
+    }
   } catch {
     // corrupted storage: fall back to seed data
   }
@@ -62,7 +76,7 @@ function loadLocal(): Project[] {
 }
 
 async function loadRemote(): Promise<Project[]> {
-  const [projectsRes, commentsRes] = await Promise.all([
+  const [projectsRes, commentsRes, todosRes] = await Promise.all([
     supabase!
       .from("projects")
       .select("*")
@@ -71,18 +85,33 @@ async function loadRemote(): Promise<Project[]> {
       .from("project_comments")
       .select("*")
       .order("created_at", { ascending: true }),
+    supabase!
+      .from("project_todos")
+      .select("*")
+      .order("created_at", { ascending: true }),
   ]);
   if (projectsRes.error) throw projectsRes.error;
   if (commentsRes.error) throw commentsRes.error;
+  if (todosRes.error) throw todosRes.error;
 
-  const byProject = new Map<string, ProjectComment[]>();
+  const commentsByProject = new Map<string, ProjectComment[]>();
   for (const row of (commentsRes.data ?? []) as CommentRow[]) {
-    const list = byProject.get(row.project_id) ?? [];
+    const list = commentsByProject.get(row.project_id) ?? [];
     list.push(commentFromRow(row));
-    byProject.set(row.project_id, list);
+    commentsByProject.set(row.project_id, list);
+  }
+  const todosByProject = new Map<string, ProjectTodo[]>();
+  for (const row of (todosRes.data ?? []) as TodoRow[]) {
+    const list = todosByProject.get(row.project_id) ?? [];
+    list.push(todoFromRow(row));
+    todosByProject.set(row.project_id, list);
   }
   return ((projectsRes.data ?? []) as ProjectRow[]).map((row) =>
-    projectFromRow(row, byProject.get(row.id) ?? []),
+    projectFromRow(
+      row,
+      commentsByProject.get(row.id) ?? [],
+      todosByProject.get(row.id) ?? [],
+    ),
   );
 }
 
@@ -164,6 +193,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       ...input,
       id,
       comments: [],
+      todos: [],
       createdAt: new Date().toISOString(),
     };
     setProjects((prev) => [project, ...prev]);
@@ -290,6 +320,94 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [requestAiSummary],
   );
 
+  const mutateTodos = useCallback(
+    (projectId: string, fn: (todos: ProjectTodo[]) => ProjectTodo[]) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId ? { ...p, todos: fn(p.todos) } : p,
+        ),
+      );
+    },
+    [],
+  );
+
+  const addTodo = useCallback(
+    (projectId: string, text: string) => {
+      const todo: ProjectTodo = {
+        id: crypto.randomUUID(),
+        text,
+        done: false,
+        createdAt: new Date().toISOString(),
+      };
+      mutateTodos(projectId, (todos) => [...todos, todo]);
+      if (supabase) {
+        void supabase
+          .from("project_todos")
+          .insert({
+            id: todo.id,
+            project_id: projectId,
+            text: todo.text,
+            done: false,
+            created_at: todo.createdAt,
+          })
+          .then(logDbError("todo insert"));
+      }
+    },
+    [mutateTodos],
+  );
+
+  const toggleTodo = useCallback(
+    (projectId: string, todoId: string) => {
+      const current = projectsRef.current
+        .find((p) => p.id === projectId)
+        ?.todos.find((t) => t.id === todoId);
+      if (!current) return;
+      const done = !current.done;
+      const doneAt = done ? new Date().toISOString() : undefined;
+      mutateTodos(projectId, (todos) =>
+        todos.map((t) => (t.id === todoId ? { ...t, done, doneAt } : t)),
+      );
+      if (supabase) {
+        void supabase
+          .from("project_todos")
+          .update({ done, done_at: doneAt ?? null })
+          .eq("id", todoId)
+          .then(logDbError("todo toggle"));
+      }
+    },
+    [mutateTodos],
+  );
+
+  const updateTodo = useCallback(
+    (projectId: string, todoId: string, text: string) => {
+      mutateTodos(projectId, (todos) =>
+        todos.map((t) => (t.id === todoId ? { ...t, text } : t)),
+      );
+      if (supabase) {
+        void supabase
+          .from("project_todos")
+          .update({ text })
+          .eq("id", todoId)
+          .then(logDbError("todo update"));
+      }
+    },
+    [mutateTodos],
+  );
+
+  const deleteTodo = useCallback(
+    (projectId: string, todoId: string) => {
+      mutateTodos(projectId, (todos) => todos.filter((t) => t.id !== todoId));
+      if (supabase) {
+        void supabase
+          .from("project_todos")
+          .delete()
+          .eq("id", todoId)
+          .then(logDbError("todo delete"));
+      }
+    },
+    [mutateTodos],
+  );
+
   const deleteProject = useCallback((projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (supabase) {
@@ -316,6 +434,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         deleteComment,
         regenerateSummary,
         deleteProject,
+        addTodo,
+        toggleTodo,
+        updateTodo,
+        deleteTodo,
       }}
     >
       {children}

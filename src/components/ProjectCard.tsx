@@ -4,6 +4,7 @@ import { generateSummary } from "@/lib/summary";
 
 export default function ProjectCard({ project }: { project: Project }) {
   const raw = project.aiSummary ?? generateSummary(project);
+  const openTodos = project.todos.filter((t) => !t.done).length;
   // Flatten bullet-point summaries into a single line for the card preview
   const summary = raw
     .split("\n")
@@ -38,7 +39,18 @@ export default function ProjectCard({ project }: { project: Project }) {
           {project.sizeKw.toLocaleString()} kW
         </span>
         <span>{project.series}</span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-2">
+          {openTodos > 0 && (
+            <span
+              title={`${openTodos} open to-do${openTodos === 1 ? "" : "s"}`}
+              className="inline-flex items-center gap-1 rounded-full bg-olive/15 px-2 py-0.5 font-semibold text-olive-ink"
+            >
+              <svg viewBox="0 0 16 16" className="h-3 w-3 fill-current opacity-70">
+                <path d="M13.5 2.5 6 10 2.5 6.5l-1 1L6 12l8.5-8.5-1-1Z" />
+              </svg>
+              {openTodos}
+            </span>
+          )}
           {project.comments.length} update{project.comments.length === 1 ? "" : "s"}
         </span>
       </div>
