@@ -211,8 +211,14 @@ export default function ProjectPage() {
 
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-deep">{project.name}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold text-deep">
+            <EditableText
+              value={project.name}
+              onSave={(v) => updateProject(project.id, { name: v })}
+              className="w-full text-2xl font-bold text-deep"
+            />
+          </h1>
           <p className="mt-1 text-sm text-muted">
             {project.client} · {project.city}, {project.country}
           </p>
