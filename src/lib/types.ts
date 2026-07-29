@@ -170,9 +170,63 @@ export interface Project {
   baseDescription: string;
   /** AI-generated living summary, refreshed after each new comment */
   aiSummary?: string;
+  /**
+   * Last time we contacted / emailed the client (yyyy-mm-dd).
+   * Defaults to the project creation date when unset.
+   */
+  lastClientContactAt: string;
+  /** Days between follow-up emails (e.g. 7 = weekly) */
+  emailReminderDays: number;
   comments: ProjectComment[];
   todos: ProjectTodo[];
   contacts: ProjectContact[];
   financials: ProjectFinancials;
   createdAt: string; // ISO
+}
+
+/** Common follow-up windows */
+export const EMAIL_REMINDER_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
+
+export const DEFAULT_EMAIL_REMINDER_DAYS = 7;
+
+export function todayDate(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function addDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function daysBetween(from: string, to: string): number {
+  const a = new Date(from + "T12:00:00").getTime();
+  const b = new Date(to + "T12:00:00").getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Anchor date for the reminder clock */
+export function lastContactDate(p: Project): string {
+  return p.lastClientContactAt || p.createdAt.slice(0, 10);
+}
+
+export function nextEmailReminderDate(p: Project): string {
+  return addDays(lastContactDate(p), p.emailReminderDays || DEFAULT_EMAIL_REMINDER_DAYS);
+}
+
+/** True when it's time (or overdue) to email the client */
+export function isEmailReminderDue(p: Project): boolean {
+  return todayDate() >= nextEmailReminderDate(p);
+}
+
+/** Positive = days until due; 0 = due today; negative = days overdue */
+export function emailReminderDeltaDays(p: Project): number {
+  return daysBetween(todayDate(), nextEmailReminderDate(p));
 }

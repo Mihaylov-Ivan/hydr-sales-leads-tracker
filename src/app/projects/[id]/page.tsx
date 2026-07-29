@@ -10,6 +10,7 @@ import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
 import ContactList from "@/components/ContactList";
 import FinancialsPanel from "@/components/FinancialsPanel";
+import ClientFollowUp from "@/components/ClientFollowUp";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -354,6 +355,9 @@ export default function ProjectPage() {
           <SummaryText text={summary} />
         </div>
       </section>
+
+      {/* Client email follow-up (recurring our-action) */}
+      <ClientFollowUp project={project} />
 
       {/* Questions and action items */}
       <TodoList

@@ -20,7 +20,9 @@ import {
   ProjectTodo,
   Stage,
   TodoKind,
+  DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  todayDate,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
@@ -71,6 +73,8 @@ export type ProjectPatch = Partial<
     | "sizeKw"
     | "stage"
     | "baseDescription"
+    | "lastClientContactAt"
+    | "emailReminderDays"
   >
 >;
 
@@ -126,6 +130,8 @@ interface ProjectsApi {
   addProject: (input: NewProjectInput) => string;
   addComment: (projectId: string, text: string, stageChange?: Stage) => void;
   updateProject: (projectId: string, patch: ProjectPatch) => void;
+  /** Mark client as emailed today — restarts the follow-up window */
+  markClientEmailed: (projectId: string) => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
@@ -169,6 +175,9 @@ function loadLocal(): Project[] {
       return parsed.map((p) => ({
         ...p,
         market: p.market ?? "Clean H2",
+        lastClientContactAt:
+          p.lastClientContactAt ?? p.createdAt.slice(0, 10),
+        emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
         todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
         contacts: p.contacts ?? [],
         financials: {
@@ -385,6 +394,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     const project: Project = {
       ...input,
       id,
+      lastClientContactAt: createdAt.slice(0, 10),
+      emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       comments: initialComment ? [initialComment] : [],
       todos: [],
       contacts: [],
@@ -476,6 +487,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       void requestAiSummary(updated);
     },
     [requestAiSummary],
+  );
+
+  const markClientEmailed = useCallback(
+    (projectId: string) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      if (!current) return;
+      const lastClientContactAt = todayDate();
+      const updated: Project = { ...current, lastClientContactAt };
+      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      if (supabase) {
+        void supabase
+          .from("projects")
+          .update({ last_client_contact_at: lastClientContactAt })
+          .eq("id", projectId)
+          .then(logDbError("mark client emailed"));
+      }
+    },
+    [],
   );
 
   const updateComment = useCallback(
@@ -1133,6 +1162,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addProject,
         addComment,
         updateProject,
+        markClientEmailed,
         updateComment,
         deleteComment,
         regenerateSummary,

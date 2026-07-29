@@ -13,6 +13,7 @@ import {
   Series,
   Stage,
   TodoKind,
+  DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
 } from "./types";
 
@@ -43,6 +44,8 @@ export interface ProjectRow {
   contract_signed_date: string | null;
   expenses: number | null;
   expected_profit: number | null;
+  last_client_contact_at: string | null;
+  email_reminder_days: number | null;
   created_at: string;
 }
 
@@ -230,6 +233,9 @@ export function projectFromRow(
     stage: row.stage,
     baseDescription: row.base_description,
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
+    lastClientContactAt:
+      row.last_client_contact_at ?? row.created_at.slice(0, 10),
+    emailReminderDays: row.email_reminder_days ?? DEFAULT_EMAIL_REMINDER_DAYS,
     comments,
     todos,
     contacts,
@@ -255,6 +261,8 @@ export function projectToRow(p: Project): ProjectRow {
     contract_signed_date: p.financials.contractSignedDate ?? null,
     expenses: p.financials.expenses ?? null,
     expected_profit: p.financials.expectedProfit ?? null,
+    last_client_contact_at: p.lastClientContactAt,
+    email_reminder_days: p.emailReminderDays,
     created_at: p.createdAt,
   };
 }

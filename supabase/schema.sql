@@ -33,6 +33,10 @@ create table if not exists public.projects (
   contract_signed_date date,
   expenses numeric,
   expected_profit numeric,
+  -- Client email follow-up
+  last_client_contact_at date not null default current_date,
+  email_reminder_days integer not null default 7
+    check (email_reminder_days > 0),
   created_at timestamptz not null default now()
 );
 

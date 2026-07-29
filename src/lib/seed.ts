@@ -1,10 +1,14 @@
-import { Project, emptyFinancials } from "./types";
+import { Project, DEFAULT_EMAIL_REMINDER_DAYS, emptyFinancials } from "./types";
 
 function daysAgo(n: number, hour = 10): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
   d.setHours(hour, 0, 0, 0);
   return d.toISOString();
+}
+
+function dateAgo(n: number): string {
+  return daysAgo(n).slice(0, 10);
 }
 
 export const SEED_PROJECTS: Project[] = [
@@ -21,6 +25,8 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Green hydrogen production for blending into the district heating gas supply, targeting a 10% H2 blend in the first phase.",
     createdAt: daysAgo(120),
+    lastClientContactAt: dateAgo(4),
+    emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     todos: [],
     contacts: [
       {
@@ -68,6 +74,8 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "E Series system to feed hydrogen and oxygen into the glass furnace combustion process to cut natural gas consumption.",
     createdAt: daysAgo(14),
+    lastClientContactAt: dateAgo(12),
+    emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     todos: [],
     contacts: [],
     financials: emptyFinancials(),
@@ -93,6 +101,8 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Hydrogen production and compression for a municipal bus refuelling station, initial fleet of 12 fuel-cell buses.",
     createdAt: daysAgo(21),
+    lastClientContactAt: dateAgo(6),
+    emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     todos: [],
     contacts: [],
     financials: emptyFinancials(),
@@ -124,6 +134,8 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "On-site hydrogen generation replacing trucked-in cylinders for the bright annealing line, with metal hydride buffer storage.",
     createdAt: daysAgo(300),
+    lastClientContactAt: dateAgo(10),
+    emailReminderDays: 14,
     todos: [],
     contacts: [],
     financials: emptyFinancials(),
@@ -162,6 +174,8 @@ export const SEED_PROJECTS: Project[] = [
     baseDescription:
       "Small E Series unit to enrich the CHP combustion for a tomato greenhouse complex, improving burner efficiency and CO2 dosing.",
     createdAt: daysAgo(7),
+    lastClientContactAt: dateAgo(7),
+    emailReminderDays: 3,
     todos: [],
     contacts: [],
     financials: emptyFinancials(),
