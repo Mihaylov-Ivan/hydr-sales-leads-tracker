@@ -558,6 +558,140 @@ function SeriesToggle({
   );
 }
 
+function ProjectMultiSelect({
+  projects,
+  selectedIds,
+  colorById,
+  onToggle,
+  onSelectAll,
+  onClear,
+}: {
+  projects: Project[];
+  selectedIds: Set<string>;
+  colorById: Map<string, string>;
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const count = selectedIds.size;
+  const label =
+    count === 0
+      ? "No projects"
+      : count === projects.length
+        ? "All projects"
+        : count === 1
+          ? (projects.find((p) => selectedIds.has(p.id))?.name ?? "1 project")
+          : `${count} projects`;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex max-w-[16rem] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent"
+      >
+        <span className="truncate">{label}</span>
+        <span className="shrink-0 text-muted" aria-hidden>
+          {open ? "▴" : "▾"}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute left-0 z-30 mt-1 w-72 max-w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Projects
+            </span>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="font-semibold text-teal-accent hover:underline"
+              >
+                All
+              </button>
+              <span className="text-line">|</span>
+              <button
+                type="button"
+                onClick={onClear}
+                className="font-semibold text-muted hover:text-ink hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <ul className="max-h-64 overflow-y-auto py-1">
+            {projects.map((p, i) => {
+              const on = selectedIds.has(p.id);
+              const color = colorById.get(p.id) ?? colorForIndex(i);
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={on}
+                    onClick={() => onToggle(p.id)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
+                  >
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                        on
+                          ? "border-transparent text-white"
+                          : "border-line bg-panel text-transparent"
+                      }`}
+                      style={on ? { backgroundColor: color } : undefined}
+                      aria-hidden
+                    >
+                      ✓
+                    </span>
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="min-w-0 flex-1 truncate font-medium text-ink">
+                      {p.name}
+                    </span>
+                    {p.client && (
+                      <span className="max-w-[40%] truncate text-xs text-muted">
+                        {p.client}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OverviewTimeline({ projects }: { projects: Project[] }) {
   const withFlows = useMemo(
     () =>
@@ -689,74 +823,44 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
         </div>
       </div>
 
-      {/* Series toggles */}
-      <div className="mb-3 mt-3 flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Show
-        </span>
-        <SeriesToggle
-          label="Income"
-          color={INCOME_COLOR}
-          on={showIncome}
-          onToggle={() => setShowIncome((v) => !v)}
-        />
-        <SeriesToggle
-          label="Expenses"
-          color={EXPENSE_COLOR}
-          on={showExpenses}
-          onToggle={() => setShowExpenses((v) => !v)}
-        />
-        <SeriesToggle
-          label="Profit"
-          color={PROFIT_COLOR}
-          on={showProfit}
-          onToggle={() => setShowProfit((v) => !v)}
-        />
-      </div>
-
-      {/* Project picker */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {withFlows.map((p, i) => {
-          const on = selectedIds.has(p.id);
-          const activeIndex = selectedProjects.findIndex((s) => s.id === p.id);
-          const chipColor =
-            activeIndex >= 0 ? colorForIndex(activeIndex) : colorForIndex(i);
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => toggle(p.id)}
-              className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                on
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-line bg-surface text-muted hover:border-teal-accent/40"
-              }`}
-              style={on ? { backgroundColor: chipColor } : undefined}
-            >
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: on ? "#fff" : chipColor }}
-              />
-              <span className="truncate">{p.name}</span>
-            </button>
-          );
-        })}
-        <div className="ml-auto flex gap-2 text-xs">
-          <button
-            type="button"
-            onClick={() => setSelected(new Set(withFlows.map((p) => p.id)))}
-            className="font-semibold text-teal-accent hover:underline"
-          >
-            All
-          </button>
-          <span className="text-line">|</span>
-          <button
-            type="button"
-            onClick={() => setSelected(new Set())}
-            className="font-semibold text-muted hover:text-ink hover:underline"
-          >
-            Clear
-          </button>
+      <div className="mb-3 mt-3 flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Projects
+          </span>
+          <ProjectMultiSelect
+            projects={withFlows}
+            selectedIds={selectedIds}
+            colorById={colorById}
+            onToggle={toggle}
+            onSelectAll={() =>
+              setSelected(new Set(withFlows.map((p) => p.id)))
+            }
+            onClear={() => setSelected(new Set())}
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Show
+          </span>
+          <SeriesToggle
+            label="Income"
+            color={INCOME_COLOR}
+            on={showIncome}
+            onToggle={() => setShowIncome((v) => !v)}
+          />
+          <SeriesToggle
+            label="Expenses"
+            color={EXPENSE_COLOR}
+            on={showExpenses}
+            onToggle={() => setShowExpenses((v) => !v)}
+          />
+          <SeriesToggle
+            label="Profit"
+            color={PROFIT_COLOR}
+            on={showProfit}
+            onToggle={() => setShowProfit((v) => !v)}
+          />
         </div>
       </div>
 
