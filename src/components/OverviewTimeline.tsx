@@ -238,27 +238,54 @@ function CashChart({
   const innerW = Math.max(chartW - PAD.left - PAD.right, 200);
   const innerH = CHART_H - PAD.top - PAD.bottom;
 
-  // Cumulative profit from all flows in date order (income − expense)
+  const seriesOn =
+    (showIncome ? 1 : 0) + (showExpenses ? 1 : 0) + (showProfit ? 1 : 0);
+  const onlyIncome = seriesOn === 1 && showIncome;
+  const onlyExpenses = seriesOn === 1 && showExpenses;
+  // Cumulative line when a single series is selected (or profit alongside bars)
+  const showCumLine = onlyIncome || onlyExpenses || showProfit;
+
+  type CumPt = { date: string; total: number; x: number; y: number };
   let runIncome = 0;
   let runExpense = 0;
-  const cumProfit: { x: number; y: number; total: number; date: string }[] = [];
+  const cumIncome: CumPt[] = [];
+  const cumExpense: CumPt[] = [];
+  const cumProfit: CumPt[] = [];
   for (const f of flows) {
-    if (f.kind === "income") runIncome += f.amount;
-    else runExpense += f.amount;
-    const total = runIncome - runExpense;
+    if (f.kind === "income") {
+      runIncome += f.amount;
+      cumIncome.push({ date: f.date, total: runIncome, x: 0, y: 0 });
+    } else {
+      runExpense += f.amount;
+      // Negative so the line tracks below the axis with expense bars
+      cumExpense.push({ date: f.date, total: -runExpense, x: 0, y: 0 });
+    }
     cumProfit.push({
       date: f.date,
-      total,
-      x: 0, // filled after xOf
+      total: runIncome - runExpense,
+      x: 0,
       y: 0,
     });
   }
 
+  const activeCum: CumPt[] = onlyIncome
+    ? cumIncome
+    : onlyExpenses
+      ? cumExpense
+      : showProfit
+        ? cumProfit
+        : [];
+  const cumColor = onlyIncome
+    ? INCOME_COLOR
+    : onlyExpenses
+      ? EXPENSE_COLOR
+      : PROFIT_COLOR;
+
   const barAmounts = visible.map((v) => v.amount);
-  const profitExtents = showProfit ? cumProfit.map((p) => p.total) : [];
+  const cumExtents = showCumLine ? activeCum.map((p) => p.total) : [];
   const maxAbs = Math.max(
     ...barAmounts,
-    ...profitExtents.map(Math.abs),
+    ...cumExtents.map(Math.abs),
     1,
   );
   const scaleMax = maxAbs * 1.15;
@@ -280,11 +307,11 @@ function CashChart({
     return zeroY - (amount / scaleMax) * (innerH / 2);
   }
 
-  for (const p of cumProfit) {
+  for (const p of activeCum) {
     p.x = xOf(p.date);
     p.y = yScale(p.total);
   }
-  const cumPath = cumProfit
+  const cumPath = activeCum
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 
@@ -348,24 +375,24 @@ function CashChart({
           opacity={0.35}
         />
 
-        {/* Profit cumulative line */}
-        {showProfit && cumProfit.length > 0 && (
+        {/* Cumulative line (single series, or profit whenever enabled) */}
+        {showCumLine && activeCum.length > 0 && (
           <>
             <path
               d={cumPath}
               fill="none"
-              stroke={PROFIT_COLOR}
+              stroke={cumColor}
               strokeWidth={2.25}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            {cumProfit.map((p, i) => (
+            {activeCum.map((p, i) => (
               <circle
-                key={`p-${i}`}
+                key={`cum-${i}`}
                 cx={p.x}
                 cy={p.y}
                 r={3.5}
-                fill={PROFIT_COLOR}
+                fill={cumColor}
               />
             ))}
           </>
@@ -742,8 +769,8 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
         <span>
-          Up = income · Down = expenses · Line = cumulative profit (income −
-          expenses)
+          Up = income · Down = expenses · Line = cumulative (single series, or
+          profit)
         </span>
         {selectedProjects.length === 1 && (
           <Link
