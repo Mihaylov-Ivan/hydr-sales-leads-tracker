@@ -96,6 +96,19 @@ export interface ProjectPayment {
   createdAt: string; // ISO
 }
 
+/** A scheduled project cost / outflow */
+export interface ProjectExpenseItem {
+  id: string;
+  amount: number;
+  /** Share of overall project expenses, e.g. 40 for 40% */
+  percent?: number;
+  /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
+  dueDate: string;
+  label?: string;
+  milestoneId?: string;
+  createdAt: string; // ISO
+}
+
 export interface ProjectMilestone {
   id: string;
   kind: MilestoneKind;
@@ -111,16 +124,21 @@ export interface ProjectFinancials {
   contractValue?: number;
   /** Expected date the contract will be signed (yyyy-mm-dd) */
   contractSignedDate?: string;
-  /** Construction + development costs */
+  /** Overall construction + development costs for the project */
   expenses?: number;
-  /** Expected profit at the end */
+  /**
+   * Expected profit = contract value − overall expenses.
+   * Kept in sync whenever those two fields change.
+   */
   expectedProfit?: number;
   payments: ProjectPayment[];
+  /** Dated cost outflows used on the portfolio cash chart */
+  expenseSchedule: ProjectExpenseItem[];
   milestones: ProjectMilestone[];
 }
 
 export function emptyFinancials(): ProjectFinancials {
-  return { payments: [], milestones: [] };
+  return { payments: [], expenseSchedule: [], milestones: [] };
 }
 
 export interface ProjectTodo {

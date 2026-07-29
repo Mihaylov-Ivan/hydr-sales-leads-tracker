@@ -13,13 +13,13 @@ function formatMoney(n: number): string {
 }
 
 function formatCompact(n: number): string {
-  if (Math.abs(n) >= 1_000_000) {
-    const m = n / 1_000_000;
-    return `€${m.toFixed(m >= 10 || m % 1 === 0 ? 0 : 1)}M`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    return `${sign}€${m.toFixed(m >= 10 || m % 1 === 0 ? 0 : 1)}M`;
   }
-  if (Math.abs(n) >= 1_000) {
-    return `€${Math.round(n / 1_000)}k`;
-  }
+  if (abs >= 1_000) return `${sign}€${Math.round(abs / 1_000)}k`;
   return formatMoney(n);
 }
 
@@ -71,12 +71,19 @@ const PROJECT_COLORS = [
   "#a35d6a",
 ];
 
+const INCOME_COLOR = "#009e98";
+const EXPENSE_COLOR = "#c45c26";
+const PROFIT_COLOR = "#14545c";
+
 function colorForIndex(index: number): string {
   return PROJECT_COLORS[index % PROJECT_COLORS.length];
 }
 
-type CashInflow = {
+type FlowKind = "income" | "expense";
+
+type CashFlow = {
   id: string;
+  kind: FlowKind;
   projectId: string;
   projectName: string;
   client: string;
@@ -88,11 +95,11 @@ type CashInflow = {
   color: string;
 };
 
-function collectInflows(
+function collectFlows(
   projects: Project[],
   colorById: Map<string, string>,
-): CashInflow[] {
-  const list: CashInflow[] = [];
+): CashFlow[] {
+  const list: CashFlow[] = [];
   for (const p of projects) {
     const f = p.financials;
     const color = colorById.get(p.id) ?? PROJECT_COLORS[0];
@@ -101,7 +108,8 @@ function collectInflows(
         ? f.milestones.find((m) => m.id === pay.milestoneId)
         : undefined;
       list.push({
-        id: `${p.id}-${pay.id}`,
+        id: `in-${p.id}-${pay.id}`,
+        kind: "income",
         projectId: p.id,
         projectName: p.name,
         client: p.client,
@@ -109,9 +117,25 @@ function collectInflows(
         ...(pay.percent != null ? { percent: pay.percent } : {}),
         date: linked?.date ?? pay.dueDate,
         ...(pay.label ? { label: pay.label } : {}),
-        ...(linked
-          ? { milestoneLabel: MILESTONE_LABELS[linked.kind] }
-          : {}),
+        ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
+        color,
+      });
+    }
+    for (const exp of f.expenseSchedule ?? []) {
+      const linked = exp.milestoneId
+        ? f.milestones.find((m) => m.id === exp.milestoneId)
+        : undefined;
+      list.push({
+        id: `out-${p.id}-${exp.id}`,
+        kind: "expense",
+        projectId: p.id,
+        projectName: p.name,
+        client: p.client,
+        amount: exp.amount,
+        ...(exp.percent != null ? { percent: exp.percent } : {}),
+        date: linked?.date ?? exp.dueDate,
+        ...(exp.label ? { label: exp.label } : {}),
+        ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
         color,
       });
     }
@@ -121,18 +145,31 @@ function collectInflows(
   );
 }
 
-function projectHasPayments(p: Project): boolean {
-  return p.financials.payments.length > 0;
+function projectHasCashFlows(p: Project): boolean {
+  return (
+    p.financials.payments.length > 0 ||
+    (p.financials.expenseSchedule?.length ?? 0) > 0
+  );
 }
 
-const CHART_H = 220;
-const PAD = { top: 16, right: 16, bottom: 36, left: 52 };
+const CHART_H = 260;
+const PAD = { top: 20, right: 16, bottom: 36, left: 52 };
 
-function CashChart({ inflows }: { inflows: CashInflow[] }) {
+function CashChart({
+  flows,
+  showIncome,
+  showExpenses,
+  showProfit,
+}: {
+  flows: CashFlow[];
+  showIncome: boolean;
+  showExpenses: boolean;
+  showProfit: boolean;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
   const [hover, setHover] = useState<{
-    item: CashInflow;
+    item: CashFlow;
     x: number;
     y: number;
   } | null>(null);
@@ -142,7 +179,6 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const next = entries[0]?.contentRect.width ?? 0;
-      // Ignore 0-width flashes when the SVG unmounts during an empty selection
       if (next > 0) setWidth(next);
     });
     ro.observe(el);
@@ -151,23 +187,48 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
   }, []);
 
   useEffect(() => {
-    if (inflows.length === 0) setHover(null);
-  }, [inflows.length]);
+    if (flows.length === 0) setHover(null);
+  }, [flows.length]);
 
-  // Always keep this wrapper mounted so width measurements stay valid across
-  // clear / re-select of projects.
-  if (inflows.length === 0) {
+  const visible = flows.filter(
+    (f) =>
+      (f.kind === "income" && showIncome) ||
+      (f.kind === "expense" && showExpenses),
+  );
+
+  if (!showIncome && !showExpenses && !showProfit) {
     return (
       <div ref={wrapRef} className="w-full">
         <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
-          Select projects that have scheduled payments to see incoming cash over
-          time.
+          Enable Income, Expenses, or Profit above to display the chart.
         </p>
       </div>
     );
   }
 
-  const times = inflows.map((i) => new Date(i.date + "T00:00:00").getTime());
+  if (flows.length === 0) {
+    return (
+      <div ref={wrapRef} className="w-full">
+        <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
+          Select projects that have scheduled payments or expenses to see cash
+          flow over time.
+        </p>
+      </div>
+    );
+  }
+
+  if (visible.length === 0 && !showProfit) {
+    return (
+      <div ref={wrapRef} className="w-full">
+        <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
+          No flows match the enabled series. Turn on Income or Expenses, or add
+          schedule items on a project.
+        </p>
+      </div>
+    );
+  }
+
+  const times = flows.map((i) => new Date(i.date + "T00:00:00").getTime());
   const rangeStart = startOfQuarter(Math.min(...times));
   const rangeEnd = nextQuarter(startOfQuarter(Math.max(...times)));
   const span = Math.max(rangeEnd - rangeStart, 1);
@@ -177,41 +238,67 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
   const innerW = Math.max(chartW - PAD.left - PAD.right, 200);
   const innerH = CHART_H - PAD.top - PAD.bottom;
 
-  const totalAll = inflows.reduce((s, i) => s + i.amount, 0);
-  const maxAmount = Math.max(...inflows.map((i) => i.amount), 1);
-  const scaleMax = Math.max(maxAmount, totalAll) * 1.12;
-  const ySteps = 4;
-  const scaleTicks = Array.from(
-    { length: ySteps + 1 },
-    (_, i) => (scaleMax * i) / ySteps,
+  // Cumulative profit from all flows in date order (income − expense)
+  let runIncome = 0;
+  let runExpense = 0;
+  const cumProfit: { x: number; y: number; total: number; date: string }[] = [];
+  for (const f of flows) {
+    if (f.kind === "income") runIncome += f.amount;
+    else runExpense += f.amount;
+    const total = runIncome - runExpense;
+    cumProfit.push({
+      date: f.date,
+      total,
+      x: 0, // filled after xOf
+      y: 0,
+    });
+  }
+
+  const barAmounts = visible.map((v) => v.amount);
+  const profitExtents = showProfit ? cumProfit.map((p) => p.total) : [];
+  const maxAbs = Math.max(
+    ...barAmounts,
+    ...profitExtents.map(Math.abs),
+    1,
   );
+  const scaleMax = maxAbs * 1.15;
+  const ySteps = 4;
+  // Symmetric scale around 0 so expenses can go below the axis
+  const scaleTicks = Array.from({ length: ySteps * 2 + 1 }, (_, i) => {
+    return -scaleMax + (scaleMax * 2 * i) / (ySteps * 2);
+  });
 
   function xOf(date: string): number {
     const t = new Date(date + "T00:00:00").getTime();
     return PAD.left + ((t - rangeStart) / span) * innerW;
   }
 
+  const zeroY = PAD.top + innerH / 2;
+
   function yScale(amount: number): number {
-    return PAD.top + innerH - (amount / scaleMax) * innerH;
+    // positive up from center, negative down
+    return zeroY - (amount / scaleMax) * (innerH / 2);
   }
 
-  const byDate = new Map<string, CashInflow[]>();
-  for (const item of inflows) {
+  for (const p of cumProfit) {
+    p.x = xOf(p.date);
+    p.y = yScale(p.total);
+  }
+  const cumPath = cumProfit
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+
+  const byDate = new Map<string, CashFlow[]>();
+  for (const item of visible) {
     const list = byDate.get(item.date) ?? [];
     list.push(item);
     byDate.set(item.date, list);
   }
 
-  const barW = Math.min(28, Math.max(10, innerW / Math.max(inflows.length * 2, 8)));
-
-  let running = 0;
-  const cumPoints = inflows.map((item) => {
-    running += item.amount;
-    return { x: xOf(item.date), y: yScale(running), total: running };
-  });
-  const cumPath = cumPoints
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-    .join(" ");
+  const barW = Math.min(
+    22,
+    Math.max(8, innerW / Math.max(visible.length * 2.2, 8)),
+  );
 
   return (
     <div ref={wrapRef} className="relative w-full">
@@ -221,9 +308,8 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
         viewBox={`0 0 ${chartW} ${CHART_H}`}
         className="overflow-visible"
         role="img"
-        aria-label="Incoming payments over time"
+        aria-label="Cash flow over time"
       >
-        {/* Grid + Y axis */}
         {scaleTicks.map((v) => {
           const y = yScale(v);
           return (
@@ -235,7 +321,8 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
                 y2={y}
                 stroke="var(--line)"
                 strokeWidth={1}
-                strokeDasharray={v === 0 ? undefined : "3 4"}
+                strokeDasharray={Math.abs(v) < 1e-9 ? undefined : "3 4"}
+                opacity={Math.abs(v) < 1e-9 ? 1 : 0.7}
               />
               <text
                 x={PAD.left - 8}
@@ -250,73 +337,87 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
           );
         })}
 
-        {/* Cumulative line */}
-        {cumPoints.length > 1 && (
-          <path
-            d={cumPath}
-            fill="none"
-            stroke="var(--deep)"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity={0.45}
-          />
-        )}
-        {cumPoints.map((p, i) => (
-          <circle
-            key={`c-${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={3}
-            fill="var(--deep)"
-            opacity={0.45}
-          />
-        ))}
+        {/* Zero axis emphasis */}
+        <line
+          x1={PAD.left}
+          x2={PAD.left + innerW}
+          y1={zeroY}
+          y2={zeroY}
+          stroke="var(--deep)"
+          strokeWidth={1.25}
+          opacity={0.35}
+        />
 
-        {/* Payment bars */}
+        {/* Profit cumulative line */}
+        {showProfit && cumProfit.length > 0 && (
+          <>
+            <path
+              d={cumPath}
+              fill="none"
+              stroke={PROFIT_COLOR}
+              strokeWidth={2.25}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {cumProfit.map((p, i) => (
+              <circle
+                key={`p-${i}`}
+                cx={p.x}
+                cy={p.y}
+                r={3.5}
+                fill={PROFIT_COLOR}
+              />
+            ))}
+          </>
+        )}
+
+        {/* Income / expense bars */}
         {[...byDate.entries()].flatMap(([date, items]) =>
           items.map((item, idx) => {
             const baseX = xOf(date);
             const offset = (idx - (items.length - 1) / 2) * (barW + 3);
             const x = baseX + offset - barW / 2;
-            const y = yScale(item.amount);
-            const h = PAD.top + innerH - y;
+            const signed = item.kind === "income" ? item.amount : -item.amount;
+            const y1 = yScale(signed);
+            const y2 = zeroY;
+            const top = Math.min(y1, y2);
+            const h = Math.max(Math.abs(y1 - y2), 2);
+            const fill = item.kind === "income" ? INCOME_COLOR : EXPENSE_COLOR;
             return (
-              <g key={item.id}>
-                <rect
-                  x={x}
-                  y={y}
-                  width={barW}
-                  height={Math.max(h, 2)}
-                  rx={3}
-                  fill={item.color}
-                  className="cursor-pointer transition-opacity hover:opacity-90"
-                  onMouseEnter={(e) => {
-                    const rect = wrapRef.current?.getBoundingClientRect();
-                    if (!rect) return;
-                    setHover({
-                      item,
-                      x: e.clientX - rect.left,
-                      y: e.clientY - rect.top,
-                    });
-                  }}
-                  onMouseMove={(e) => {
-                    const rect = wrapRef.current?.getBoundingClientRect();
-                    if (!rect) return;
-                    setHover({
-                      item,
-                      x: e.clientX - rect.left,
-                      y: e.clientY - rect.top,
-                    });
-                  }}
-                  onMouseLeave={() => setHover(null)}
-                />
-              </g>
+              <rect
+                key={item.id}
+                x={x}
+                y={top}
+                width={barW}
+                height={h}
+                rx={3}
+                fill={fill}
+                opacity={0.9}
+                className="cursor-pointer"
+                onMouseEnter={(e) => {
+                  const rect = wrapRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setHover({
+                    item,
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                  });
+                }}
+                onMouseMove={(e) => {
+                  const rect = wrapRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  setHover({
+                    item,
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                  });
+                }}
+                onMouseLeave={() => setHover(null)}
+              />
             );
           }),
         )}
 
-        {/* X axis */}
         <line
           x1={PAD.left}
           x2={PAD.left + innerW}
@@ -326,8 +427,7 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
           strokeWidth={1.5}
         />
         {ticks.map((t) => {
-          const x =
-            PAD.left + ((t - rangeStart) / span) * innerW;
+          const x = PAD.left + ((t - rangeStart) / span) * innerW;
           return (
             <g key={t}>
               <line
@@ -353,17 +453,16 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
         })}
       </svg>
 
-      {/* Hover popup */}
       {hover && (
         <div
           className="pointer-events-none absolute z-20 w-64 -translate-x-1/2 -translate-y-full rounded-xl border border-line bg-panel p-3 shadow-lg"
           style={{
-            left: Math.min(Math.max(hover.x, 130), width - 130),
+            left: Math.min(Math.max(hover.x, 130), chartW - 130),
             top: Math.max(hover.y - 12, 8),
           }}
         >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Incoming payment
+            {hover.item.kind === "income" ? "Incoming payment" : "Expense"}
           </p>
           <p className="mt-1 text-lg font-bold text-deep">
             {formatMoney(hover.item.amount)}
@@ -375,7 +474,9 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
           </p>
           <div className="mt-2 space-y-1 text-sm">
             <p>
-              <span className="text-muted">From </span>
+              <span className="text-muted">
+                {hover.item.kind === "income" ? "From " : "On "}
+              </span>
               <span className="font-semibold text-ink">
                 {hover.item.projectName}
               </span>
@@ -399,30 +500,64 @@ function CashChart({ inflows }: { inflows: CashInflow[] }) {
   );
 }
 
+function SeriesToggle({
+  label,
+  color,
+  on,
+  onToggle,
+}: {
+  label: string;
+  color: string;
+  on: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+        on
+          ? "border-transparent text-white shadow-sm"
+          : "border-line bg-surface text-muted hover:border-teal-accent/40"
+      }`}
+      style={on ? { backgroundColor: color } : undefined}
+    >
+      <span
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: on ? "#fff" : color }}
+      />
+      {label}
+    </button>
+  );
+}
+
 export default function OverviewTimeline({ projects }: { projects: Project[] }) {
-  const withPayments = useMemo(
+  const withFlows = useMemo(
     () =>
       [...projects]
-        .filter(projectHasPayments)
+        .filter(projectHasCashFlows)
         .sort((a, b) => a.name.localeCompare(b.name)),
     [projects],
   );
 
   const [selected, setSelected] = useState<Set<string> | null>(null);
+  const [showIncome, setShowIncome] = useState(true);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [showProfit, setShowProfit] = useState(true);
 
   useEffect(() => {
     setSelected((prev) => {
-      const valid = new Set(withPayments.map((p) => p.id));
+      const valid = new Set(withFlows.map((p) => p.id));
       if (prev === null) return new Set(valid);
       return new Set([...prev].filter((id) => valid.has(id)));
     });
-  }, [withPayments]);
+  }, [withFlows]);
 
-  const selectedIds = selected ?? new Set(withPayments.map((p) => p.id));
+  const selectedIds = selected ?? new Set(withFlows.map((p) => p.id));
 
   const selectedProjects = useMemo(
-    () => withPayments.filter((p) => selectedIds.has(p.id)),
-    [withPayments, selectedIds],
+    () => withFlows.filter((p) => selectedIds.has(p.id)),
+    [withFlows, selectedIds],
   );
 
   const colorById = useMemo(() => {
@@ -431,19 +566,29 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
     return map;
   }, [selectedProjects]);
 
-  const inflows = useMemo(
-    () => collectInflows(selectedProjects, colorById),
+  const flows = useMemo(
+    () => collectFlows(selectedProjects, colorById),
     [selectedProjects, colorById],
   );
 
-  const total = inflows.reduce((s, i) => s + i.amount, 0);
-  const upcoming = inflows.find(
-    (i) => new Date(i.date + "T00:00:00") >= new Date(new Date().toDateString()),
-  );
+  const totalIncome = flows
+    .filter((f) => f.kind === "income")
+    .reduce((s, i) => s + i.amount, 0);
+  const totalExpense = flows
+    .filter((f) => f.kind === "expense")
+    .reduce((s, i) => s + i.amount, 0);
+  const totalProfit = totalIncome - totalExpense;
+
+  const upcoming = flows
+    .filter((f) => f.kind === "income")
+    .find(
+      (i) =>
+        new Date(i.date + "T00:00:00") >= new Date(new Date().toDateString()),
+    );
 
   function toggle(id: string) {
     setSelected((prev) => {
-      const base = prev ?? new Set(withPayments.map((p) => p.id));
+      const base = prev ?? new Set(withFlows.map((p) => p.id));
       const next = new Set(base);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -451,15 +596,15 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
     });
   }
 
-  if (withPayments.length === 0) {
+  if (withFlows.length === 0) {
     return (
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
         <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-          Cash in
+          Cash flow
         </h2>
         <p className="mt-3 text-sm text-muted">
-          No scheduled payments yet. Add payment milestones on a project to see
-          incoming cash over time here.
+          No scheduled payments or expenses yet. Add them on a project page to
+          see income, costs, and profit over time here.
         </p>
       </section>
     );
@@ -470,18 +615,36 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-            Cash in
+            Cash flow
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Scheduled payments across selected projects
+            Scheduled income and expenses across selected projects
           </p>
         </div>
         <div className="flex flex-wrap gap-4 text-right">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Total scheduled
+              Income
             </p>
-            <p className="text-lg font-bold text-deep">{formatMoney(total)}</p>
+            <p className="text-lg font-bold text-teal-accent">
+              {formatMoney(totalIncome)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Expenses
+            </p>
+            <p className="text-lg font-bold" style={{ color: EXPENSE_COLOR }}>
+              {formatMoney(totalExpense)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Profit
+            </p>
+            <p className="text-lg font-bold text-deep">
+              {formatMoney(totalProfit)}
+            </p>
           </div>
           {upcoming && (
             <div>
@@ -499,8 +662,34 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
         </div>
       </div>
 
+      {/* Series toggles */}
       <div className="mb-3 mt-3 flex flex-wrap items-center gap-2">
-        {withPayments.map((p, i) => {
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Show
+        </span>
+        <SeriesToggle
+          label="Income"
+          color={INCOME_COLOR}
+          on={showIncome}
+          onToggle={() => setShowIncome((v) => !v)}
+        />
+        <SeriesToggle
+          label="Expenses"
+          color={EXPENSE_COLOR}
+          on={showExpenses}
+          onToggle={() => setShowExpenses((v) => !v)}
+        />
+        <SeriesToggle
+          label="Profit"
+          color={PROFIT_COLOR}
+          on={showProfit}
+          onToggle={() => setShowProfit((v) => !v)}
+        />
+      </div>
+
+      {/* Project picker */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {withFlows.map((p, i) => {
           const on = selectedIds.has(p.id);
           const activeIndex = selectedProjects.findIndex((s) => s.id === p.id);
           const chipColor =
@@ -528,7 +717,7 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
         <div className="ml-auto flex gap-2 text-xs">
           <button
             type="button"
-            onClick={() => setSelected(new Set(withPayments.map((p) => p.id)))}
+            onClick={() => setSelected(new Set(withFlows.map((p) => p.id)))}
             className="font-semibold text-teal-accent hover:underline"
           >
             All
@@ -544,10 +733,18 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
         </div>
       </div>
 
-      <CashChart inflows={inflows} />
+      <CashChart
+        flows={flows}
+        showIncome={showIncome}
+        showExpenses={showExpenses}
+        showProfit={showProfit}
+      />
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
-        <span>Bars = individual payments · Line = cumulative cash in</span>
+        <span>
+          Up = income · Down = expenses · Line = cumulative profit (income −
+          expenses)
+        </span>
         {selectedProjects.length === 1 && (
           <Link
             href={`/projects/${selectedProjects[0].id}`}

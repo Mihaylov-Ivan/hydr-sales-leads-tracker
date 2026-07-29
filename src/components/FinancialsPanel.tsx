@@ -6,6 +6,7 @@ import {
   MILESTONE_KINDS,
   MILESTONE_LABELS,
   MilestoneKind,
+  ProjectExpenseItem,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
@@ -499,6 +500,184 @@ function PaymentRow({
   );
 }
 
+function ExpenseRow({
+  projectId,
+  expense,
+  financials,
+  milestones,
+}: {
+  projectId: string;
+  expense: ProjectExpenseItem;
+  financials: ProjectFinancials;
+  milestones: ProjectMilestone[];
+}) {
+  const { updateExpense, deleteExpense } = useProjects();
+  const [editing, setEditing] = useState(false);
+  const [amount, setAmount] = useState(String(expense.amount));
+  const [percent, setPercent] = useState(
+    expense.percent != null ? String(expense.percent) : "",
+  );
+  const [dueDate, setDueDate] = useState(expense.dueDate);
+  const [label, setLabel] = useState(expense.label ?? "");
+  const [milestoneId, setMilestoneId] = useState(expense.milestoneId ?? "");
+
+  const linked = milestoneId
+    ? milestones.find((m) => m.id === milestoneId)
+    : undefined;
+
+  function startEdit() {
+    setAmount(String(expense.amount));
+    setPercent(expense.percent != null ? String(expense.percent) : "");
+    setDueDate(expense.dueDate);
+    setLabel(expense.label ?? "");
+    setMilestoneId(expense.milestoneId ?? "");
+    setEditing(true);
+  }
+
+  function handlePercentChange(raw: string) {
+    setPercent(raw);
+    const pct = parseOptionalNumber(raw);
+    if (pct != null && financials.expenses != null) {
+      setAmount(String(amountFromPercent(financials.expenses, pct)));
+    }
+  }
+
+  function handleMilestoneLink(id: string) {
+    setMilestoneId(id);
+    if (id) {
+      const m = milestones.find((x) => x.id === id);
+      if (m) setDueDate(m.date);
+    }
+  }
+
+  function save() {
+    const pct = parseOptionalNumber(percent);
+    let amt = parseOptionalNumber(amount);
+    if (amt == null && pct != null && financials.expenses != null) {
+      amt = amountFromPercent(financials.expenses, pct);
+    }
+    const date = linked?.date ?? dueDate;
+    if (amt == null || amt <= 0 || !date) return;
+    updateExpense(projectId, expense.id, {
+      amount: amt,
+      ...(pct != null ? { percent: pct } : {}),
+      dueDate: date,
+      label,
+      ...(linked ? { milestoneId: linked.id } : {}),
+    });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <li className="rounded-lg border border-amber-accent/40 bg-surface p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <input
+            value={percent}
+            onChange={(e) => handlePercentChange(e.target.value)}
+            placeholder="% of expenses"
+            className={inputCls}
+          />
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="Amount €"
+            className={inputCls}
+          />
+          <input
+            type="date"
+            value={linked?.date ?? dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            disabled={Boolean(linked)}
+            className={`${inputCls} disabled:cursor-not-allowed disabled:opacity-60`}
+          />
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="flex-1 rounded-lg px-2 py-2 text-xs text-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              className="flex-1 rounded-lg bg-olive px-2 py-2 text-xs font-bold uppercase tracking-wide text-olive-ink hover:brightness-105"
+            >
+              Save
+            </button>
+          </div>
+          <select
+            value={milestoneId}
+            onChange={(e) => handleMilestoneLink(e.target.value)}
+            className={`${inputCls} col-span-2`}
+          >
+            <option value="">No linked deadline</option>
+            {milestones.map((m) => (
+              <option key={m.id} value={m.id}>
+                {MILESTONE_LABELS[m.kind]} · {formatDate(m.date)}
+              </option>
+            ))}
+          </select>
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label (optional)"
+            className={`${inputCls} col-span-2`}
+          />
+        </div>
+      </li>
+    );
+  }
+
+  const displayLinked = expense.milestoneId
+    ? milestones.find((m) => m.id === expense.milestoneId)
+    : undefined;
+  const linkedName = displayLinked
+    ? MILESTONE_LABELS[displayLinked.kind]
+    : null;
+
+  return (
+    <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
+      <span className="font-semibold text-deep">
+        {formatMoney(expense.amount)}
+        {expense.percent != null && (
+          <span className="ml-1 font-medium text-amber-accent">
+            ({expense.percent}%)
+          </span>
+        )}
+      </span>
+      <span className="text-muted">
+        on {formatDate(displayLinked?.date ?? expense.dueDate)}
+      </span>
+      {linkedName && (
+        <span className="rounded-full bg-amber-accent/15 px-2 py-0.5 text-[11px] font-semibold text-amber-accent">
+          ↔ {linkedName}
+        </span>
+      )}
+      {expense.label && (
+        <span className="truncate text-xs text-muted">· {expense.label}</span>
+      )}
+      <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={startEdit}
+          className="text-xs font-semibold text-teal-accent hover:underline"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => deleteExpense(projectId, expense.id)}
+          className="text-xs text-muted hover:text-red-500"
+        >
+          Remove
+        </button>
+      </span>
+    </li>
+  );
+}
+
 function MilestoneRow({
   projectId,
   milestone,
@@ -617,6 +796,7 @@ export default function FinancialsPanel({
   const {
     updateFinancials,
     addPayment,
+    addExpense,
     addMilestone,
   } = useProjects();
 
@@ -627,6 +807,12 @@ export default function FinancialsPanel({
   const [payDate, setPayDate] = useState("");
   const [payLabel, setPayLabel] = useState("");
   const [payMilestoneId, setPayMilestoneId] = useState("");
+
+  const [expAmount, setExpAmount] = useState("");
+  const [expPercent, setExpPercent] = useState("");
+  const [expDate, setExpDate] = useState("");
+  const [expLabel, setExpLabel] = useState("");
+  const [expMilestoneId, setExpMilestoneId] = useState("");
 
   const [msKind, setMsKind] = useState<MilestoneKind>("fat");
   const [msDate, setMsDate] = useState("");
@@ -639,6 +825,9 @@ export default function FinancialsPanel({
 
   const linkedMilestone = payMilestoneId
     ? financials.milestones.find((m) => m.id === payMilestoneId)
+    : undefined;
+  const linkedExpMilestone = expMilestoneId
+    ? financials.milestones.find((m) => m.id === expMilestoneId)
     : undefined;
 
   function handlePercentChange(raw: string) {
@@ -657,20 +846,47 @@ export default function FinancialsPanel({
     }
   }
 
+  function handleExpPercentChange(raw: string) {
+    setExpPercent(raw);
+    const pct = parseOptionalNumber(raw);
+    if (pct != null && financials.expenses != null) {
+      setExpAmount(String(amountFromPercent(financials.expenses, pct)));
+    }
+  }
+
+  function handleExpMilestoneLink(id: string) {
+    setExpMilestoneId(id);
+    if (id) {
+      const m = financials.milestones.find((x) => x.id === id);
+      if (m) setExpDate(m.date);
+    }
+  }
+
   // If contract value arrives/changes while a % is typed, refresh the amount.
   useEffect(() => {
     const pct = parseOptionalNumber(payPercent);
     if (pct != null && financials.contractValue != null) {
       setPayAmount(String(amountFromPercent(financials.contractValue, pct)));
     }
-    // intentionally only react to contract value changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [financials.contractValue]);
+
+  useEffect(() => {
+    const pct = parseOptionalNumber(expPercent);
+    if (pct != null && financials.expenses != null) {
+      setExpAmount(String(amountFromPercent(financials.expenses, pct)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [financials.expenses]);
 
   // Keep linked payment date in sync if the chosen milestone's date changes
   useEffect(() => {
     if (linkedMilestone) setPayDate(linkedMilestone.date);
   }, [linkedMilestone?.date, linkedMilestone]);
+
+  useEffect(() => {
+    if (linkedExpMilestone) setExpDate(linkedExpMilestone.date);
+  }, [linkedExpMilestone?.date, linkedExpMilestone]);
 
   function submitPayment(e: React.FormEvent) {
     e.preventDefault();
@@ -700,6 +916,30 @@ export default function FinancialsPanel({
     setPayMilestoneId("");
   }
 
+  function submitExpense(e: React.FormEvent) {
+    e.preventDefault();
+    const dueDate = linkedExpMilestone?.date ?? expDate;
+    if (!dueDate) return;
+    const percent = parseOptionalNumber(expPercent);
+    let amount = parseOptionalNumber(expAmount);
+    if (amount == null && percent != null && financials.expenses != null) {
+      amount = amountFromPercent(financials.expenses, percent);
+    }
+    if (amount == null || amount <= 0) return;
+    addExpense(projectId, {
+      amount,
+      ...(percent != null ? { percent } : {}),
+      dueDate,
+      label: expLabel,
+      ...(linkedExpMilestone ? { milestoneId: linkedExpMilestone.id } : {}),
+    });
+    setExpAmount("");
+    setExpPercent("");
+    setExpDate("");
+    setExpLabel("");
+    setExpMilestoneId("");
+  }
+
   function submitMilestone(e: React.FormEvent) {
     e.preventDefault();
     if (!msDate) return;
@@ -717,7 +957,15 @@ export default function FinancialsPanel({
     (Boolean(payAmount.trim()) ||
       (Boolean(payPercent.trim()) && financials.contractValue != null));
 
+  const canAddExpense =
+    Boolean(linkedExpMilestone?.date || expDate) &&
+    (Boolean(expAmount.trim()) ||
+      (Boolean(expPercent.trim()) && financials.expenses != null));
+
   const sortedPayments = [...financials.payments].sort(
+    (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+  );
+  const sortedExpenses = [...(financials.expenseSchedule ?? [])].sort(
     (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
   );
   const sortedMilestones = [...financials.milestones].sort(
@@ -751,21 +999,20 @@ export default function FinancialsPanel({
           />
         </div>
         <MoneyField
-          label="Expenses (€)"
+          label="Overall expenses (€)"
           value={financials.expenses}
           onSave={(n) => updateFinancials(projectId, { expenses: n })}
-          hint="Construction + development costs"
+          hint="Total construction + development costs"
         />
-        <MoneyField
-          label="Expected profit (€)"
-          value={financials.expectedProfit}
-          onSave={(n) => updateFinancials(projectId, { expectedProfit: n })}
-          hint={
-            impliedProfit != null
-              ? `Value − expenses = ${formatMoney(impliedProfit)}`
-              : undefined
-          }
-        />
+        <div>
+          <label className={labelCls}>Expected profit (€)</label>
+          <p className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-semibold text-deep">
+            {impliedProfit != null ? formatMoney(impliedProfit) : "—"}
+          </p>
+          <p className="mt-1 text-[11px] text-muted">
+            Contract value − overall expenses
+          </p>
+        </div>
       </div>
 
       {/* Timeline chart */}
@@ -780,7 +1027,7 @@ export default function FinancialsPanel({
         {/* Payments */}
         <div>
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-deep">
-            Payment schedule
+            Payment schedule (income)
           </h3>
           <form
             onSubmit={submitPayment}
@@ -873,14 +1120,99 @@ export default function FinancialsPanel({
           )}
         </div>
 
-        {/* Milestones */}
+        {/* Expense schedule */}
         <div>
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-deep">
+            Expense schedule (outflow)
+          </h3>
+          <form
+            onSubmit={submitExpense}
+            className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4"
+          >
+            <input
+              value={expPercent}
+              onChange={(e) => handleExpPercentChange(e.target.value)}
+              placeholder="% of expenses"
+              className={inputCls}
+              title={
+                financials.expenses == null
+                  ? "Set overall expenses first to auto-calculate from %"
+                  : "Amount is calculated from overall expenses × %"
+              }
+            />
+            <input
+              value={expAmount}
+              onChange={(e) => setExpAmount(e.target.value)}
+              placeholder="Amount €"
+              className={inputCls}
+            />
+            <input
+              type="date"
+              value={linkedExpMilestone?.date ?? expDate}
+              onChange={(e) => setExpDate(e.target.value)}
+              disabled={Boolean(linkedExpMilestone)}
+              className={`${inputCls} disabled:cursor-not-allowed disabled:opacity-60`}
+              required={!linkedExpMilestone}
+            />
+            <button
+              type="submit"
+              disabled={!canAddExpense}
+              className="rounded-lg bg-olive px-3 py-2 text-xs font-bold uppercase tracking-wide text-olive-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Add
+            </button>
+            <select
+              value={expMilestoneId}
+              onChange={(e) => handleExpMilestoneLink(e.target.value)}
+              className={`${inputCls} col-span-2`}
+            >
+              <option value="">No linked deadline</option>
+              {sortedMilestones.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {MILESTONE_LABELS[m.kind]} · {formatDate(m.date)}
+                </option>
+              ))}
+            </select>
+            <input
+              value={expLabel}
+              onChange={(e) => setExpLabel(e.target.value)}
+              placeholder="Label (optional) e.g. Supplier deposit"
+              className={`${inputCls} col-span-2`}
+            />
+          </form>
+          {financials.expenses == null && (
+            <p className="mb-2 text-[11px] text-muted">
+              Set overall expenses above to auto-fill amount from %.
+            </p>
+          )}
+          {sortedExpenses.length === 0 ? (
+            <p className="text-sm text-muted/80">
+              No scheduled expenses yet. These drive the cash-out chart.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {sortedExpenses.map((e) => (
+                <ExpenseRow
+                  key={e.id}
+                  projectId={projectId}
+                  expense={e}
+                  financials={financials}
+                  milestones={sortedMilestones}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Milestones */}
+      <div className="mt-5">
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-deep">
             Project deadlines
           </h3>
           <form
             onSubmit={submitMilestone}
-            className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3"
+            className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4"
           >
             <select
               value={msKind}
@@ -911,7 +1243,7 @@ export default function FinancialsPanel({
               value={msNote}
               onChange={(e) => setMsNote(e.target.value)}
               placeholder="Note (optional)"
-              className={`${inputCls} col-span-2 sm:col-span-3`}
+              className={inputCls}
             />
           </form>
           {sortedMilestones.length === 0 ? (
@@ -929,7 +1261,6 @@ export default function FinancialsPanel({
               ))}
             </ul>
           )}
-        </div>
       </div>
     </section>
   );

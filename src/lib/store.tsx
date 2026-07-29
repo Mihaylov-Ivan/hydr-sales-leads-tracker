@@ -13,6 +13,7 @@ import {
   Project,
   ProjectComment,
   ProjectContact,
+  ProjectExpenseItem,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
@@ -26,6 +27,7 @@ import {
   supabase,
   commentFromRow,
   contactFromRow,
+  expenseFromRow,
   financialsFromParts,
   milestoneFromRow,
   paymentFromRow,
@@ -36,6 +38,7 @@ import {
 import type {
   CommentRow,
   ContactRow,
+  ExpenseRow,
   MilestoneRow,
   PaymentRow,
   ProjectRow,
@@ -104,6 +107,9 @@ export interface PaymentInput {
   milestoneId?: string;
 }
 
+/** Same shape as a payment — dated cash outflow */
+export type ExpenseInput = PaymentInput;
+
 export interface MilestoneInput {
   kind: MilestoneKind;
   date: string;
@@ -140,6 +146,9 @@ interface ProjectsApi {
   addPayment: (projectId: string, input: PaymentInput) => void;
   updatePayment: (projectId: string, paymentId: string, patch: PaymentInput) => void;
   deletePayment: (projectId: string, paymentId: string) => void;
+  addExpense: (projectId: string, input: ExpenseInput) => void;
+  updateExpense: (projectId: string, expenseId: string, patch: ExpenseInput) => void;
+  deleteExpense: (projectId: string, expenseId: string) => void;
   addMilestone: (projectId: string, input: MilestoneInput) => void;
   updateMilestone: (
     projectId: string,
@@ -166,6 +175,7 @@ function loadLocal(): Project[] {
           ...emptyFinancials(),
           ...p.financials,
           payments: p.financials?.payments ?? [],
+          expenseSchedule: p.financials?.expenseSchedule ?? [],
           milestones: p.financials?.milestones ?? [],
         },
       }));
@@ -183,6 +193,7 @@ async function loadRemote(): Promise<Project[]> {
     todosRes,
     contactsRes,
     paymentsRes,
+    expensesRes,
     milestonesRes,
   ] = await Promise.all([
     supabase!
@@ -206,6 +217,10 @@ async function loadRemote(): Promise<Project[]> {
       .select("*")
       .order("due_date", { ascending: true }),
     supabase!
+      .from("project_expenses")
+      .select("*")
+      .order("due_date", { ascending: true }),
+    supabase!
       .from("project_milestones")
       .select("*")
       .order("date", { ascending: true }),
@@ -219,6 +234,9 @@ async function loadRemote(): Promise<Project[]> {
   }
   if (paymentsRes.error) {
     console.error("Supabase payments load failed:", paymentsRes.error.message);
+  }
+  if (expensesRes.error) {
+    console.error("Supabase expenses load failed:", expensesRes.error.message);
   }
   if (milestonesRes.error) {
     console.error(
@@ -251,6 +269,12 @@ async function loadRemote(): Promise<Project[]> {
     list.push(paymentFromRow(row));
     paymentsByProject.set(row.project_id, list);
   }
+  const expensesByProject = new Map<string, ProjectExpenseItem[]>();
+  for (const row of (expensesRes.data ?? []) as ExpenseRow[]) {
+    const list = expensesByProject.get(row.project_id) ?? [];
+    list.push(expenseFromRow(row));
+    expensesByProject.set(row.project_id, list);
+  }
   const milestonesByProject = new Map<string, ProjectMilestone[]>();
   for (const row of (milestonesRes.data ?? []) as MilestoneRow[]) {
     const list = milestonesByProject.get(row.project_id) ?? [];
@@ -267,6 +291,7 @@ async function loadRemote(): Promise<Project[]> {
         row,
         paymentsByProject.get(row.id) ?? [],
         milestonesByProject.get(row.id) ?? [],
+        expensesByProject.get(row.id) ?? [],
       ),
     ),
   );
@@ -720,6 +745,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateFinancials = useCallback(
     (projectId: string, patch: FinancialsPatch) => {
+      let syncedProfit: number | null | undefined;
       mutateFinancials(projectId, (f) => {
         const next = { ...f };
         if (patch.contractValue !== undefined) {
@@ -734,9 +760,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (patch.expenses === null) delete next.expenses;
           else next.expenses = patch.expenses;
         }
-        if (patch.expectedProfit !== undefined) {
-          if (patch.expectedProfit === null) delete next.expectedProfit;
-          else next.expectedProfit = patch.expectedProfit;
+        // Profit is always contract − overall expenses when both are set
+        if (next.contractValue != null && next.expenses != null) {
+          next.expectedProfit = next.contractValue - next.expenses;
+          syncedProfit = next.expectedProfit;
+        } else {
+          delete next.expectedProfit;
+          syncedProfit = null;
         }
         return next;
       });
@@ -747,8 +777,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.contractSignedDate !== undefined)
           row.contract_signed_date = patch.contractSignedDate;
         if (patch.expenses !== undefined) row.expenses = patch.expenses;
-        if (patch.expectedProfit !== undefined)
-          row.expected_profit = patch.expectedProfit;
+        if (syncedProfit !== undefined) row.expected_profit = syncedProfit;
         void supabase
           .from("projects")
           .update(row)
@@ -855,6 +884,102 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateFinancials],
   );
 
+  const addExpense = useCallback(
+    (projectId: string, input: ExpenseInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const linked = input.milestoneId
+        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
+        : undefined;
+      const dueDate = linked?.date ?? input.dueDate;
+      const expense: ProjectExpenseItem = {
+        id: crypto.randomUUID(),
+        amount: input.amount,
+        ...(input.percent != null ? { percent: input.percent } : {}),
+        dueDate,
+        ...(input.label?.trim() ? { label: input.label.trim() } : {}),
+        ...(linked ? { milestoneId: linked.id } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        expenseSchedule: [...(f.expenseSchedule ?? []), expense],
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_expenses")
+          .insert({
+            id: expense.id,
+            project_id: projectId,
+            amount: expense.amount,
+            percent: expense.percent ?? null,
+            due_date: expense.dueDate,
+            label: expense.label ?? null,
+            milestone_id: expense.milestoneId ?? null,
+            created_at: expense.createdAt,
+          })
+          .then(logDbError("expense insert"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const updateExpense = useCallback(
+    (projectId: string, expenseId: string, patch: ExpenseInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const linked = patch.milestoneId
+        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
+        : undefined;
+      const dueDate = linked?.date ?? patch.dueDate;
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.id !== expenseId) return e;
+          const next: ProjectExpenseItem = {
+            id: e.id,
+            amount: patch.amount,
+            dueDate,
+            createdAt: e.createdAt,
+          };
+          if (patch.percent != null) next.percent = patch.percent;
+          if (patch.label?.trim()) next.label = patch.label.trim();
+          if (linked) next.milestoneId = linked.id;
+          return next;
+        }),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_expenses")
+          .update({
+            amount: patch.amount,
+            percent: patch.percent ?? null,
+            due_date: dueDate,
+            label: patch.label?.trim() || null,
+            milestone_id: linked?.id ?? null,
+          })
+          .eq("id", expenseId)
+          .then(logDbError("expense update"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const deleteExpense = useCallback(
+    (projectId: string, expenseId: string) => {
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        expenseSchedule: (f.expenseSchedule ?? []).filter((e) => e.id !== expenseId),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_expenses")
+          .delete()
+          .eq("id", expenseId)
+          .then(logDbError("expense delete"));
+      }
+    },
+    [mutateFinancials],
+  );
+
   const addMilestone = useCallback(
     (projectId: string, input: MilestoneInput) => {
       const milestone: ProjectMilestone = {
@@ -892,6 +1017,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         current?.financials.payments
           .filter((p) => p.milestoneId === milestoneId)
           .map((p) => p.id) ?? [];
+      const linkedExpenseIds =
+        current?.financials.expenseSchedule
+          ?.filter((e) => e.milestoneId === milestoneId)
+          .map((e) => e.id) ?? [];
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.map((m) =>
@@ -908,6 +1037,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ),
         payments: f.payments.map((p) =>
           p.milestoneId === milestoneId ? { ...p, dueDate: patch.date } : p,
+        ),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+          e.milestoneId === milestoneId ? { ...e, dueDate: patch.date } : e,
         ),
       }));
       if (supabase) {
@@ -927,6 +1059,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             .eq("id", paymentId)
             .then(logDbError("linked payment date sync"));
         }
+        for (const expenseId of linkedExpenseIds) {
+          void supabase
+            .from("project_expenses")
+            .update({ due_date: patch.date })
+            .eq("id", expenseId)
+            .then(logDbError("linked expense date sync"));
+        }
       }
     },
     [mutateFinancials],
@@ -934,13 +1073,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const deleteMilestone = useCallback(
     (projectId: string, milestoneId: string) => {
-      // Keep payments; just clear the link so they stay on the last known date.
+      // Keep payments/expenses; just clear the link so they stay on the last known date.
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.filter((m) => m.id !== milestoneId),
         payments: f.payments.map((p) => {
           if (p.milestoneId !== milestoneId) return p;
           const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.milestoneId !== milestoneId) return e;
+          const next = { ...e };
           delete next.milestoneId;
           return next;
         }),
@@ -956,6 +1101,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .update({ milestone_id: null })
           .eq("milestone_id", milestoneId)
           .then(logDbError("unlink payments from milestone"));
+        void supabase
+          .from("project_expenses")
+          .update({ milestone_id: null })
+          .eq("milestone_id", milestoneId)
+          .then(logDbError("unlink expenses from milestone"));
       }
     },
     [mutateFinancials],
@@ -998,6 +1148,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addPayment,
         updatePayment,
         deletePayment,
+        addExpense,
+        updateExpense,
+        deleteExpense,
         addMilestone,
         updateMilestone,
         deleteMilestone,

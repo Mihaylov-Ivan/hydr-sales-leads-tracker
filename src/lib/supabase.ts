@@ -5,6 +5,7 @@ import {
   Project,
   ProjectComment,
   ProjectContact,
+  ProjectExpenseItem,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
@@ -128,6 +129,30 @@ export function paymentFromRow(row: PaymentRow): ProjectPayment {
   };
 }
 
+/** Shape of a row in public.project_expenses */
+export interface ExpenseRow {
+  id: string;
+  project_id: string;
+  amount: number;
+  percent: number | null;
+  due_date: string;
+  label: string | null;
+  milestone_id: string | null;
+  created_at: string;
+}
+
+export function expenseFromRow(row: ExpenseRow): ProjectExpenseItem {
+  return {
+    id: row.id,
+    amount: row.amount,
+    ...(row.percent != null ? { percent: row.percent } : {}),
+    dueDate: row.due_date,
+    ...(row.label ? { label: row.label } : {}),
+    ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
+    createdAt: row.created_at,
+  };
+}
+
 /** Shape of a row in public.project_milestones */
 export interface MilestoneRow {
   id: string;
@@ -162,17 +187,25 @@ export function financialsFromParts(
   row: ProjectRow,
   payments: ProjectPayment[],
   milestones: ProjectMilestone[],
+  expenseSchedule: ProjectExpenseItem[] = [],
 ): ProjectFinancials {
+  const contractValue = row.contract_value ?? undefined;
+  const expenses = row.expenses ?? undefined;
+  const expectedProfit =
+    contractValue != null && expenses != null
+      ? contractValue - expenses
+      : row.expected_profit != null
+        ? row.expected_profit
+        : undefined;
   return {
-    ...(row.contract_value != null ? { contractValue: row.contract_value } : {}),
+    ...(contractValue != null ? { contractValue } : {}),
     ...(row.contract_signed_date
       ? { contractSignedDate: row.contract_signed_date }
       : {}),
-    ...(row.expenses != null ? { expenses: row.expenses } : {}),
-    ...(row.expected_profit != null
-      ? { expectedProfit: row.expected_profit }
-      : {}),
+    ...(expenses != null ? { expenses } : {}),
+    ...(expectedProfit != null ? { expectedProfit } : {}),
     payments,
+    expenseSchedule,
     milestones,
   };
 }
