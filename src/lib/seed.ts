@@ -15,6 +15,7 @@ export const SEED_PROJECTS: Project[] = [
     country: "Bulgaria",
     city: "Sofia",
     series: "Z Series",
+    market: "Power Plants",
     sizeKw: 1000,
     stage: "under-development",
     baseDescription:
@@ -50,6 +51,7 @@ export const SEED_PROJECTS: Project[] = [
     country: "Poland",
     city: "Warsaw",
     series: "E Series",
+    market: "Burner Optimisation",
     sizeKw: 250,
     stage: "new-lead",
     baseDescription:
@@ -72,6 +74,7 @@ export const SEED_PROJECTS: Project[] = [
     country: "Germany",
     city: "Munich",
     series: "Z Series",
+    market: "Clean H2",
     sizeKw: 2000,
     stage: "new-lead",
     baseDescription:
@@ -100,6 +103,7 @@ export const SEED_PROJECTS: Project[] = [
     country: "Turkey",
     city: "Istanbul",
     series: "Custom",
+    market: "Clean H2",
     sizeKw: 500,
     stage: "commissioned",
     baseDescription:
@@ -135,6 +139,7 @@ export const SEED_PROJECTS: Project[] = [
     country: "Bulgaria",
     city: "Plovdiv",
     series: "E Series",
+    market: "Burner Optimisation",
     sizeKw: 100,
     stage: "new-lead",
     baseDescription:

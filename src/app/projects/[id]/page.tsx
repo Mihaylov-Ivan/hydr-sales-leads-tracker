@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Market, MARKETS, Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import { generateSummary } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
@@ -191,7 +191,7 @@ export default function ProjectPage() {
       </div>
 
       {/* Key facts (click a value to edit) */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             System
@@ -207,6 +207,24 @@ export default function ProjectPage() {
             <option>Z Series</option>
             <option>E Series</option>
             <option>Custom</option>
+          </select>
+        </div>
+
+        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Market
+          </p>
+          <select
+            value={project.market}
+            onChange={(e) =>
+              updateProject(project.id, { market: e.target.value as Market })
+            }
+            title="Click to change market"
+            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
+          >
+            {MARKETS.map((m) => (
+              <option key={m}>{m}</option>
+            ))}
           </select>
         </div>
 
@@ -286,8 +304,22 @@ export default function ProjectPage() {
         </div>
       </section>
 
-      {/* To-dos */}
-      <TodoList projectId={project.id} todos={project.todos} />
+      {/* Questions and action items */}
+      <TodoList
+        projectId={project.id}
+        kind="question"
+        todos={project.todos.filter((t) => t.kind === "question")}
+      />
+      <TodoList
+        projectId={project.id}
+        kind="our-action"
+        todos={project.todos.filter((t) => t.kind === "our-action")}
+      />
+      <TodoList
+        projectId={project.id}
+        kind="client-action"
+        todos={project.todos.filter((t) => t.kind === "client-action")}
+      />
 
       {/* New comment */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">

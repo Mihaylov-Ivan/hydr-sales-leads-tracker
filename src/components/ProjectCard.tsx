@@ -24,6 +24,10 @@ export default function ProjectCard({ project }: { project: Project }) {
         <p className="mt-0.5 text-sm text-muted">{project.client}</p>
       </div>
 
+      <span className="w-fit rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
+        {project.market}
+      </span>
+
       <p className="line-clamp-3 text-sm leading-relaxed text-muted">
         {summary}
       </p>

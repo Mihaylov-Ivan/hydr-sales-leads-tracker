@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Project, ProjectComment, ProjectTodo, Stage } from "./types";
+import { Project, ProjectComment, ProjectTodo, Stage, TodoKind } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
   supabase,
@@ -27,6 +27,7 @@ export interface NewProjectInput {
   country: string;
   city: string;
   series: Project["series"];
+  market: Project["market"];
   sizeKw: number;
   stage: Stage;
   baseDescription: string;
@@ -35,9 +36,24 @@ export interface NewProjectInput {
 export type ProjectPatch = Partial<
   Pick<
     Project,
-    "name" | "client" | "country" | "city" | "series" | "sizeKw" | "stage" | "baseDescription"
+    | "name"
+    | "client"
+    | "country"
+    | "city"
+    | "series"
+    | "market"
+    | "sizeKw"
+    | "stage"
+    | "baseDescription"
   >
 >;
+
+/** `null` clears the field, `undefined` leaves it unchanged. */
+export interface TodoPatch {
+  text?: string;
+  answer?: string | null;
+  dueDate?: string | null;
+}
 
 interface ProjectsApi {
   projects: Project[];
@@ -53,9 +69,14 @@ interface ProjectsApi {
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
   deleteProject: (projectId: string) => void;
-  addTodo: (projectId: string, text: string) => void;
+  addTodo: (
+    projectId: string,
+    kind: TodoKind,
+    text: string,
+    dueDate?: string,
+  ) => void;
   toggleTodo: (projectId: string, todoId: string) => void;
-  updateTodo: (projectId: string, todoId: string, text: string) => void;
+  updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
   deleteTodo: (projectId: string, todoId: string) => void;
 }
 
@@ -66,8 +87,12 @@ function loadLocal(): Project[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Project[];
-      // Data saved before the todos feature has no `todos` field
-      return parsed.map((p) => ({ ...p, todos: p.todos ?? [] }));
+      // Data saved before the todos/kinds/markets features may lack these fields
+      return parsed.map((p) => ({
+        ...p,
+        market: p.market ?? "Clean H2",
+        todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
+      }));
     }
   } catch {
     // corrupted storage: fall back to seed data
@@ -358,11 +383,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addTodo = useCallback(
-    (projectId: string, text: string) => {
+    (projectId: string, kind: TodoKind, text: string, dueDate?: string) => {
       const todo: ProjectTodo = {
         id: crypto.randomUUID(),
+        kind,
         text,
         done: false,
+        ...(dueDate ? { dueDate } : {}),
         createdAt: new Date().toISOString(),
       };
       mutateTodos(projectId, (todos) => [...todos, todo]);
@@ -372,8 +399,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .insert({
             id: todo.id,
             project_id: projectId,
+            kind: todo.kind,
             text: todo.text,
             done: false,
+            due_date: dueDate ?? null,
             created_at: todo.createdAt,
           })
           .then(logDbError("todo insert"));
@@ -405,14 +434,31 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const updateTodo = useCallback(
-    (projectId: string, todoId: string, text: string) => {
+    (projectId: string, todoId: string, patch: TodoPatch) => {
       mutateTodos(projectId, (todos) =>
-        todos.map((t) => (t.id === todoId ? { ...t, text } : t)),
+        todos.map((t) => {
+          if (t.id !== todoId) return t;
+          const next = { ...t };
+          if (patch.text !== undefined) next.text = patch.text;
+          if (patch.answer !== undefined) {
+            if (patch.answer === null) delete next.answer;
+            else next.answer = patch.answer;
+          }
+          if (patch.dueDate !== undefined) {
+            if (patch.dueDate === null) delete next.dueDate;
+            else next.dueDate = patch.dueDate;
+          }
+          return next;
+        }),
       );
       if (supabase) {
+        const row: Record<string, string | null> = {};
+        if (patch.text !== undefined) row.text = patch.text;
+        if (patch.answer !== undefined) row.answer = patch.answer;
+        if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
         void supabase
           .from("project_todos")
-          .update({ text })
+          .update(row)
           .eq("id", todoId)
           .then(logDbError("todo update"));
       }

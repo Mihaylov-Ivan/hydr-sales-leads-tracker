@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Market, MARKETS, Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent";
@@ -17,6 +17,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [series, setSeries] = useState<Series>("Z Series");
+  const [market, setMarket] = useState<Market>("Clean H2");
   const [sizeKw, setSizeKw] = useState("");
   const [stage, setStage] = useState<Stage>("new-lead");
   const [description, setDescription] = useState("");
@@ -33,6 +34,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       country: country.trim(),
       city: city.trim(),
       series,
+      market,
       sizeKw: Number(sizeKw),
       stage,
       baseDescription: description.trim(),
@@ -113,6 +115,18 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setSizeKw(e.target.value)}
               placeholder="500"
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Market</label>
+            <select
+              className={inputCls}
+              value={market}
+              onChange={(e) => setMarket(e.target.value as Market)}
+            >
+              {MARKETS.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Stage</label>

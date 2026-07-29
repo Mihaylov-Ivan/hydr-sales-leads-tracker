@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
-import { Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 
@@ -27,6 +27,7 @@ const selectCls =
 export default function Dashboard() {
   const { projects, ready } = useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
+  const [marketFilter, setMarketFilter] = useState<Market | "all">("all");
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -42,14 +43,15 @@ export default function Dashboard() {
     return projects.filter(
       (p) =>
         (countryFilter === "all" || p.country === countryFilter) &&
+        (marketFilter === "all" || p.market === marketFilter) &&
         bucket.match(p.sizeKw) &&
         (!q ||
-          [p.name, p.client, p.city, p.country, p.baseDescription]
+          [p.name, p.client, p.city, p.country, p.market, p.baseDescription]
             .join(" ")
             .toLowerCase()
             .includes(q)),
     );
-  }, [projects, countryFilter, sizeFilter, search]);
+  }, [projects, countryFilter, marketFilter, sizeFilter, search]);
 
   const byStage = useMemo(() => {
     const map: Record<Stage, typeof filtered> = {
@@ -100,6 +102,18 @@ export default function Dashboard() {
           {countries.map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+        <select
+          className={selectCls}
+          value={marketFilter}
+          onChange={(e) => setMarketFilter(e.target.value as Market | "all")}
+        >
+          <option value="all">All markets</option>
+          {MARKETS.map((m) => (
+            <option key={m} value={m}>
+              {m}
             </option>
           ))}
         </select>

@@ -1,5 +1,13 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { Project, ProjectComment, ProjectTodo, Series, Stage } from "./types";
+import {
+  Market,
+  Project,
+  ProjectComment,
+  ProjectTodo,
+  Series,
+  Stage,
+  TodoKind,
+} from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -19,6 +27,7 @@ export interface ProjectRow {
   country: string;
   city: string;
   series: Series;
+  market: Market;
   size_kw: number;
   stage: Stage;
   base_description: string;
@@ -40,8 +49,11 @@ export interface CommentRow {
 export interface TodoRow {
   id: string;
   project_id: string;
+  kind: TodoKind;
   text: string;
+  answer: string | null;
   done: boolean;
+  due_date: string | null;
   created_at: string;
   done_at: string | null;
 }
@@ -49,8 +61,12 @@ export interface TodoRow {
 export function todoFromRow(row: TodoRow): ProjectTodo {
   return {
     id: row.id,
+    // Rows created before the kinds feature have no kind column value
+    kind: row.kind ?? "our-action",
     text: row.text,
+    ...(row.answer ? { answer: row.answer } : {}),
     done: row.done,
+    ...(row.due_date ? { dueDate: row.due_date } : {}),
     createdAt: row.created_at,
     ...(row.done_at ? { doneAt: row.done_at } : {}),
   };
@@ -78,6 +94,8 @@ export function projectFromRow(
     country: row.country,
     city: row.city,
     series: row.series,
+    // Rows created before the markets feature have no market column value
+    market: row.market ?? "Clean H2",
     sizeKw: row.size_kw,
     stage: row.stage,
     baseDescription: row.base_description,
@@ -96,6 +114,7 @@ export function projectToRow(p: Project): ProjectRow {
     country: p.country,
     city: p.city,
     series: p.series,
+    market: p.market,
     size_kw: p.sizeKw,
     stage: p.stage,
     base_description: p.baseDescription,
