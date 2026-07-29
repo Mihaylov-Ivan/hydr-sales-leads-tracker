@@ -1,12 +1,18 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   Market,
+  MilestoneKind,
   Project,
   ProjectComment,
+  ProjectContact,
+  ProjectFinancials,
+  ProjectMilestone,
+  ProjectPayment,
   ProjectTodo,
   Series,
   Stage,
   TodoKind,
+  emptyFinancials,
 } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -32,6 +38,10 @@ export interface ProjectRow {
   stage: Stage;
   base_description: string;
   ai_summary: string | null;
+  contract_value: number | null;
+  contract_signed_date: string | null;
+  expenses: number | null;
+  expected_profit: number | null;
   created_at: string;
 }
 
@@ -72,6 +82,72 @@ export function todoFromRow(row: TodoRow): ProjectTodo {
   };
 }
 
+/** Shape of a row in public.project_contacts */
+export interface ContactRow {
+  id: string;
+  project_id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  position: string | null;
+  created_at: string;
+}
+
+export function contactFromRow(row: ContactRow): ProjectContact {
+  return {
+    id: row.id,
+    ...(row.name ? { name: row.name } : {}),
+    ...(row.email ? { email: row.email } : {}),
+    ...(row.phone ? { phone: row.phone } : {}),
+    ...(row.position ? { position: row.position } : {}),
+    createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.project_payments */
+export interface PaymentRow {
+  id: string;
+  project_id: string;
+  amount: number;
+  percent: number | null;
+  due_date: string;
+  label: string | null;
+  milestone_id: string | null;
+  created_at: string;
+}
+
+export function paymentFromRow(row: PaymentRow): ProjectPayment {
+  return {
+    id: row.id,
+    amount: row.amount,
+    ...(row.percent != null ? { percent: row.percent } : {}),
+    dueDate: row.due_date,
+    ...(row.label ? { label: row.label } : {}),
+    ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
+    createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.project_milestones */
+export interface MilestoneRow {
+  id: string;
+  project_id: string;
+  kind: MilestoneKind;
+  date: string;
+  note: string | null;
+  created_at: string;
+}
+
+export function milestoneFromRow(row: MilestoneRow): ProjectMilestone {
+  return {
+    id: row.id,
+    kind: row.kind,
+    date: row.date,
+    ...(row.note ? { note: row.note } : {}),
+    createdAt: row.created_at,
+  };
+}
+
 export function commentFromRow(row: CommentRow): ProjectComment {
   return {
     id: row.id,
@@ -82,10 +158,31 @@ export function commentFromRow(row: CommentRow): ProjectComment {
   };
 }
 
+export function financialsFromParts(
+  row: ProjectRow,
+  payments: ProjectPayment[],
+  milestones: ProjectMilestone[],
+): ProjectFinancials {
+  return {
+    ...(row.contract_value != null ? { contractValue: row.contract_value } : {}),
+    ...(row.contract_signed_date
+      ? { contractSignedDate: row.contract_signed_date }
+      : {}),
+    ...(row.expenses != null ? { expenses: row.expenses } : {}),
+    ...(row.expected_profit != null
+      ? { expectedProfit: row.expected_profit }
+      : {}),
+    payments,
+    milestones,
+  };
+}
+
 export function projectFromRow(
   row: ProjectRow,
   comments: ProjectComment[],
   todos: ProjectTodo[],
+  contacts: ProjectContact[],
+  financials: ProjectFinancials = emptyFinancials(),
 ): Project {
   return {
     id: row.id,
@@ -102,6 +199,8 @@ export function projectFromRow(
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
     comments,
     todos,
+    contacts,
+    financials,
     createdAt: row.created_at,
   };
 }
@@ -119,6 +218,10 @@ export function projectToRow(p: Project): ProjectRow {
     stage: p.stage,
     base_description: p.baseDescription,
     ai_summary: p.aiSummary ?? null,
+    contract_value: p.financials.contractValue ?? null,
+    contract_signed_date: p.financials.contractSignedDate ?? null,
+    expenses: p.financials.expenses ?? null,
+    expected_profit: p.financials.expectedProfit ?? null,
     created_at: p.createdAt,
   };
 }

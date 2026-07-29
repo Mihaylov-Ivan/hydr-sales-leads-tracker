@@ -8,6 +8,8 @@ import { Market, MARKETS, Series, Stage, STAGE_LABELS, STAGES } from "@/lib/type
 import { generateSummary } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
+import ContactList from "@/components/ContactList";
+import FinancialsPanel from "@/components/FinancialsPanel";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -319,6 +321,15 @@ export default function ProjectPage() {
         projectId={project.id}
         kind="client-action"
         todos={project.todos.filter((t) => t.kind === "client-action")}
+      />
+
+      {/* Contacts */}
+      <ContactList projectId={project.id} contacts={project.contacts} />
+
+      {/* Financials & timeline */}
+      <FinancialsPanel
+        projectId={project.id}
+        financials={project.financials}
       />
 
       {/* New comment */}

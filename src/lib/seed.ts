@@ -1,4 +1,4 @@
-import { Project } from "./types";
+import { Project, emptyFinancials } from "./types";
 
 function daysAgo(n: number, hour = 10): string {
   const d = new Date();
@@ -22,6 +22,17 @@ export const SEED_PROJECTS: Project[] = [
       "Green hydrogen production for blending into the district heating gas supply, targeting a 10% H2 blend in the first phase.",
     createdAt: daysAgo(120),
     todos: [],
+    contacts: [
+      {
+        id: "ct1",
+        name: "Ivan Petrov",
+        position: "Head of Engineering",
+        email: "i.petrov@toplo-sofia.bg",
+        phone: "+359 88 123 4567",
+        createdAt: daysAgo(120),
+      },
+    ],
+    financials: emptyFinancials(),
     comments: [
       {
         id: "c1",
@@ -58,6 +69,8 @@ export const SEED_PROJECTS: Project[] = [
       "E Series system to feed hydrogen and oxygen into the glass furnace combustion process to cut natural gas consumption.",
     createdAt: daysAgo(14),
     todos: [],
+    contacts: [],
+    financials: emptyFinancials(),
     comments: [
       {
         id: "c1",
@@ -81,6 +94,8 @@ export const SEED_PROJECTS: Project[] = [
       "Hydrogen production and compression for a municipal bus refuelling station, initial fleet of 12 fuel-cell buses.",
     createdAt: daysAgo(21),
     todos: [],
+    contacts: [],
+    financials: emptyFinancials(),
     comments: [
       {
         id: "c1",
@@ -110,6 +125,8 @@ export const SEED_PROJECTS: Project[] = [
       "On-site hydrogen generation replacing trucked-in cylinders for the bright annealing line, with metal hydride buffer storage.",
     createdAt: daysAgo(300),
     todos: [],
+    contacts: [],
+    financials: emptyFinancials(),
     comments: [
       {
         id: "c1",
@@ -146,6 +163,8 @@ export const SEED_PROJECTS: Project[] = [
       "Small E Series unit to enrich the CHP combustion for a tomato greenhouse complex, improving burner efficiency and CO2 dosing.",
     createdAt: daysAgo(7),
     todos: [],
+    contacts: [],
+    financials: emptyFinancials(),
     comments: [],
   },
 ];

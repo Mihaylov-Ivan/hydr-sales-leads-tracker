@@ -44,6 +44,85 @@ export const TODO_KIND_LABELS: Record<TodoKind, string> = {
   "client-action": "Action Items (Client)",
 };
 
+export interface ProjectContact {
+  id: string;
+  /** All details are optional — capture whatever is known */
+  name?: string;
+  email?: string;
+  phone?: string;
+  position?: string;
+  createdAt: string; // ISO
+}
+
+/** Project timeline milestones (dates optional until known) */
+export type MilestoneKind =
+  | "contract-signed"
+  | "fat"
+  | "sat"
+  | "commissioned"
+  | "engineering-done"
+  | "manufacturing-done";
+
+export const MILESTONE_KINDS: MilestoneKind[] = [
+  "contract-signed",
+  "engineering-done",
+  "manufacturing-done",
+  "fat",
+  "sat",
+  "commissioned",
+];
+
+export const MILESTONE_LABELS: Record<MilestoneKind, string> = {
+  "contract-signed": "Contract signed",
+  fat: "FAT",
+  sat: "SAT",
+  commissioned: "Commissioned",
+  "engineering-done": "Engineering done",
+  "manufacturing-done": "Manufacturing done",
+};
+
+/** A scheduled (or received) payment on the project */
+export interface ProjectPayment {
+  id: string;
+  /** Absolute amount expected / received */
+  amount: number;
+  /** Share of contract value, e.g. 75 for 75% */
+  percent?: number;
+  /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
+  dueDate: string;
+  label?: string;
+  /** Optional link to a project deadline — both share the same date on the timeline */
+  milestoneId?: string;
+  createdAt: string; // ISO
+}
+
+export interface ProjectMilestone {
+  id: string;
+  kind: MilestoneKind;
+  /** Expected / actual date (yyyy-mm-dd) */
+  date: string;
+  note?: string;
+  createdAt: string; // ISO
+}
+
+/** All financial fields are optional */
+export interface ProjectFinancials {
+  /** Total contract / project value */
+  contractValue?: number;
+  /** Expected date the contract will be signed (yyyy-mm-dd) */
+  contractSignedDate?: string;
+  /** Construction + development costs */
+  expenses?: number;
+  /** Expected profit at the end */
+  expectedProfit?: number;
+  payments: ProjectPayment[];
+  milestones: ProjectMilestone[];
+}
+
+export function emptyFinancials(): ProjectFinancials {
+  return { payments: [], milestones: [] };
+}
+
 export interface ProjectTodo {
   id: string;
   kind: TodoKind;
@@ -75,5 +154,7 @@ export interface Project {
   aiSummary?: string;
   comments: ProjectComment[];
   todos: ProjectTodo[];
+  contacts: ProjectContact[];
+  financials: ProjectFinancials;
   createdAt: string; // ISO
 }

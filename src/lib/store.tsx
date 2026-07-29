@@ -8,16 +8,39 @@ import {
   useRef,
   useState,
 } from "react";
-import { Project, ProjectComment, ProjectTodo, Stage, TodoKind } from "./types";
+import {
+  MilestoneKind,
+  Project,
+  ProjectComment,
+  ProjectContact,
+  ProjectFinancials,
+  ProjectMilestone,
+  ProjectPayment,
+  ProjectTodo,
+  Stage,
+  TodoKind,
+  emptyFinancials,
+} from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
   supabase,
   commentFromRow,
+  contactFromRow,
+  financialsFromParts,
+  milestoneFromRow,
+  paymentFromRow,
   projectFromRow,
   projectToRow,
   todoFromRow,
 } from "./supabase";
-import type { CommentRow, ProjectRow, TodoRow } from "./supabase";
+import type {
+  CommentRow,
+  ContactRow,
+  MilestoneRow,
+  PaymentRow,
+  ProjectRow,
+  TodoRow,
+} from "./supabase";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 
@@ -55,6 +78,38 @@ export interface TodoPatch {
   dueDate?: string | null;
 }
 
+/** All fields optional; empty strings are treated as "not provided". */
+export interface ContactInput {
+  name?: string;
+  email?: string;
+  phone?: string;
+  position?: string;
+}
+
+/** `null` clears the field, `undefined` leaves it unchanged. */
+export interface FinancialsPatch {
+  contractValue?: number | null;
+  contractSignedDate?: string | null;
+  expenses?: number | null;
+  expectedProfit?: number | null;
+}
+
+export interface PaymentInput {
+  amount: number;
+  /** Pass `null` to clear an existing percent */
+  percent?: number | null;
+  dueDate: string;
+  label?: string;
+  /** Tie this payment to a project deadline (date follows the milestone) */
+  milestoneId?: string;
+}
+
+export interface MilestoneInput {
+  kind: MilestoneKind;
+  date: string;
+  note?: string;
+}
+
 interface ProjectsApi {
   projects: Project[];
   ready: boolean;
@@ -78,6 +133,20 @@ interface ProjectsApi {
   toggleTodo: (projectId: string, todoId: string) => void;
   updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
   deleteTodo: (projectId: string, todoId: string) => void;
+  addContact: (projectId: string, input: ContactInput) => void;
+  updateContact: (projectId: string, contactId: string, patch: ContactInput) => void;
+  deleteContact: (projectId: string, contactId: string) => void;
+  updateFinancials: (projectId: string, patch: FinancialsPatch) => void;
+  addPayment: (projectId: string, input: PaymentInput) => void;
+  updatePayment: (projectId: string, paymentId: string, patch: PaymentInput) => void;
+  deletePayment: (projectId: string, paymentId: string) => void;
+  addMilestone: (projectId: string, input: MilestoneInput) => void;
+  updateMilestone: (
+    projectId: string,
+    milestoneId: string,
+    patch: MilestoneInput,
+  ) => void;
+  deleteMilestone: (projectId: string, milestoneId: string) => void;
 }
 
 const ProjectsContext = createContext<ProjectsApi | null>(null);
@@ -87,11 +156,18 @@ function loadLocal(): Project[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Project[];
-      // Data saved before the todos/kinds/markets features may lack these fields
+      // Data saved before newer features may lack these fields
       return parsed.map((p) => ({
         ...p,
         market: p.market ?? "Clean H2",
         todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
+        contacts: p.contacts ?? [],
+        financials: {
+          ...emptyFinancials(),
+          ...p.financials,
+          payments: p.financials?.payments ?? [],
+          milestones: p.financials?.milestones ?? [],
+        },
       }));
     }
   } catch {
@@ -101,7 +177,14 @@ function loadLocal(): Project[] {
 }
 
 async function loadRemote(): Promise<Project[]> {
-  const [projectsRes, commentsRes, todosRes] = await Promise.all([
+  const [
+    projectsRes,
+    commentsRes,
+    todosRes,
+    contactsRes,
+    paymentsRes,
+    milestonesRes,
+  ] = await Promise.all([
     supabase!
       .from("projects")
       .select("*")
@@ -114,10 +197,35 @@ async function loadRemote(): Promise<Project[]> {
       .from("project_todos")
       .select("*")
       .order("created_at", { ascending: true }),
+    supabase!
+      .from("project_contacts")
+      .select("*")
+      .order("created_at", { ascending: true }),
+    supabase!
+      .from("project_payments")
+      .select("*")
+      .order("due_date", { ascending: true }),
+    supabase!
+      .from("project_milestones")
+      .select("*")
+      .order("date", { ascending: true }),
   ]);
   if (projectsRes.error) throw projectsRes.error;
   if (commentsRes.error) throw commentsRes.error;
   if (todosRes.error) throw todosRes.error;
+  // Non-fatal: tables/columns may not exist until the pending migration runs
+  if (contactsRes.error) {
+    console.error("Supabase contacts load failed:", contactsRes.error.message);
+  }
+  if (paymentsRes.error) {
+    console.error("Supabase payments load failed:", paymentsRes.error.message);
+  }
+  if (milestonesRes.error) {
+    console.error(
+      "Supabase milestones load failed:",
+      milestonesRes.error.message,
+    );
+  }
 
   const commentsByProject = new Map<string, ProjectComment[]>();
   for (const row of (commentsRes.data ?? []) as CommentRow[]) {
@@ -131,11 +239,35 @@ async function loadRemote(): Promise<Project[]> {
     list.push(todoFromRow(row));
     todosByProject.set(row.project_id, list);
   }
+  const contactsByProject = new Map<string, ProjectContact[]>();
+  for (const row of (contactsRes.data ?? []) as ContactRow[]) {
+    const list = contactsByProject.get(row.project_id) ?? [];
+    list.push(contactFromRow(row));
+    contactsByProject.set(row.project_id, list);
+  }
+  const paymentsByProject = new Map<string, ProjectPayment[]>();
+  for (const row of (paymentsRes.data ?? []) as PaymentRow[]) {
+    const list = paymentsByProject.get(row.project_id) ?? [];
+    list.push(paymentFromRow(row));
+    paymentsByProject.set(row.project_id, list);
+  }
+  const milestonesByProject = new Map<string, ProjectMilestone[]>();
+  for (const row of (milestonesRes.data ?? []) as MilestoneRow[]) {
+    const list = milestonesByProject.get(row.project_id) ?? [];
+    list.push(milestoneFromRow(row));
+    milestonesByProject.set(row.project_id, list);
+  }
   return ((projectsRes.data ?? []) as ProjectRow[]).map((row) =>
     projectFromRow(
       row,
       commentsByProject.get(row.id) ?? [],
       todosByProject.get(row.id) ?? [],
+      contactsByProject.get(row.id) ?? [],
+      financialsFromParts(
+        row,
+        paymentsByProject.get(row.id) ?? [],
+        milestonesByProject.get(row.id) ?? [],
+      ),
     ),
   );
 }
@@ -230,6 +362,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       id,
       comments: initialComment ? [initialComment] : [],
       todos: [],
+      contacts: [],
+      financials: emptyFinancials(),
       createdAt,
     };
     setProjects((prev) => [project, ...prev]);
@@ -480,6 +614,353 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateTodos],
   );
 
+  const mutateContacts = useCallback(
+    (projectId: string, fn: (contacts: ProjectContact[]) => ProjectContact[]) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId ? { ...p, contacts: fn(p.contacts) } : p,
+        ),
+      );
+    },
+    [],
+  );
+
+  const addContact = useCallback(
+    (projectId: string, input: ContactInput) => {
+      const name = input.name?.trim();
+      const email = input.email?.trim();
+      const phone = input.phone?.trim();
+      const position = input.position?.trim();
+      if (!name && !email && !phone && !position) return;
+      const contact: ProjectContact = {
+        id: crypto.randomUUID(),
+        ...(name ? { name } : {}),
+        ...(email ? { email } : {}),
+        ...(phone ? { phone } : {}),
+        ...(position ? { position } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mutateContacts(projectId, (contacts) => [...contacts, contact]);
+      if (supabase) {
+        void supabase
+          .from("project_contacts")
+          .insert({
+            id: contact.id,
+            project_id: projectId,
+            name: name || null,
+            email: email || null,
+            phone: phone || null,
+            position: position || null,
+            created_at: contact.createdAt,
+          })
+          .then(logDbError("contact insert"));
+      }
+    },
+    [mutateContacts],
+  );
+
+  const updateContact = useCallback(
+    (projectId: string, contactId: string, patch: ContactInput) => {
+      mutateContacts(projectId, (contacts) =>
+        contacts.map((c) => {
+          if (c.id !== contactId) return c;
+          const next = { ...c };
+          for (const key of ["name", "email", "phone", "position"] as const) {
+            const value = patch[key];
+            if (value === undefined) continue;
+            const trimmed = value.trim();
+            if (trimmed) next[key] = trimmed;
+            else delete next[key];
+          }
+          return next;
+        }),
+      );
+      if (supabase) {
+        const row: Record<string, string | null> = {};
+        for (const key of ["name", "email", "phone", "position"] as const) {
+          const value = patch[key];
+          if (value !== undefined) row[key] = value.trim() || null;
+        }
+        void supabase
+          .from("project_contacts")
+          .update(row)
+          .eq("id", contactId)
+          .then(logDbError("contact update"));
+      }
+    },
+    [mutateContacts],
+  );
+
+  const deleteContact = useCallback(
+    (projectId: string, contactId: string) => {
+      mutateContacts(projectId, (contacts) =>
+        contacts.filter((c) => c.id !== contactId),
+      );
+      if (supabase) {
+        void supabase
+          .from("project_contacts")
+          .delete()
+          .eq("id", contactId)
+          .then(logDbError("contact delete"));
+      }
+    },
+    [mutateContacts],
+  );
+
+  const mutateFinancials = useCallback(
+    (projectId: string, fn: (f: ProjectFinancials) => ProjectFinancials) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId ? { ...p, financials: fn(p.financials) } : p,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateFinancials = useCallback(
+    (projectId: string, patch: FinancialsPatch) => {
+      mutateFinancials(projectId, (f) => {
+        const next = { ...f };
+        if (patch.contractValue !== undefined) {
+          if (patch.contractValue === null) delete next.contractValue;
+          else next.contractValue = patch.contractValue;
+        }
+        if (patch.contractSignedDate !== undefined) {
+          if (patch.contractSignedDate === null) delete next.contractSignedDate;
+          else next.contractSignedDate = patch.contractSignedDate;
+        }
+        if (patch.expenses !== undefined) {
+          if (patch.expenses === null) delete next.expenses;
+          else next.expenses = patch.expenses;
+        }
+        if (patch.expectedProfit !== undefined) {
+          if (patch.expectedProfit === null) delete next.expectedProfit;
+          else next.expectedProfit = patch.expectedProfit;
+        }
+        return next;
+      });
+      if (supabase) {
+        const row: Record<string, number | string | null> = {};
+        if (patch.contractValue !== undefined)
+          row.contract_value = patch.contractValue;
+        if (patch.contractSignedDate !== undefined)
+          row.contract_signed_date = patch.contractSignedDate;
+        if (patch.expenses !== undefined) row.expenses = patch.expenses;
+        if (patch.expectedProfit !== undefined)
+          row.expected_profit = patch.expectedProfit;
+        void supabase
+          .from("projects")
+          .update(row)
+          .eq("id", projectId)
+          .then(logDbError("financials update"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const addPayment = useCallback(
+    (projectId: string, input: PaymentInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const linked = input.milestoneId
+        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
+        : undefined;
+      const dueDate = linked?.date ?? input.dueDate;
+      const payment: ProjectPayment = {
+        id: crypto.randomUUID(),
+        amount: input.amount,
+        ...(input.percent != null ? { percent: input.percent } : {}),
+        dueDate,
+        ...(input.label?.trim() ? { label: input.label.trim() } : {}),
+        ...(linked ? { milestoneId: linked.id } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: [...f.payments, payment],
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_payments")
+          .insert({
+            id: payment.id,
+            project_id: projectId,
+            amount: payment.amount,
+            percent: payment.percent ?? null,
+            due_date: payment.dueDate,
+            label: payment.label ?? null,
+            milestone_id: payment.milestoneId ?? null,
+            created_at: payment.createdAt,
+          })
+          .then(logDbError("payment insert"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const updatePayment = useCallback(
+    (projectId: string, paymentId: string, patch: PaymentInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const linked = patch.milestoneId
+        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
+        : undefined;
+      const dueDate = linked?.date ?? patch.dueDate;
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (p.id !== paymentId) return p;
+          const next: ProjectPayment = {
+            id: p.id,
+            amount: patch.amount,
+            dueDate,
+            createdAt: p.createdAt,
+          };
+          if (patch.percent != null) next.percent = patch.percent;
+          if (patch.label?.trim()) next.label = patch.label.trim();
+          if (linked) next.milestoneId = linked.id;
+          return next;
+        }),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_payments")
+          .update({
+            amount: patch.amount,
+            percent: patch.percent ?? null,
+            due_date: dueDate,
+            label: patch.label?.trim() || null,
+            milestone_id: linked?.id ?? null,
+          })
+          .eq("id", paymentId)
+          .then(logDbError("payment update"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const deletePayment = useCallback(
+    (projectId: string, paymentId: string) => {
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.filter((p) => p.id !== paymentId),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_payments")
+          .delete()
+          .eq("id", paymentId)
+          .then(logDbError("payment delete"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const addMilestone = useCallback(
+    (projectId: string, input: MilestoneInput) => {
+      const milestone: ProjectMilestone = {
+        id: crypto.randomUUID(),
+        kind: input.kind,
+        date: input.date,
+        ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        milestones: [...f.milestones, milestone],
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_milestones")
+          .insert({
+            id: milestone.id,
+            project_id: projectId,
+            kind: milestone.kind,
+            date: milestone.date,
+            note: milestone.note ?? null,
+            created_at: milestone.createdAt,
+          })
+          .then(logDbError("milestone insert"));
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const updateMilestone = useCallback(
+    (projectId: string, milestoneId: string, patch: MilestoneInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const linkedPaymentIds =
+        current?.financials.payments
+          .filter((p) => p.milestoneId === milestoneId)
+          .map((p) => p.id) ?? [];
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        milestones: f.milestones.map((m) =>
+          m.id === milestoneId
+            ? {
+                ...m,
+                kind: patch.kind,
+                date: patch.date,
+                ...(patch.note?.trim()
+                  ? { note: patch.note.trim() }
+                  : { note: undefined }),
+              }
+            : m,
+        ),
+        payments: f.payments.map((p) =>
+          p.milestoneId === milestoneId ? { ...p, dueDate: patch.date } : p,
+        ),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_milestones")
+          .update({
+            kind: patch.kind,
+            date: patch.date,
+            note: patch.note?.trim() || null,
+          })
+          .eq("id", milestoneId)
+          .then(logDbError("milestone update"));
+        for (const paymentId of linkedPaymentIds) {
+          void supabase
+            .from("project_payments")
+            .update({ due_date: patch.date })
+            .eq("id", paymentId)
+            .then(logDbError("linked payment date sync"));
+        }
+      }
+    },
+    [mutateFinancials],
+  );
+
+  const deleteMilestone = useCallback(
+    (projectId: string, milestoneId: string) => {
+      // Keep payments; just clear the link so they stay on the last known date.
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        milestones: f.milestones.filter((m) => m.id !== milestoneId),
+        payments: f.payments.map((p) => {
+          if (p.milestoneId !== milestoneId) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+      }));
+      if (supabase) {
+        void supabase
+          .from("project_milestones")
+          .delete()
+          .eq("id", milestoneId)
+          .then(logDbError("milestone delete"));
+        void supabase
+          .from("project_payments")
+          .update({ milestone_id: null })
+          .eq("milestone_id", milestoneId)
+          .then(logDbError("unlink payments from milestone"));
+      }
+    },
+    [mutateFinancials],
+  );
+
   const deleteProject = useCallback((projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (supabase) {
@@ -510,6 +991,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         toggleTodo,
         updateTodo,
         deleteTodo,
+        addContact,
+        updateContact,
+        deleteContact,
+        updateFinancials,
+        addPayment,
+        updatePayment,
+        deletePayment,
+        addMilestone,
+        updateMilestone,
+        deleteMilestone,
       }}
     >
       {children}
