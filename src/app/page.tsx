@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
@@ -25,10 +25,130 @@ const COLUMN_ACCENT: Record<Stage, string> = {
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
 
+function MarketMultiSelect({
+  selected,
+  onToggle,
+  onSelectAll,
+  onClear,
+}: {
+  selected: Set<Market>;
+  onToggle: (m: Market) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const count = selected.size;
+  const label =
+    count === 0
+      ? "No markets"
+      : count === MARKETS.length
+        ? "All markets"
+        : count === 1
+          ? ([...selected][0] ?? "1 market")
+          : `${count} markets`;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`${selectCls} inline-flex min-w-[10rem] max-w-[16rem] items-center justify-between gap-2 text-left`}
+      >
+        <span className="truncate">{label}</span>
+        <span className="shrink-0 text-muted" aria-hidden>
+          {open ? "▴" : "▾"}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          className="absolute left-0 z-30 mt-1 w-64 max-w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Markets
+            </span>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                onClick={onSelectAll}
+                className="font-semibold text-teal-accent hover:underline"
+              >
+                All
+              </button>
+              <span className="text-line">|</span>
+              <button
+                type="button"
+                onClick={onClear}
+                className="font-semibold text-muted hover:text-ink hover:underline"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <ul className="py-1">
+            {MARKETS.map((m) => {
+              const on = selected.has(m);
+              return (
+                <li key={m}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={on}
+                    onClick={() => onToggle(m)}
+                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
+                  >
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${on
+                          ? "border-teal-accent bg-teal-accent text-white"
+                          : "border-line bg-panel text-transparent"
+                        }`}
+                      aria-hidden
+                    >
+                      ✓
+                    </span>
+                    <span className="min-w-0 flex-1 font-medium text-ink">
+                      {m}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { projects, ready } = useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
-  const [marketFilter, setMarketFilter] = useState<Market | "all">("all");
+  const [marketFilter, setMarketFilter] = useState<Set<Market>>(
+    () => new Set(MARKETS),
+  );
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
@@ -44,7 +164,7 @@ export default function Dashboard() {
     return projects.filter(
       (p) =>
         (countryFilter === "all" || p.country === countryFilter) &&
-        (marketFilter === "all" || p.market === marketFilter) &&
+        marketFilter.has(p.market) &&
         bucket.match(p.sizeKw) &&
         (!q ||
           [p.name, p.client, p.city, p.country, p.market, p.baseDescription]
@@ -53,6 +173,15 @@ export default function Dashboard() {
             .includes(q)),
     );
   }, [projects, countryFilter, marketFilter, sizeFilter, search]);
+
+  function toggleMarket(m: Market) {
+    setMarketFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) next.delete(m);
+      else next.add(m);
+      return next;
+    });
+  }
 
   const byStage = useMemo(() => {
     const map: Record<Stage, typeof filtered> = {
@@ -73,10 +202,6 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-deep">Projects</h1>
-          <p className="mt-1 text-sm text-muted">
-            {projects.length} projects across {countries.length}{" "}
-            {countries.length === 1 ? "country" : "countries"}
-          </p>
         </div>
         <button
           onClick={() => setShowNew(true)}
@@ -106,18 +231,12 @@ export default function Dashboard() {
             </option>
           ))}
         </select>
-        <select
-          className={selectCls}
-          value={marketFilter}
-          onChange={(e) => setMarketFilter(e.target.value as Market | "all")}
-        >
-          <option value="all">All markets</option>
-          {MARKETS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
+        <MarketMultiSelect
+          selected={marketFilter}
+          onToggle={toggleMarket}
+          onSelectAll={() => setMarketFilter(new Set(MARKETS))}
+          onClear={() => setMarketFilter(new Set())}
+        />
         <select
           className={selectCls}
           value={sizeFilter}
