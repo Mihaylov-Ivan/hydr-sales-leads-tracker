@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
-import ProjectCard from "@/components/ProjectCard";
+import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import OverviewTimeline from "@/components/OverviewTimeline";
 
@@ -144,7 +144,7 @@ function MarketMultiSelect({
 }
 
 export default function Dashboard() {
-  const { projects, ready } = useProjects();
+  const { projects, ready, updateProject } = useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState<Set<Market>>(
     () => new Set(MARKETS),
@@ -152,6 +152,7 @@ export default function Dashboard() {
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
 
   const countries = useMemo(
     () => [...new Set(projects.map((p) => p.country))].sort(),
@@ -192,6 +193,12 @@ export default function Dashboard() {
     for (const p of filtered) map[p.stage].push(p);
     return map;
   }, [filtered]);
+
+  function moveProjectToStage(projectId: string, stage: Stage) {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project || project.stage === stage) return;
+    updateProject(projectId, { stage });
+  }
 
   if (!ready) {
     return <p className="py-20 text-center text-muted">Loading projects…</p>;
@@ -253,32 +260,69 @@ export default function Dashboard() {
       {/* Cash-in timeline */}
       <OverviewTimeline projects={filtered} />
 
-      {/* Stage board */}
+      {/* Stage board — drag cards between columns to change stage */}
       <div className="grid gap-4 md:grid-cols-3">
-        {STAGES.map((stage) => (
-          <section
-            key={stage}
-            className={`flex flex-col rounded-xl border border-line border-t-4 bg-surface-tint/60 ${COLUMN_ACCENT[stage]}`}
-          >
-            <header className="flex items-center justify-between px-4 py-3">
-              <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-                {STAGE_LABELS[stage]}
-              </h2>
-              <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-semibold text-muted shadow-sm">
-                {byStage[stage].length}
-              </span>
-            </header>
-            <div className="flex flex-1 flex-col gap-3 px-3 pb-3">
-              {byStage[stage].length === 0 ? (
-                <p className="rounded-lg border border-dashed border-line py-8 text-center text-xs text-muted">
-                  No projects here.
-                </p>
-              ) : (
-                byStage[stage].map((p) => <ProjectCard key={p.id} project={p} />)
-              )}
-            </div>
-          </section>
-        ))}
+        {STAGES.map((stage) => {
+          const isOver = dragOverStage === stage;
+          return (
+            <section
+              key={stage}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (dragOverStage !== stage) setDragOverStage(stage);
+              }}
+              onDragLeave={(e) => {
+                // Ignore leave events that stay within this column
+                if (
+                  e.currentTarget.contains(e.relatedTarget as Node | null)
+                ) {
+                  return;
+                }
+                setDragOverStage((cur) => (cur === stage ? null : cur));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverStage(null);
+                const id =
+                  e.dataTransfer.getData(PROJECT_DRAG_TYPE) ||
+                  e.dataTransfer.getData("text/plain");
+                if (id) moveProjectToStage(id, stage);
+              }}
+              className={`flex min-h-48 flex-col rounded-xl border border-t-4 bg-surface-tint/60 transition ${COLUMN_ACCENT[stage]} ${
+                isOver
+                  ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
+                  : "border-line"
+              }`}
+            >
+              <header className="flex items-center justify-between px-4 py-3">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+                  {STAGE_LABELS[stage]}
+                </h2>
+                <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-semibold text-muted shadow-sm">
+                  {byStage[stage].length}
+                </span>
+              </header>
+              <div className="flex flex-1 flex-col gap-3 px-3 pb-3">
+                {byStage[stage].length === 0 ? (
+                  <p
+                    className={`rounded-lg border border-dashed py-8 text-center text-xs ${
+                      isOver
+                        ? "border-teal-accent text-teal-accent"
+                        : "border-line text-muted"
+                    }`}
+                  >
+                    {isOver ? "Drop to move here" : "No projects here."}
+                  </p>
+                ) : (
+                  byStage[stage].map((p) => (
+                    <ProjectCard key={p.id} project={p} />
+                  ))
+                )}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}

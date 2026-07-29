@@ -1,6 +1,7 @@
 -- ============================================================
--- Hydrogenera Sales Leads Tracker — Supabase schema
--- Run this in the Supabase Dashboard -> SQL Editor -> New query.
+-- Hydrogenera Sales Leads Tracker — Supabase schema (full)
+-- Run this in the Supabase Dashboard -> SQL Editor for a fresh DB.
+-- For existing databases, run migration-003-app-features.sql instead.
 -- ============================================================
 
 -- ---------- Tables ----------
@@ -13,12 +14,25 @@ create table if not exists public.projects (
   city text not null default '',
   series text not null default 'Z Series'
     check (series in ('Z Series', 'E Series', 'Custom')),
+  market text not null default 'Clean H2'
+    check (market in (
+      'Cement',
+      'Power Plants',
+      'Funding',
+      'Clean H2',
+      'Burner Optimisation'
+    )),
   size_kw integer not null
     check (size_kw > 0),
   stage text not null default 'new-lead'
     check (stage in ('new-lead', 'under-development', 'commissioned')),
   base_description text not null default '',
   ai_summary text,
+  -- Financial scalars (optional)
+  contract_value numeric,
+  contract_signed_date date,
+  expenses numeric,
+  expected_profit numeric,
   created_at timestamptz not null default now()
 );
 
@@ -36,11 +50,64 @@ create table if not exists public.project_comments (
 create table if not exists public.project_todos (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
+  kind text not null default 'our-action'
+    check (kind in ('question', 'our-action', 'client-action')),
   text text not null,
+  answer text,
   done boolean not null default false,
+  due_date date,
   created_at timestamptz not null default now(),
   -- Set when the item is checked off, cleared when unchecked
   done_at timestamptz
+);
+
+create table if not exists public.project_contacts (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  name text,
+  email text,
+  phone text,
+  position text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.project_milestones (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  kind text not null
+    check (kind in (
+      'contract-signed',
+      'engineering-done',
+      'manufacturing-done',
+      'fat',
+      'sat',
+      'commissioned'
+    )),
+  date date not null,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.project_payments (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  amount numeric not null,
+  percent numeric,
+  due_date date not null,
+  label text,
+  milestone_id uuid references public.project_milestones (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.project_expenses (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  amount numeric not null,
+  percent numeric,
+  due_date date not null,
+  label text,
+  milestone_id uuid references public.project_milestones (id) on delete set null,
+  created_at timestamptz not null default now()
 );
 
 -- ---------- Indexes ----------
@@ -54,6 +121,24 @@ create index if not exists project_comments_project_created_idx
 create index if not exists project_todos_project_created_idx
   on public.project_todos (project_id, created_at);
 
+create index if not exists project_contacts_project_created_idx
+  on public.project_contacts (project_id, created_at);
+
+create index if not exists project_milestones_project_date_idx
+  on public.project_milestones (project_id, date);
+
+create index if not exists project_payments_project_due_idx
+  on public.project_payments (project_id, due_date);
+
+create index if not exists project_payments_milestone_idx
+  on public.project_payments (milestone_id);
+
+create index if not exists project_expenses_project_due_idx
+  on public.project_expenses (project_id, due_date);
+
+create index if not exists project_expenses_milestone_idx
+  on public.project_expenses (milestone_id);
+
 -- ---------- Row Level Security ----------
 -- The app has no user accounts yet, so the browser (anon key) gets full
 -- access. If you add Supabase Auth later, tighten these policies.
@@ -61,6 +146,10 @@ create index if not exists project_todos_project_created_idx
 alter table public.projects enable row level security;
 alter table public.project_comments enable row level security;
 alter table public.project_todos enable row level security;
+alter table public.project_contacts enable row level security;
+alter table public.project_milestones enable row level security;
+alter table public.project_payments enable row level security;
+alter table public.project_expenses enable row level security;
 
 drop policy if exists "anon full access" on public.projects;
 create policy "anon full access"
@@ -86,36 +175,68 @@ create policy "anon full access"
   using (true)
   with check (true);
 
+drop policy if exists "anon full access" on public.project_contacts;
+create policy "anon full access"
+  on public.project_contacts
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.project_milestones;
+create policy "anon full access"
+  on public.project_milestones
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.project_payments;
+create policy "anon full access"
+  on public.project_payments
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.project_expenses;
+create policy "anon full access"
+  on public.project_expenses
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
 -- ---------- Seed data (optional) ----------
 -- The same demo projects the app used to ship with. Delete this section
 -- if you want to start with an empty tracker.
 
 insert into public.projects
-  (id, name, client, country, city, series, size_kw, stage, base_description, created_at)
+  (id, name, client, country, city, series, market, size_kw, stage, base_description, created_at)
 values
   ('11111111-1111-4111-8111-111111111111',
    'Sofia District Heating H2 Blend', 'Toplofikacia Sofia', 'Bulgaria', 'Sofia',
-   'Z Series', 1000, 'under-development',
+   'Z Series', 'Clean H2', 1000, 'under-development',
    'Green hydrogen production for blending into the district heating gas supply, targeting a 10% H2 blend in the first phase.',
    now() - interval '120 days'),
   ('22222222-2222-4222-8222-222222222222',
    'Warsaw Glassworks Oxy-Fuel Boost', 'Vitro-Pol S.A.', 'Poland', 'Warsaw',
-   'E Series', 250, 'new-lead',
+   'E Series', 'Burner Optimisation', 250, 'new-lead',
    'E Series system to feed hydrogen and oxygen into the glass furnace combustion process to cut natural gas consumption.',
    now() - interval '14 days'),
   ('33333333-3333-4333-8333-333333333333',
    'Munich Bus Fleet Refuelling', 'Stadtwerke München', 'Germany', 'Munich',
-   'Z Series', 2000, 'new-lead',
+   'Z Series', 'Clean H2', 2000, 'new-lead',
    'Hydrogen production and compression for a municipal bus refuelling station, initial fleet of 12 fuel-cell buses.',
    now() - interval '21 days'),
   ('44444444-4444-4444-8444-444444444444',
    'Istanbul Steel Annealing Line', 'Marmara Çelik', 'Turkey', 'Istanbul',
-   'Custom', 500, 'commissioned',
+   'Custom', 'Clean H2', 500, 'commissioned',
    'On-site hydrogen generation replacing trucked-in cylinders for the bright annealing line, with metal hydride buffer storage.',
    now() - interval '300 days'),
   ('55555555-5555-4555-8555-555555555555',
    'Plovdiv Greenhouse CHP', 'AgroTherm EOOD', 'Bulgaria', 'Plovdiv',
-   'E Series', 100, 'new-lead',
+   'E Series', 'Burner Optimisation', 100, 'new-lead',
    'Small E Series unit to enrich the CHP combustion for a tomato greenhouse complex, improving burner efficiency and CO2 dosing.',
    now() - interval '7 days')
 on conflict (id) do nothing;

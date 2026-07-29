@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useRef } from "react";
 import { Project } from "@/lib/types";
 import { generateSummary } from "@/lib/summary";
+
+export const PROJECT_DRAG_TYPE = "application/x-hydr-project-id";
 
 export default function ProjectCard({ project }: { project: Project }) {
   const raw = project.aiSummary ?? generateSummary(project);
@@ -12,10 +17,37 @@ export default function ProjectCard({ project }: { project: Project }) {
     .filter(Boolean)
     .join(" ");
 
+  const suppressClick = useRef(false);
+
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group flex flex-col gap-2.5 rounded-xl border border-line bg-panel p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-accent/50 hover:shadow-md"
+      draggable
+      onDragStart={(e) => {
+        suppressClick.current = true;
+        e.dataTransfer.setData(PROJECT_DRAG_TYPE, project.id);
+        e.dataTransfer.setData("text/plain", project.id);
+        e.dataTransfer.effectAllowed = "move";
+        if (e.currentTarget instanceof HTMLElement) {
+          e.currentTarget.style.opacity = "0.45";
+        }
+      }}
+      onDragEnd={(e) => {
+        if (e.currentTarget instanceof HTMLElement) {
+          e.currentTarget.style.opacity = "";
+        }
+        // Click fires after dragEnd in some browsers — clear on next tick
+        window.setTimeout(() => {
+          suppressClick.current = false;
+        }, 0);
+      }}
+      onClick={(e) => {
+        if (suppressClick.current) {
+          e.preventDefault();
+          suppressClick.current = false;
+        }
+      }}
+      className="group flex cursor-grab flex-col gap-2.5 rounded-xl border border-line bg-panel p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-teal-accent/50 hover:shadow-md active:cursor-grabbing"
     >
       <div>
         <h3 className="font-semibold text-deep group-hover:text-teal-accent">
