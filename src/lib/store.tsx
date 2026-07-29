@@ -189,19 +189,45 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const addProject = useCallback((input: NewProjectInput): string => {
     const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const description = input.baseDescription.trim();
+    // The summary entered at creation doubles as the first update in the timeline.
+    const initialComment: ProjectComment | null = description
+      ? {
+          id: crypto.randomUUID(),
+          text: description,
+          author: "You",
+          createdAt,
+        }
+      : null;
     const project: Project = {
       ...input,
       id,
-      comments: [],
+      comments: initialComment ? [initialComment] : [],
       todos: [],
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
     setProjects((prev) => [project, ...prev]);
     if (supabase) {
+      // Insert the comment only after the project row exists (FK constraint).
       void supabase
         .from("projects")
         .insert(projectToRow(project))
-        .then(logDbError("project insert"));
+        .then((res) => {
+          logDbError("project insert")(res);
+          if (res.error || !initialComment) return;
+          void supabase!
+            .from("project_comments")
+            .insert({
+              id: initialComment.id,
+              project_id: id,
+              text: initialComment.text,
+              author: initialComment.author,
+              stage_change: null,
+              created_at: initialComment.createdAt,
+            })
+            .then(logDbError("initial comment insert"));
+        });
     }
     return id;
   }, []);

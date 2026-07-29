@@ -139,7 +139,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
               className={`${inputCls} min-h-24 resize-y`}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this project about? This becomes the opening of the living summary."
+              placeholder="What is this project about? This is posted as the project's first update."
             />
           </div>
         </div>
