@@ -5,6 +5,7 @@ import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import ProjectCard from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
+import OverviewTimeline from "@/components/OverviewTimeline";
 
 type SizeBucket = "any" | "small" | "medium" | "large";
 
@@ -129,6 +130,9 @@ export default function Dashboard() {
           ))}
         </select>
       </div>
+
+      {/* Cash-in timeline */}
+      <OverviewTimeline projects={filtered} />
 
       {/* Stage board */}
       <div className="grid gap-4 md:grid-cols-3">
