@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ProjectsProvider } from "@/lib/store";
 import Header from "@/components/Header";
+import OutstandingSidebar from "@/components/OutstandingSidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,9 +33,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ProjectsProvider>
           <Header />
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-8 sm:px-6">
-            {children}
-          </main>
+          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-16 px-4 pb-16 pt-8 lg:flex-row sm:px-6">
+            <main className="min-w-0 flex-1">{children}</main>
+            <OutstandingSidebar />
+          </div>
         </ProjectsProvider>
       </body>
     </html>
