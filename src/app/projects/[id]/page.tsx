@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
@@ -95,6 +95,49 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Scrollable region that hands the wheel back to the page at its edges. */
+function ChainScroll({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop >= maxScroll - 1;
+      const scrollingUp = e.deltaY < 0;
+      const scrollingDown = e.deltaY > 0;
+
+      // No overflow, or already at the edge in that direction → scroll the page
+      if (
+        maxScroll <= 1 ||
+        (scrollingUp && atTop) ||
+        (scrollingDown && atBottom)
+      ) {
+        e.preventDefault();
+        window.scrollBy({ top: e.deltaY });
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
 }
 
 export default function ProjectPage() {
@@ -323,15 +366,6 @@ export default function ProjectPage() {
         todos={project.todos.filter((t) => t.kind === "client-action")}
       />
 
-      {/* Contacts */}
-      <ContactList projectId={project.id} contacts={project.contacts} />
-
-      {/* Financials & timeline */}
-      <FinancialsPanel
-        projectId={project.id}
-        financials={project.financials}
-      />
-
       {/* New comment */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-deep">
@@ -381,106 +415,117 @@ export default function ProjectPage() {
             No updates yet. Post the first one above.
           </p>
         ) : (
-          <ol className="relative flex flex-col gap-4 border-l-2 border-line pl-5">
-            {timeline.map((c) => (
-              <li key={c.id} className="relative">
-                <span className="absolute -left-[27px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-teal-accent" />
-                <div className="group rounded-xl border border-line bg-panel p-4 shadow-sm">
-                  <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <span className="font-semibold text-deep">{c.author}</span>
-                    <span>{formatDateTime(c.createdAt)}</span>
-                    {c.stageChange && <StageBadge stage={c.stageChange} />}
-                    <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
-                      {deletingCommentId === c.id ? (
-                        <>
-                          <span className="text-red-500">Delete?</span>
-                          <button
-                            onClick={() => {
-                              deleteComment(project.id, c.id);
-                              setDeletingCommentId(null);
-                            }}
-                            className="font-semibold text-red-500 hover:underline"
-                          >
-                            Yes
-                          </button>
-                          <button
-                            onClick={() => setDeletingCommentId(null)}
-                            className="hover:text-ink"
-                          >
-                            No
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => {
-                              setEditingCommentId(c.id);
-                              setCommentDraft(c.text);
-                              setDeletingCommentId(null);
-                            }}
-                            className="font-semibold text-teal-accent hover:underline"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => {
-                              setDeletingCommentId(c.id);
-                              setEditingCommentId(null);
-                            }}
-                            className="hover:text-red-500"
-                          >
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  {editingCommentId === c.id ? (
-                    <div className="flex flex-col gap-2">
-                      <textarea
-                        autoFocus
-                        value={commentDraft}
-                        onChange={(e) => setCommentDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") setEditingCommentId(null);
-                        }}
-                        className="min-h-20 w-full resize-y rounded-lg border border-teal-accent bg-surface px-3 py-2 text-sm text-ink outline-none"
-                      />
-                      <div className="flex justify-end gap-2 text-xs">
-                        <button
-                          onClick={() => setEditingCommentId(null)}
-                          className="rounded px-3 py-1.5 text-muted hover:text-ink"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => saveComment(c.id)}
-                          disabled={!commentDraft.trim()}
-                          className="rounded-lg bg-olive px-3 py-1.5 font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-40"
-                        >
-                          Save
-                        </button>
-                      </div>
+          <ChainScroll className="max-h-[28rem] overflow-y-auto pr-1">
+            <ol className="relative flex flex-col gap-4 border-l-2 border-line pl-5">
+              {timeline.map((c) => (
+                <li key={c.id} className="relative">
+                  <span className="absolute -left-[27px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-teal-accent" />
+                  <div className="group rounded-xl border border-line bg-panel p-4 shadow-sm">
+                    <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <span className="font-semibold text-deep">{c.author}</span>
+                      <span>{formatDateTime(c.createdAt)}</span>
+                      {c.stageChange && <StageBadge stage={c.stageChange} />}
+                      <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
+                        {deletingCommentId === c.id ? (
+                          <>
+                            <span className="text-red-500">Delete?</span>
+                            <button
+                              onClick={() => {
+                                deleteComment(project.id, c.id);
+                                setDeletingCommentId(null);
+                              }}
+                              className="font-semibold text-red-500 hover:underline"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={() => setDeletingCommentId(null)}
+                              className="hover:text-ink"
+                            >
+                              No
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                setEditingCommentId(c.id);
+                                setCommentDraft(c.text);
+                                setDeletingCommentId(null);
+                              }}
+                              className="font-semibold text-teal-accent hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeletingCommentId(c.id);
+                                setEditingCommentId(null);
+                              }}
+                              className="hover:text-red-500"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </span>
                     </div>
-                  ) : (
-                    <p
-                      onClick={() => {
-                        setEditingCommentId(c.id);
-                        setCommentDraft(c.text);
-                        setDeletingCommentId(null);
-                      }}
-                      title="Click to edit"
-                      className="-mx-1 cursor-text whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
-                    >
-                      {c.text}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
+                    {editingCommentId === c.id ? (
+                      <div className="flex flex-col gap-2">
+                        <textarea
+                          autoFocus
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditingCommentId(null);
+                          }}
+                          className="min-h-20 w-full resize-y rounded-lg border border-teal-accent bg-surface px-3 py-2 text-sm text-ink outline-none"
+                        />
+                        <div className="flex justify-end gap-2 text-xs">
+                          <button
+                            onClick={() => setEditingCommentId(null)}
+                            className="rounded px-3 py-1.5 text-muted hover:text-ink"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => saveComment(c.id)}
+                            disabled={!commentDraft.trim()}
+                            className="rounded-lg bg-olive px-3 py-1.5 font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-40"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p
+                        onClick={() => {
+                          setEditingCommentId(c.id);
+                          setCommentDraft(c.text);
+                          setDeletingCommentId(null);
+                        }}
+                        title="Click to edit"
+                        className="-mx-1 cursor-text whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
+                      >
+                        {c.text}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </ChainScroll>
         )}
       </section>
+
+      {/* Contacts */}
+      <ContactList projectId={project.id} contacts={project.contacts} />
+
+      {/* Financials & timeline */}
+      <FinancialsPanel
+        projectId={project.id}
+        financials={project.financials}
+      />
 
       {/* Danger zone */}
       <div className="flex justify-end border-t border-line pt-4">
