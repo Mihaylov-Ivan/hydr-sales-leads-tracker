@@ -6,6 +6,10 @@ import { useProjects } from "@/lib/store";
 
 export default function Header() {
   const { teamMembers, currentUserId, setCurrentUserId, ready } = useProjects();
+  const selectedUserId =
+    currentUserId && teamMembers.some((m) => m.id === currentUserId)
+      ? currentUserId
+      : (teamMembers[0]?.id ?? "");
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
@@ -29,23 +33,22 @@ export default function Header() {
             Working as
           </span>
           <select
-            value={currentUserId ?? ""}
+            value={selectedUserId}
             disabled={!ready || teamMembers.length === 0}
-            onChange={(e) => setCurrentUserId(e.target.value || null)}
+            onChange={(e) => setCurrentUserId(e.target.value)}
             aria-label="Select current user"
             className="max-w-[12rem] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-medium text-deep shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[16rem]"
           >
             {teamMembers.length === 0 ? (
-              <option value="">No team members</option>
+              <option value="" disabled>
+                No team members
+              </option>
             ) : (
-              <>
-                <option value="">Select user…</option>
-                {teamMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </>
+              teamMembers.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))
             )}
           </select>
         </label>
