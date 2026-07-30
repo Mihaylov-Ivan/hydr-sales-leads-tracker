@@ -37,12 +37,14 @@ function EditableText({
   onSave,
   type = "text",
   suffix,
+  placeholder,
   className = "",
 }: {
   value: string;
   onSave: (next: string) => void;
   type?: "text" | "number";
   suffix?: string;
+  placeholder?: string;
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -53,19 +55,27 @@ function EditableText({
   function commit() {
     setEditing(false);
     const next = draft.trim();
-    if (next && next !== value) onSave(next);
-    else setDraft(value);
+    if (next !== value.trim()) {
+      // Allow clearing optional fields when a placeholder is provided
+      if (next || placeholder) onSave(next);
+      else setDraft(value);
+    } else {
+      setDraft(value);
+    }
   }
 
   if (!editing) {
+    const empty = !value.trim();
     return (
       <button
         onClick={() => setEditing(true)}
         title="Click to edit"
-        className={`-mx-1 cursor-text rounded px-1 text-left transition hover:bg-teal-soft ${className}`}
+        className={`-mx-1 min-w-[3rem] cursor-text rounded px-1 text-left transition hover:bg-teal-soft ${
+          empty ? "text-muted/70 italic" : ""
+        } ${className}`}
       >
-        {value}
-        {suffix}
+        {empty ? (placeholder ?? "Add…") : value}
+        {!empty && suffix}
       </button>
     );
   }
@@ -74,6 +84,7 @@ function EditableText({
       autoFocus
       type={type}
       value={draft}
+      placeholder={placeholder}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -83,7 +94,7 @@ function EditableText({
           setEditing(false);
         }
       }}
-      className={`-mx-1 w-full rounded border border-teal-accent bg-surface px-1 outline-none ${className}`}
+      className={`-mx-1 w-full min-w-[5rem] rounded border border-teal-accent bg-surface px-1 outline-none ${className}`}
     />
   );
 }
@@ -310,11 +321,13 @@ export default function ProjectPage() {
           <div className="mt-1 flex items-center gap-1 text-sm font-medium text-deep">
             <EditableText
               value={project.city}
+              placeholder="City"
               onSave={(v) => updateProject(project.id, { city: v })}
             />
             <span className="text-muted">,</span>
             <EditableText
               value={project.country}
+              placeholder="Country"
               onSave={(v) => updateProject(project.id, { country: v })}
             />
           </div>
