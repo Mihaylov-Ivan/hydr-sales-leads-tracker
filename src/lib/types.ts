@@ -100,6 +100,46 @@ export interface ProjectContact {
   createdAt: string; // ISO
 }
 
+export type ProjectFileKind = "offer" | "financial-model" | "other";
+
+export const PROJECT_FILE_KINDS: ProjectFileKind[] = [
+  "offer",
+  "financial-model",
+  "other",
+];
+
+export const PROJECT_FILE_KIND_LABELS: Record<ProjectFileKind, string> = {
+  offer: "Offer",
+  "financial-model": "Financial model",
+  other: "Other",
+};
+
+/** Attachment on a project (offer, model, PDF, etc.) */
+export interface ProjectFile {
+  id: string;
+  /** Original filename as uploaded */
+  name: string;
+  /** MIME type from the browser, when known */
+  mimeType: string;
+  /** File size in bytes */
+  sizeBytes: number;
+  kind: ProjectFileKind;
+  /** Optional short note shown in the list */
+  note?: string;
+  /** Storage object path (Supabase) or local blob key */
+  storagePath: string;
+  /** Team member who uploaded, when known */
+  uploadedByUserId?: string;
+  /** Display name snapshot of uploader */
+  uploadedByName?: string;
+  createdAt: string; // ISO
+  /**
+   * Local-only data URL / base64 payload used when Supabase Storage is unavailable.
+   * Never sent to the database.
+   */
+  localDataUrl?: string;
+}
+
 /** Project timeline milestones (dates optional until known) */
 export type MilestoneKind =
   | "contract-signed"
@@ -232,6 +272,7 @@ export interface Project {
   comments: ProjectComment[];
   todos: ProjectTodo[];
   contacts: ProjectContact[];
+  files: ProjectFile[];
   financials: ProjectFinancials;
   createdAt: string; // ISO
 }

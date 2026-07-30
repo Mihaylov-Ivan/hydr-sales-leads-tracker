@@ -159,6 +159,24 @@ create index if not exists project_expenses_project_due_idx
 create index if not exists project_expenses_milestone_idx
   on public.project_expenses (milestone_id);
 
+create table if not exists public.project_files (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects (id) on delete cascade,
+  name text not null,
+  mime_type text not null default 'application/octet-stream',
+  size_bytes bigint not null check (size_bytes >= 0),
+  kind text not null default 'other'
+    check (kind in ('offer', 'financial-model', 'other')),
+  note text,
+  storage_path text not null,
+  uploaded_by_user_id text,
+  uploaded_by_name text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_files_project_created_idx
+  on public.project_files (project_id, created_at desc);
+
 -- ---------- Row Level Security ----------
 -- The app has no user accounts yet, so the browser (anon key) gets full
 -- access. If you add Supabase Auth later, tighten these policies.
@@ -170,6 +188,7 @@ alter table public.project_contacts enable row level security;
 alter table public.project_milestones enable row level security;
 alter table public.project_payments enable row level security;
 alter table public.project_expenses enable row level security;
+alter table public.project_files enable row level security;
 
 drop policy if exists "anon full access" on public.projects;
 create policy "anon full access"
@@ -222,6 +241,14 @@ create policy "anon full access"
 drop policy if exists "anon full access" on public.project_expenses;
 create policy "anon full access"
   on public.project_expenses
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.project_files;
+create policy "anon full access"
+  on public.project_files
   for all
   to anon, authenticated
   using (true)

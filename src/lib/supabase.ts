@@ -6,6 +6,8 @@ import {
   ProjectComment,
   ProjectContact,
   ProjectExpenseItem,
+  ProjectFile,
+  ProjectFileKind,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
@@ -110,6 +112,38 @@ export function contactFromRow(row: ContactRow): ProjectContact {
     ...(row.email ? { email: row.email } : {}),
     ...(row.phone ? { phone: row.phone } : {}),
     ...(row.position ? { position: row.position } : {}),
+    createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.project_files */
+export interface FileRow {
+  id: string;
+  project_id: string;
+  name: string;
+  mime_type: string;
+  size_bytes: number;
+  kind: ProjectFileKind;
+  note: string | null;
+  storage_path: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export function fileFromRow(row: FileRow): ProjectFile {
+  return {
+    id: row.id,
+    name: row.name,
+    mimeType: row.mime_type || "application/octet-stream",
+    sizeBytes: row.size_bytes,
+    kind: row.kind ?? "other",
+    ...(row.note ? { note: row.note } : {}),
+    storagePath: row.storage_path,
+    ...(row.uploaded_by_user_id
+      ? { uploadedByUserId: row.uploaded_by_user_id }
+      : {}),
+    ...(row.uploaded_by_name ? { uploadedByName: row.uploaded_by_name } : {}),
     createdAt: row.created_at,
   };
 }
@@ -228,6 +262,7 @@ export function projectFromRow(
   todos: ProjectTodo[],
   contacts: ProjectContact[],
   financials: ProjectFinancials = emptyFinancials(),
+  files: ProjectFile[] = [],
 ): Project {
   return {
     id: row.id,
@@ -250,6 +285,7 @@ export function projectFromRow(
     comments,
     todos,
     contacts,
+    files,
     financials,
     createdAt: row.created_at,
   };

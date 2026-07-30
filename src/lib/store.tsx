@@ -14,6 +14,8 @@ import {
   ProjectComment,
   ProjectContact,
   ProjectExpenseItem,
+  ProjectFile,
+  ProjectFileKind,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
@@ -33,6 +35,7 @@ import {
   commentFromRow,
   contactFromRow,
   expenseFromRow,
+  fileFromRow,
   financialsFromParts,
   milestoneFromRow,
   paymentFromRow,
@@ -43,6 +46,7 @@ import type {
   CommentRow,
   ContactRow,
   ExpenseRow,
+  FileRow,
   MilestoneRow,
   PaymentRow,
   ProjectRow,
@@ -53,6 +57,8 @@ const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
 const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
+const FILE_STORAGE_BUCKET = "project-files";
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export interface NewProjectInput {
   name: string;
@@ -170,6 +176,19 @@ interface ProjectsApi {
   addContact: (projectId: string, input: ContactInput) => void;
   updateContact: (projectId: string, contactId: string, patch: ContactInput) => void;
   deleteContact: (projectId: string, contactId: string) => void;
+  addProjectFile: (
+    projectId: string,
+    file: File,
+    kind: ProjectFileKind,
+    note?: string,
+  ) => Promise<{ ok: true; file: ProjectFile } | { ok: false; error: string }>;
+  updateProjectFile: (
+    projectId: string,
+    fileId: string,
+    patch: { kind?: ProjectFileKind; note?: string | null },
+  ) => void;
+  deleteProjectFile: (projectId: string, fileId: string) => Promise<void>;
+  getProjectFileUrl: (file: ProjectFile) => Promise<string | null>;
   updateFinancials: (projectId: string, patch: FinancialsPatch) => void;
   addPayment: (projectId: string, input: PaymentInput) => void;
   updatePayment: (projectId: string, paymentId: string, patch: PaymentInput) => void;
@@ -205,6 +224,12 @@ function loadLocal(): Project[] {
         ...(p.leadUserId ? { leadUserId: p.leadUserId } : {}),
         todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
         contacts: p.contacts ?? [],
+        files: (p.files ?? []).map((f) => ({
+          ...f,
+          kind: f.kind ?? "other",
+          mimeType: f.mimeType || "application/octet-stream",
+          sizeBytes: f.sizeBytes ?? 0,
+        })),
         comments: (p.comments ?? []).map((c) => ({
           ...c,
           ...(c.stageChange
@@ -275,6 +300,7 @@ async function loadRemote(): Promise<Project[]> {
     paymentsRes,
     expensesRes,
     milestonesRes,
+    filesRes,
   ] = await Promise.all([
     supabase!
       .from("projects")
@@ -304,6 +330,10 @@ async function loadRemote(): Promise<Project[]> {
       .from("project_milestones")
       .select("*")
       .order("date", { ascending: true }),
+    supabase!
+      .from("project_files")
+      .select("*")
+      .order("created_at", { ascending: false }),
   ]);
   if (projectsRes.error) throw projectsRes.error;
   if (commentsRes.error) throw commentsRes.error;
@@ -324,6 +354,9 @@ async function loadRemote(): Promise<Project[]> {
       milestonesRes.error.message,
     );
   }
+  if (filesRes.error) {
+    console.error("Supabase files load failed:", filesRes.error.message);
+  }
 
   const commentsByProject = new Map<string, ProjectComment[]>();
   for (const row of (commentsRes.data ?? []) as CommentRow[]) {
@@ -342,6 +375,12 @@ async function loadRemote(): Promise<Project[]> {
     const list = contactsByProject.get(row.project_id) ?? [];
     list.push(contactFromRow(row));
     contactsByProject.set(row.project_id, list);
+  }
+  const filesByProject = new Map<string, ProjectFile[]>();
+  for (const row of (filesRes.data ?? []) as FileRow[]) {
+    const list = filesByProject.get(row.project_id) ?? [];
+    list.push(fileFromRow(row));
+    filesByProject.set(row.project_id, list);
   }
   const paymentsByProject = new Map<string, ProjectPayment[]>();
   for (const row of (paymentsRes.data ?? []) as PaymentRow[]) {
@@ -373,6 +412,7 @@ async function loadRemote(): Promise<Project[]> {
         milestonesByProject.get(row.id) ?? [],
         expensesByProject.get(row.id) ?? [],
       ),
+      filesByProject.get(row.id) ?? [],
     ),
   );
 }
@@ -596,6 +636,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       comments: initialComment ? [initialComment] : [],
       todos: [],
       contacts: [],
+      files: [],
       financials: emptyFinancials(),
       createdAt,
     };
@@ -1026,6 +1067,185 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateContacts],
   );
 
+  const mutateFiles = useCallback(
+    (projectId: string, fn: (files: ProjectFile[]) => ProjectFile[]) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId ? { ...p, files: fn(p.files ?? []) } : p,
+        ),
+      );
+    },
+    [],
+  );
+
+  const addProjectFile = useCallback(
+    async (
+      projectId: string,
+      file: File,
+      kind: ProjectFileKind,
+      note?: string,
+    ): Promise<{ ok: true; file: ProjectFile } | { ok: false; error: string }> => {
+      if (file.size <= 0) {
+        return { ok: false, error: "The selected file is empty." };
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        return {
+          ok: false,
+          error: `File is too large (max ${Math.round(MAX_FILE_BYTES / (1024 * 1024))} MB).`,
+        };
+      }
+
+      const author = resolveAuthor();
+      const id = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const safeName = file.name.replace(/[^\w.\- ()[\]]+/g, "_");
+      const storagePath = `${projectId}/${id}/${safeName}`;
+
+      const record: ProjectFile = {
+        id,
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        kind,
+        ...(note?.trim() ? { note: note.trim() } : {}),
+        storagePath,
+        ...(author.authorUserId
+          ? { uploadedByUserId: author.authorUserId }
+          : {}),
+        uploadedByName: author.author,
+        createdAt,
+      };
+
+      if (supabase) {
+        const { error: uploadError } = await supabase.storage
+          .from(FILE_STORAGE_BUCKET)
+          .upload(storagePath, file, {
+            contentType: record.mimeType,
+            upsert: false,
+          });
+        if (uploadError) {
+          return {
+            ok: false,
+            error: uploadError.message || "Upload to storage failed.",
+          };
+        }
+
+        const { error: insertError } = await supabase
+          .from("project_files")
+          .insert({
+            id: record.id,
+            project_id: projectId,
+            name: record.name,
+            mime_type: record.mimeType,
+            size_bytes: record.sizeBytes,
+            kind: record.kind,
+            note: record.note ?? null,
+            storage_path: record.storagePath,
+            uploaded_by_user_id: record.uploadedByUserId ?? null,
+            uploaded_by_name: record.uploadedByName ?? null,
+            created_at: record.createdAt,
+          });
+        if (insertError) {
+          void supabase.storage.from(FILE_STORAGE_BUCKET).remove([storagePath]);
+          return {
+            ok: false,
+            error: insertError.message || "Could not save file metadata.",
+          };
+        }
+      } else {
+        // Local fallback: keep a data URL so downloads still work offline.
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result ?? ""));
+            reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+            reader.readAsDataURL(file);
+          });
+          record.localDataUrl = dataUrl;
+        } catch {
+          return { ok: false, error: "Could not read the selected file." };
+        }
+      }
+
+      mutateFiles(projectId, (files) => [record, ...files]);
+      return { ok: true, file: record };
+    },
+    [mutateFiles, resolveAuthor],
+  );
+
+  const updateProjectFile = useCallback(
+    (
+      projectId: string,
+      fileId: string,
+      patch: { kind?: ProjectFileKind; note?: string | null },
+    ) => {
+      mutateFiles(projectId, (files) =>
+        files.map((f) => {
+          if (f.id !== fileId) return f;
+          const next = { ...f };
+          if (patch.kind !== undefined) next.kind = patch.kind;
+          if (patch.note !== undefined) {
+            if (patch.note === null || !patch.note.trim()) delete next.note;
+            else next.note = patch.note.trim();
+          }
+          return next;
+        }),
+      );
+      if (supabase) {
+        const row: Record<string, string | null> = {};
+        if (patch.kind !== undefined) row.kind = patch.kind;
+        if (patch.note !== undefined) {
+          row.note = patch.note && patch.note.trim() ? patch.note.trim() : null;
+        }
+        void supabase
+          .from("project_files")
+          .update(row)
+          .eq("id", fileId)
+          .then(logDbError("file update"));
+      }
+    },
+    [mutateFiles],
+  );
+
+  const deleteProjectFile = useCallback(
+    async (projectId: string, fileId: string) => {
+      const current = projectsRef.current
+        .find((p) => p.id === projectId)
+        ?.files.find((f) => f.id === fileId);
+      mutateFiles(projectId, (files) => files.filter((f) => f.id !== fileId));
+      if (supabase && current) {
+        void supabase
+          .from("project_files")
+          .delete()
+          .eq("id", fileId)
+          .then(logDbError("file delete"));
+        if (current.storagePath) {
+          void supabase.storage
+            .from(FILE_STORAGE_BUCKET)
+            .remove([current.storagePath])
+            .then(({ error }) => {
+              if (error)
+                console.error("Supabase file storage delete failed:", error.message);
+            });
+        }
+      }
+    },
+    [mutateFiles],
+  );
+
+  const getProjectFileUrl = useCallback(async (file: ProjectFile) => {
+    if (file.localDataUrl) return file.localDataUrl;
+    if (!supabase) return null;
+    const { data, error } = await supabase.storage
+      .from(FILE_STORAGE_BUCKET)
+      .createSignedUrl(file.storagePath, 60 * 60);
+    if (error) {
+      console.error("Supabase signed URL failed:", error.message);
+      return null;
+    }
+    return data.signedUrl;
+  }, []);
+
   const mutateFinancials = useCallback(
     (projectId: string, fn: (f: ProjectFinancials) => ProjectFinancials) => {
       setProjects((prev) =>
@@ -1446,6 +1666,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addContact,
         updateContact,
         deleteContact,
+        addProjectFile,
+        updateProjectFile,
+        deleteProjectFile,
+        getProjectFileUrl,
         updateFinancials,
         addPayment,
         updatePayment,

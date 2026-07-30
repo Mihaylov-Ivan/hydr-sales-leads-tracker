@@ -9,6 +9,7 @@ import { generateSummary } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
 import ContactList from "@/components/ContactList";
+import FileAttachments from "@/components/FileAttachments";
 import FinancialsPanel from "@/components/FinancialsPanel";
 import ClientFollowUp from "@/components/ClientFollowUp";
 
@@ -578,6 +579,9 @@ export default function ProjectPage() {
 
       {/* Contacts */}
       <ContactList projectId={project.id} contacts={project.contacts} />
+
+      {/* Offers, models, and other attachments */}
+      <FileAttachments projectId={project.id} files={project.files ?? []} />
 
       {/* Financials & timeline */}
       <section className="rounded-xl border border-line bg-panel p-4 shadow-sm">

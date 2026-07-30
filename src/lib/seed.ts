@@ -43,6 +43,7 @@ export const SEED_PROJECTS: Project[] = [
         createdAt: daysAgo(120),
       },
     ],
+    files: [],
     financials: emptyFinancials(),
     comments: [
       {
@@ -84,6 +85,7 @@ export const SEED_PROJECTS: Project[] = [
     emailReminderEnabled: true,
     todos: [],
     contacts: [],
+    files: [],
     financials: emptyFinancials(),
     comments: [
       {
@@ -112,6 +114,7 @@ export const SEED_PROJECTS: Project[] = [
     emailReminderEnabled: true,
     todos: [],
     contacts: [],
+    files: [],
     financials: emptyFinancials(),
     comments: [
       {
@@ -146,6 +149,7 @@ export const SEED_PROJECTS: Project[] = [
     emailReminderEnabled: true,
     todos: [],
     contacts: [],
+    files: [],
     financials: emptyFinancials(),
     comments: [
       {
@@ -187,6 +191,7 @@ export const SEED_PROJECTS: Project[] = [
     emailReminderEnabled: true,
     todos: [],
     contacts: [],
+    files: [],
     financials: emptyFinancials(),
     comments: [],
   },
