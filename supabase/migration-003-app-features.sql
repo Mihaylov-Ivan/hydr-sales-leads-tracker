@@ -29,7 +29,8 @@ do $$ begin
       'Power Plants',
       'Funding',
       'Clean H2',
-      'Burner Optimisation'
+      'Burner Optimisation',
+      'Tenders'
     ));
 exception
   when duplicate_object then null;

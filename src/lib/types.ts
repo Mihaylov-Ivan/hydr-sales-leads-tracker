@@ -39,7 +39,8 @@ export type Market =
   | "Power Plants"
   | "Funding"
   | "Clean H2"
-  | "Burner Optimisation";
+  | "Burner Optimisation"
+  | "Tenders";
 
 export const MARKETS: Market[] = [
   "Cement",
@@ -47,6 +48,7 @@ export const MARKETS: Market[] = [
   "Funding",
   "Clean H2",
   "Burner Optimisation",
+  "Tenders",
 ];
 
 export interface TeamMember {

@@ -21,7 +21,8 @@ create table if not exists public.projects (
       'Power Plants',
       'Funding',
       'Clean H2',
-      'Burner Optimisation'
+      'Burner Optimisation',
+      'Tenders'
     )),
   size_kw integer not null
     check (size_kw > 0),
