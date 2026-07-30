@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/lib/store";
-import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Market, MARKETS, Stage, STAGE_LABELS, BOARD_STAGES } from "@/lib/types";
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import OverviewTimeline from "@/components/OverviewTimeline";
@@ -22,10 +22,79 @@ const COLUMN_ACCENT: Record<Stage, string> = {
   "hot-lead": "border-t-amber-accent",
   "under-development": "border-t-olive",
   commissioned: "border-t-green-accent",
+  cancelled: "border-t-muted",
 };
+
+const CANCELLED_STORAGE_KEY = "hydrogenera-show-cancelled-v1";
 
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
+
+function StageColumn({
+  stage,
+  projects,
+  isOver,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  accentClass,
+  headerExtra,
+}: {
+  stage: Stage;
+  projects: ReturnType<typeof useProjects>["projects"];
+  isOver: boolean;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  accentClass: string;
+  headerExtra?: React.ReactNode;
+}) {
+  return (
+    <section
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`flex min-h-48 flex-col rounded-xl border border-t-4 bg-surface-tint/60 transition ${accentClass} ${
+        isOver
+          ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
+          : stage === "cancelled"
+            ? "border-line/80 bg-muted/5"
+            : "border-line"
+      }`}
+    >
+      <header className="flex items-center justify-between gap-2 px-4 py-3">
+        <h2
+          className={`text-sm font-bold uppercase tracking-wide ${
+            stage === "cancelled" ? "text-muted" : "text-deep"
+          }`}
+        >
+          {STAGE_LABELS[stage]}
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-semibold text-muted shadow-sm">
+            {projects.length}
+          </span>
+          {headerExtra}
+        </div>
+      </header>
+      <div className="flex flex-1 flex-col gap-3 px-3 pb-3">
+        {projects.length === 0 ? (
+          <p
+            className={`rounded-lg border border-dashed py-8 text-center text-xs ${
+              isOver
+                ? "border-teal-accent text-teal-accent"
+                : "border-line text-muted"
+            }`}
+          >
+            {isOver ? "Drop to move here" : "No projects here."}
+          </p>
+        ) : (
+          projects.map((p) => <ProjectCard key={p.id} project={p} />)
+        )}
+      </div>
+    </section>
+  );
+}
 
 function MarketMultiSelect({
   selected,
@@ -157,6 +226,31 @@ export default function Dashboard() {
   const [showNew, setShowNew] = useState(false);
   const [showTeamMembers, setShowTeamMembers] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [cancelledPrefReady, setCancelledPrefReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
+        setShowCancelled(true);
+      }
+    } catch {
+      // ignore
+    }
+    setCancelledPrefReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cancelledPrefReady) return;
+    try {
+      window.localStorage.setItem(
+        CANCELLED_STORAGE_KEY,
+        showCancelled ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [showCancelled, cancelledPrefReady]);
 
   const countries = useMemo(
     () => [...new Set(projects.map((p) => p.country))].sort(),
@@ -194,6 +288,7 @@ export default function Dashboard() {
       "hot-lead": [],
       "under-development": [],
       commissioned: [],
+      cancelled: [],
     };
     for (const p of filtered) map[p.stage].push(p);
     return map;
@@ -203,11 +298,37 @@ export default function Dashboard() {
     const project = projects.find((p) => p.id === projectId);
     if (!project || project.stage === stage) return;
     updateProject(projectId, { stage });
+    if (stage === "cancelled") setShowCancelled(true);
+  }
+
+  function columnDragHandlers(stage: Stage) {
+    return {
+      onDragOver: (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (dragOverStage !== stage) setDragOverStage(stage);
+      },
+      onDragLeave: (e: React.DragEvent) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDragOverStage((cur) => (cur === stage ? null : cur));
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        setDragOverStage(null);
+        const id =
+          e.dataTransfer.getData(PROJECT_DRAG_TYPE) ||
+          e.dataTransfer.getData("text/plain");
+        if (id) moveProjectToStage(id, stage);
+      },
+    };
   }
 
   if (!ready) {
     return <p className="py-20 text-center text-muted">Loading projects…</p>;
   }
+
+  const cancelledCount = byStage.cancelled.length;
+  const cancelledOver = dragOverStage === "cancelled";
 
   return (
     <div className="flex flex-col gap-6">
@@ -286,69 +407,89 @@ export default function Dashboard() {
       {/* Cash-in timeline */}
       {showFinancials && <OverviewTimeline projects={filtered} />}
 
-      {/* Stage board — drag cards between columns to change stage */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {STAGES.map((stage) => {
-          const isOver = dragOverStage === stage;
-          return (
-            <section
-              key={stage}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                if (dragOverStage !== stage) setDragOverStage(stage);
-              }}
-              onDragLeave={(e) => {
-                // Ignore leave events that stay within this column
-                if (
-                  e.currentTarget.contains(e.relatedTarget as Node | null)
-                ) {
-                  return;
-                }
-                setDragOverStage((cur) => (cur === stage ? null : cur));
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOverStage(null);
-                const id =
-                  e.dataTransfer.getData(PROJECT_DRAG_TYPE) ||
-                  e.dataTransfer.getData("text/plain");
-                if (id) moveProjectToStage(id, stage);
-              }}
-              className={`flex min-h-48 flex-col rounded-xl border border-t-4 bg-surface-tint/60 transition ${COLUMN_ACCENT[stage]} ${
-                isOver
-                  ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
-                  : "border-line"
-              }`}
+      {/* Stage board — cancelled expands from the left */}
+      <div className="flex gap-3">
+        {/* Collapsed rail: click or drop to reveal */}
+        {!showCancelled && (
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-controls="cancelled-column"
+            onClick={() => setShowCancelled(true)}
+            {...columnDragHandlers("cancelled")}
+            className={`group flex w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 border-t-muted border-line bg-muted/5 py-3 transition hover:border-muted hover:bg-muted/10 ${
+              cancelledOver
+                ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
+                : ""
+            }`}
+            title="Show cancelled projects"
+          >
+            <span className="rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold text-muted shadow-sm">
+              {cancelledCount}
+            </span>
+            <span
+              className="flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
+              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
             >
-              <header className="flex items-center justify-between px-4 py-3">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-                  {STAGE_LABELS[stage]}
-                </h2>
-                <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-semibold text-muted shadow-sm">
-                  {byStage[stage].length}
-                </span>
-              </header>
-              <div className="flex flex-1 flex-col gap-3 px-3 pb-3">
-                {byStage[stage].length === 0 ? (
-                  <p
-                    className={`rounded-lg border border-dashed py-8 text-center text-xs ${
-                      isOver
-                        ? "border-teal-accent text-teal-accent"
-                        : "border-line text-muted"
-                    }`}
-                  >
-                    {isOver ? "Drop to move here" : "No projects here."}
-                  </p>
-                ) : (
-                  byStage[stage].map((p) => (
-                    <ProjectCard key={p.id} project={p} />
-                  ))
-                )}
-              </div>
-            </section>
-          );
-        })}
+              Cancelled
+            </span>
+            <span
+              className="text-sm text-muted/70 transition group-hover:translate-x-0.5 group-hover:text-muted"
+              aria-hidden
+            >
+              ›
+            </span>
+          </button>
+        )}
+
+        {/* Expanded cancelled column slides in from the left */}
+        <div
+          id="cancelled-column"
+          aria-hidden={!showCancelled}
+          className={`min-w-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
+            showCancelled
+              ? "max-w-[20rem] flex-1 basis-[20rem] opacity-100"
+              : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
+          }`}
+        >
+          <div
+            className={`h-full w-[min(100%,20rem)] transition-transform duration-300 ease-out ${
+              showCancelled ? "translate-x-0" : "-translate-x-3"
+            }`}
+          >
+            <StageColumn
+              stage="cancelled"
+              projects={byStage.cancelled}
+              isOver={cancelledOver}
+              accentClass={COLUMN_ACCENT.cancelled}
+              {...columnDragHandlers("cancelled")}
+              headerExtra={
+                <button
+                  type="button"
+                  onClick={() => setShowCancelled(false)}
+                  title="Hide cancelled"
+                  className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition hover:bg-panel hover:text-deep"
+                >
+                  Hide
+                </button>
+              }
+            />
+          </div>
+        </div>
+
+        {/* Active stage columns */}
+        <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {BOARD_STAGES.map((stage) => (
+            <StageColumn
+              key={stage}
+              stage={stage}
+              projects={byStage[stage]}
+              isOver={dragOverStage === stage}
+              accentClass={COLUMN_ACCENT[stage]}
+              {...columnDragHandlers(stage)}
+            />
+          ))}
+        </div>
       </div>
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}

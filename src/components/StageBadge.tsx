@@ -5,6 +5,7 @@ const STYLES: Record<Stage, string> = {
   "hot-lead": "bg-amber-accent/10 text-amber-accent border-amber-accent/40",
   "under-development": "bg-olive/15 text-olive-ink border-olive/40",
   commissioned: "bg-green-accent/10 text-green-accent border-green-accent/40",
+  cancelled: "bg-muted/10 text-muted border-line",
 };
 
 export default function StageBadge({ stage }: { stage: Stage }) {

@@ -2,20 +2,26 @@ export type Stage =
   | "cold-lead"
   | "hot-lead"
   | "under-development"
-  | "commissioned";
+  | "commissioned"
+  | "cancelled";
 
-export const STAGES: Stage[] = [
+/** Always-visible kanban columns */
+export const BOARD_STAGES: Stage[] = [
   "cold-lead",
   "hot-lead",
   "under-development",
   "commissioned",
 ];
 
+/** All valid stages (including cancelled) */
+export const STAGES: Stage[] = [...BOARD_STAGES, "cancelled"];
+
 export const STAGE_LABELS: Record<Stage, string> = {
-  "cold-lead": "Cold Lead (In Contact)",
-  "hot-lead": "Hot Lead (Offer Sent)",
+  "cold-lead": "Cold Lead",
+  "hot-lead": "Hot Lead",
   "under-development": "Under Development",
   commissioned: "Commissioned",
+  cancelled: "Cancelled",
 };
 
 /** Map legacy stage ids (and unknown values) onto the current set. */
@@ -25,7 +31,8 @@ export function normalizeStage(value: string | null | undefined): Stage {
     value === "cold-lead" ||
     value === "hot-lead" ||
     value === "under-development" ||
-    value === "commissioned"
+    value === "commissioned" ||
+    value === "cancelled"
   ) {
     return value;
   }
@@ -82,7 +89,11 @@ export interface ProjectComment {
 
 export type TodoKind = "question" | "our-action" | "client-action";
 
-export const TODO_KINDS: TodoKind[] = ["question", "our-action", "client-action"];
+export const TODO_KINDS: TodoKind[] = [
+  "question",
+  "our-action",
+  "client-action",
+];
 
 export const TODO_KIND_LABELS: Record<TodoKind, string> = {
   question: "Questions to Clear",
@@ -311,7 +322,10 @@ export function lastContactDate(p: Project): string {
 }
 
 export function nextEmailReminderDate(p: Project): string {
-  return addDays(lastContactDate(p), p.emailReminderDays || DEFAULT_EMAIL_REMINDER_DAYS);
+  return addDays(
+    lastContactDate(p),
+    p.emailReminderDays || DEFAULT_EMAIL_REMINDER_DAYS,
+  );
 }
 
 /** True when reminders are on and it's time (or overdue) to contact the client */

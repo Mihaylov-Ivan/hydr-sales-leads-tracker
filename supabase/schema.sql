@@ -31,7 +31,8 @@ create table if not exists public.projects (
       'cold-lead',
       'hot-lead',
       'under-development',
-      'commissioned'
+      'commissioned',
+      'cancelled'
     )),
   base_description text not null default '',
   ai_summary text,
@@ -61,7 +62,8 @@ create table if not exists public.project_comments (
       'cold-lead',
       'hot-lead',
       'under-development',
-      'commissioned'
+      'commissioned',
+      'cancelled'
     )),
   created_at timestamptz not null default now()
 );

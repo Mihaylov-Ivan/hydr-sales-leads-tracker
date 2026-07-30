@@ -5,6 +5,7 @@ const STAGE_PHRASES: Record<string, string> = {
   "hot-lead": "a hot lead with an offer sent",
   "under-development": "under active development",
   commissioned: "commissioned and operational",
+  cancelled: "cancelled and no longer active",
 };
 
 function formatDate(iso: string): string {
