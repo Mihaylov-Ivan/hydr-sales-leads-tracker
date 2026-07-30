@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useProjects } from "@/lib/store";
-import { ProjectTodo, TodoKind, TODO_KIND_LABELS } from "@/lib/types";
+import { ProjectTodo, TeamMember, TodoKind, TODO_KIND_LABELS } from "@/lib/types";
 
 function Checkbox({ done }: { done: boolean }) {
   return (
@@ -169,15 +169,22 @@ function Answer({
 
 function TodoItem({
   todo,
+  teamMembers,
   showAnswer,
   onToggle,
   onPatch,
   onDelete,
 }: {
   todo: ProjectTodo;
+  teamMembers: TeamMember[];
   showAnswer: boolean;
   onToggle: () => void;
-  onPatch: (patch: { text?: string; answer?: string | null; dueDate?: string | null }) => void;
+  onPatch: (patch: {
+    text?: string;
+    answer?: string | null;
+    dueDate?: string | null;
+    ownerUserId?: string | null;
+  }) => void;
   onDelete: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -231,6 +238,20 @@ function TodoItem({
         )}
 
         <DueDate todo={todo} onChange={(dueDate) => onPatch({ dueDate })} />
+        <select
+          value={todo.ownerUserId ?? ""}
+          onChange={(e) => onPatch({ ownerUserId: e.target.value || null })}
+          title="Responsible person"
+          aria-label="Responsible person"
+          className="shrink-0 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-teal-accent"
+        >
+          <option value="">Unassigned</option>
+          {teamMembers.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
 
         <button
           type="button"
@@ -269,9 +290,10 @@ export default function TodoList({
   kind: TodoKind;
   todos: ProjectTodo[];
 }) {
-  const { addTodo, toggleTodo, updateTodo, deleteTodo } = useProjects();
+  const { addTodo, toggleTodo, updateTodo, deleteTodo, teamMembers } = useProjects();
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState("");
 
   const open = todos.filter((t) => !t.done);
   const done = todos.filter((t) => t.done);
@@ -282,9 +304,10 @@ export default function TodoList({
     e.preventDefault();
     const t = text.trim();
     if (!t) return;
-    addTodo(projectId, kind, t, dueDate || undefined);
+    addTodo(projectId, kind, t, dueDate || undefined, ownerUserId || undefined);
     setText("");
     setDueDate("");
+    setOwnerUserId("");
   }
 
   return (
@@ -308,7 +331,7 @@ export default function TodoList({
         )}
       </div>
 
-      <form onSubmit={submit} className="mb-2 flex gap-2">
+      <form onSubmit={submit} className="mb-2 flex flex-wrap gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -323,6 +346,20 @@ export default function TodoList({
           aria-label="Deadline (optional)"
           className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
         />
+        <select
+          value={ownerUserId}
+          onChange={(e) => setOwnerUserId(e.target.value)}
+          title="Responsible person"
+          aria-label="Responsible person"
+          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+        >
+          <option value="">Unassigned</option>
+          {teamMembers.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           disabled={!text.trim()}
@@ -344,6 +381,7 @@ export default function TodoList({
             <TodoItem
               key={t.id}
               todo={t}
+              teamMembers={teamMembers}
               showAnswer={kind === "question"}
               onToggle={() => toggleTodo(projectId, t.id)}
               onPatch={(patch) => updateTodo(projectId, t.id, patch)}
@@ -357,6 +395,7 @@ export default function TodoList({
             <TodoItem
               key={t.id}
               todo={t}
+              teamMembers={teamMembers}
               showAnswer={kind === "question"}
               onToggle={() => toggleTodo(projectId, t.id)}
               onPatch={(patch) => updateTodo(projectId, t.id, patch)}

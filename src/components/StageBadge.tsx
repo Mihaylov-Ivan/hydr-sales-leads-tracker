@@ -1,8 +1,9 @@
 import { Stage, STAGE_LABELS } from "@/lib/types";
 
 const STYLES: Record<Stage, string> = {
-  "new-lead": "bg-teal-soft text-teal-accent border-teal-accent/40",
-  "under-development": "bg-amber-accent/10 text-amber-accent border-amber-accent/40",
+  "cold-lead": "bg-teal-soft text-teal-accent border-teal-accent/40",
+  "hot-lead": "bg-amber-accent/10 text-amber-accent border-amber-accent/40",
+  "under-development": "bg-olive/15 text-olive-ink border-olive/40",
   commissioned: "bg-green-accent/10 text-green-accent border-green-accent/40",
 };
 

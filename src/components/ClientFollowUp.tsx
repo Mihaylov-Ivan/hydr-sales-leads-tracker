@@ -18,20 +18,25 @@ function formatDay(iso: string): string {
 }
 
 export default function ClientFollowUp({ project }: { project: Project }) {
-  const { updateProject, markClientEmailed } = useProjects();
+  const { updateProject, markClientContacted } = useProjects();
+  const enabled = project.emailReminderEnabled !== false;
   const due = isEmailReminderDue(project);
   const delta = emailReminderDeltaDays(project);
   const last = lastContactDate(project);
   const next = nextEmailReminderDate(project);
 
   let statusText: string;
-  if (due) {
-    if (delta === 0) statusText = "Email due today";
+  if (!enabled) {
+    statusText = "Reminders disabled";
+  } else if (due) {
+    if (delta === 0) statusText = "Follow-up due today";
     else
       statusText = `Overdue by ${Math.abs(delta)} day${Math.abs(delta) === 1 ? "" : "s"}`;
   } else {
     statusText =
-      delta === 1 ? "Next email tomorrow" : `Next email in ${delta} days`;
+      delta === 1
+        ? "Next follow-up tomorrow"
+        : `Next follow-up in ${delta} days`;
   }
 
   return (
@@ -48,7 +53,9 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
               due
                 ? "bg-amber-accent text-white"
-                : "bg-teal-soft text-teal-accent"
+                : enabled
+                  ? "bg-teal-soft text-teal-accent"
+                  : "bg-surface text-muted"
             }`}
             aria-hidden
           >
@@ -65,26 +72,32 @@ export default function ClientFollowUp({ project }: { project: Project }) {
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   due
                     ? "bg-amber-accent/15 text-amber-accent"
-                    : "bg-surface text-muted"
+                    : enabled
+                      ? "bg-surface text-muted"
+                      : "bg-surface text-muted/70"
                 }`}
               >
-                Our action
+                {enabled ? "Our action" : "Paused"}
               </span>
             </div>
-            <p className={`mt-1 text-sm font-medium ${due ? "text-amber-accent" : "text-ink"}`}>
-              {due ? `Email ${project.client}` : statusText}
+            <p
+              className={`mt-1 text-sm font-medium ${
+                due ? "text-amber-accent" : "text-ink"
+              }`}
+            >
+              {due ? `Contact ${project.client}` : statusText}
             </p>
             <p className="mt-0.5 text-xs text-muted">
               {due ? `${statusText} · ` : ""}
               Last contact {formatDay(last)}
-              {!due ? ` · due ${formatDay(next)}` : ""}
+              {enabled && !due ? ` · due ${formatDay(next)}` : ""}
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => markClientEmailed(project.id)}
+          onClick={() => markClientContacted(project.id)}
           title="Set last contact to today and restart the reminder"
           className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition hover:brightness-105 ${
             due
@@ -92,11 +105,11 @@ export default function ClientFollowUp({ project }: { project: Project }) {
               : "border border-line bg-surface text-deep hover:border-teal-accent/40"
           }`}
         >
-          Mark emailed
+          Contacted
         </button>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
             Last contact
@@ -121,6 +134,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             type="number"
             min={1}
             step={1}
+            disabled={!enabled}
             value={project.emailReminderDays}
             onChange={(e) => {
               const n = Number(e.target.value);
@@ -129,8 +143,42 @@ export default function ClientFollowUp({ project }: { project: Project }) {
                 emailReminderDays: Math.floor(n),
               });
             }}
-            className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50"
           />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Reminders
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() =>
+              updateProject(project.id, {
+                emailReminderEnabled: !enabled,
+              })
+            }
+            className={`flex h-[38px] items-center justify-between rounded-lg border px-3 text-sm font-medium transition ${
+              enabled
+                ? "border-teal-accent/40 bg-teal-soft/60 text-teal-accent"
+                : "border-line bg-surface text-muted"
+            }`}
+          >
+            <span>{enabled ? "Enabled" : "Disabled"}</span>
+            <span
+              className={`relative h-5 w-9 rounded-full transition ${
+                enabled ? "bg-teal-accent" : "bg-line"
+              }`}
+              aria-hidden
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${
+                  enabled ? "left-4" : "left-0.5"
+                }`}
+              />
+            </span>
+          </button>
         </label>
       </div>
     </section>

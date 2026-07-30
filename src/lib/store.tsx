@@ -19,9 +19,12 @@ import {
   ProjectPayment,
   ProjectTodo,
   Stage,
+  TeamMember,
   TodoKind,
+  TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  normalizeStage,
   todayDate,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
@@ -34,7 +37,6 @@ import {
   milestoneFromRow,
   paymentFromRow,
   projectFromRow,
-  projectToRow,
   todoFromRow,
 } from "./supabase";
 import type {
@@ -48,6 +50,9 @@ import type {
 } from "./supabase";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
+const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
+const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
+const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
 
 export interface NewProjectInput {
   name: string;
@@ -59,6 +64,7 @@ export interface NewProjectInput {
   sizeKw: number;
   stage: Stage;
   baseDescription: string;
+  leadUserId?: string;
 }
 
 export type ProjectPatch = Partial<
@@ -75,6 +81,8 @@ export type ProjectPatch = Partial<
     | "baseDescription"
     | "lastClientContactAt"
     | "emailReminderDays"
+    | "emailReminderEnabled"
+    | "leadUserId"
   >
 >;
 
@@ -83,6 +91,7 @@ export interface TodoPatch {
   text?: string;
   answer?: string | null;
   dueDate?: string | null;
+  ownerUserId?: string | null;
 }
 
 /** All fields optional; empty strings are treated as "not provided". */
@@ -121,6 +130,18 @@ export interface MilestoneInput {
 }
 
 interface ProjectsApi {
+  teamMembers: TeamMember[];
+  addTeamMember: (input: { name: string; email?: string }) => void;
+  updateTeamMember: (
+    memberId: string,
+    patch: { name?: string; email?: string | null },
+  ) => void;
+  /** Currently selected app user (for authorship of updates) */
+  currentUserId: string | null;
+  setCurrentUserId: (userId: string | null) => void;
+  /** When false, financial panels/timelines stay hidden */
+  showFinancials: boolean;
+  setShowFinancials: (show: boolean) => void;
   projects: Project[];
   ready: boolean;
   /** True when the server has an AI API key configured */
@@ -130,8 +151,8 @@ interface ProjectsApi {
   addProject: (input: NewProjectInput) => string;
   addComment: (projectId: string, text: string, stageChange?: Stage) => void;
   updateProject: (projectId: string, patch: ProjectPatch) => void;
-  /** Mark client as emailed today — restarts the follow-up window */
-  markClientEmailed: (projectId: string) => void;
+  /** Mark client as contacted today — restarts the follow-up window */
+  markClientContacted: (projectId: string) => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
@@ -141,6 +162,7 @@ interface ProjectsApi {
     kind: TodoKind,
     text: string,
     dueDate?: string,
+    ownerUserId?: string,
   ) => void;
   toggleTodo: (projectId: string, todoId: string) => void;
   updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
@@ -174,12 +196,21 @@ function loadLocal(): Project[] {
       // Data saved before newer features may lack these fields
       return parsed.map((p) => ({
         ...p,
+        stage: normalizeStage(p.stage),
         market: p.market ?? "Clean H2",
         lastClientContactAt:
           p.lastClientContactAt ?? p.createdAt.slice(0, 10),
         emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
+        emailReminderEnabled: p.emailReminderEnabled !== false,
+        ...(p.leadUserId ? { leadUserId: p.leadUserId } : {}),
         todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
         contacts: p.contacts ?? [],
+        comments: (p.comments ?? []).map((c) => ({
+          ...c,
+          ...(c.stageChange
+            ? { stageChange: normalizeStage(c.stageChange) }
+            : {}),
+        })),
         financials: {
           ...emptyFinancials(),
           ...p.financials,
@@ -193,6 +224,46 @@ function loadLocal(): Project[] {
     // corrupted storage: fall back to seed data
   }
   return SEED_PROJECTS;
+}
+
+function loadLocalTeamMembers(): TeamMember[] {
+  try {
+    const raw = window.localStorage.getItem(TEAM_STORAGE_KEY);
+    if (!raw) return TEAM_MEMBERS;
+    const parsed = JSON.parse(raw) as TeamMember[];
+    const sanitized = parsed
+      .map((m) => ({
+        id: m.id,
+        name: m.name?.trim() ?? "",
+        ...(m.email?.trim() ? { email: m.email.trim() } : {}),
+      }))
+      .filter((m) => m.id && m.name);
+    return sanitized.length > 0 ? sanitized : TEAM_MEMBERS;
+  } catch {
+    return TEAM_MEMBERS;
+  }
+}
+
+function loadLocalCurrentUserId(members: TeamMember[]): string | null {
+  try {
+    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+    if (!raw) return members[0]?.id ?? null;
+    const id = JSON.parse(raw) as string | null;
+    if (!id) return null;
+    return members.some((m) => m.id === id) ? id : (members[0]?.id ?? null);
+  } catch {
+    return members[0]?.id ?? null;
+  }
+}
+
+function loadShowFinancials(): boolean {
+  try {
+    const raw = window.localStorage.getItem(SHOW_FINANCIALS_STORAGE_KEY);
+    if (raw == null) return false;
+    return JSON.parse(raw) === true;
+  } catch {
+    return false;
+  }
 }
 
 async function loadRemote(): Promise<Project[]> {
@@ -314,13 +385,26 @@ function logDbError(action: string) {
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
+  const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
+  const [showFinancials, setShowFinancialsState] = useState(false);
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
+  const [supportsCommentAuthorId, setSupportsCommentAuthorId] = useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
   projectsRef.current = projects;
+  const teamMembersRef = useRef<TeamMember[]>(teamMembers);
+  teamMembersRef.current = teamMembers;
+  const currentUserIdRef = useRef<string | null>(currentUserId);
+  currentUserIdRef.current = currentUserId;
 
   useEffect(() => {
+    const members = loadLocalTeamMembers();
+    setTeamMembers(members);
+    setCurrentUserIdState(loadLocalCurrentUserId(members));
+    setShowFinancialsState(loadShowFinancials());
     if (supabase) {
       loadRemote()
         .then(setProjects)
@@ -337,6 +421,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       .then((r) => r.json())
       .then((d) => setAiEnabled(Boolean(d.enabled)))
       .catch(() => setAiEnabled(false));
+    if (supabase) {
+      Promise.all([
+        supabase.from("projects").select("lead_user_id").limit(1),
+        supabase.from("project_todos").select("owner_user_id").limit(1),
+        supabase.from("project_comments").select("author_user_id").limit(1),
+      ])
+        .then(([projectsCols, todosCols, commentsCols]) => {
+          setSupportsOwnershipFields(
+            !projectsCols.error && !todosCols.error,
+          );
+          setSupportsCommentAuthorId(!commentsCols.error);
+        })
+        .catch(() => {
+          setSupportsOwnershipFields(false);
+          setSupportsCommentAuthorId(false);
+        });
+    }
   }, []);
 
   // Without a database the tracker keeps persisting to localStorage.
@@ -345,6 +446,96 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
     }
   }, [projects, ready]);
+
+  useEffect(() => {
+    if (ready) {
+      window.localStorage.setItem(TEAM_STORAGE_KEY, JSON.stringify(teamMembers));
+    }
+  }, [teamMembers, ready]);
+
+  useEffect(() => {
+    if (ready) {
+      window.localStorage.setItem(
+        CURRENT_USER_STORAGE_KEY,
+        JSON.stringify(currentUserId),
+      );
+    }
+  }, [currentUserId, ready]);
+
+  useEffect(() => {
+    if (ready) {
+      window.localStorage.setItem(
+        SHOW_FINANCIALS_STORAGE_KEY,
+        JSON.stringify(showFinancials),
+      );
+    }
+  }, [showFinancials, ready]);
+
+  // If the selected user is removed/edited away, fall back to first member.
+  useEffect(() => {
+    if (!ready) return;
+    if (
+      currentUserId &&
+      !teamMembers.some((m) => m.id === currentUserId)
+    ) {
+      setCurrentUserIdState(teamMembers[0]?.id ?? null);
+    }
+  }, [teamMembers, currentUserId, ready]);
+
+  const setCurrentUserId = useCallback((userId: string | null) => {
+    setCurrentUserIdState(userId);
+  }, []);
+
+  const setShowFinancials = useCallback((show: boolean) => {
+    setShowFinancialsState(show);
+  }, []);
+
+  const resolveAuthor = useCallback(() => {
+    const id = currentUserIdRef.current;
+    const member = id
+      ? teamMembersRef.current.find((m) => m.id === id)
+      : undefined;
+    return {
+      author: member?.name ?? "You",
+      ...(member ? { authorUserId: member.id } : {}),
+    };
+  }, []);
+
+  const addTeamMember = useCallback(
+    (input: { name: string; email?: string }) => {
+      const name = input.name.trim();
+      const email = input.email?.trim();
+      if (!name) return;
+      const member: TeamMember = {
+        id: crypto.randomUUID(),
+        name,
+        ...(email ? { email } : {}),
+      };
+      setTeamMembers((prev) => [...prev, member]);
+    },
+    [],
+  );
+
+  const updateTeamMember = useCallback(
+    (memberId: string, patch: { name?: string; email?: string | null }) => {
+      setTeamMembers((prev) =>
+        prev.map((m) => {
+          if (m.id !== memberId) return m;
+          const next = { ...m };
+          if (patch.name !== undefined) {
+            const trimmed = patch.name.trim();
+            if (trimmed) next.name = trimmed;
+          }
+          if (patch.email !== undefined) {
+            if (patch.email === null || !patch.email.trim()) delete next.email;
+            else next.email = patch.email.trim();
+          }
+          return next;
+        }),
+      );
+    },
+    [],
+  );
 
   const requestAiSummary = useCallback(async (project: Project) => {
     setSummarizing((s) => ({ ...s, [project.id]: true }));
@@ -382,12 +573,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     const id = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const description = input.baseDescription.trim();
+    const authorInfo = resolveAuthor();
     // The summary entered at creation doubles as the first update in the timeline.
     const initialComment: ProjectComment | null = description
       ? {
           id: crypto.randomUUID(),
           text: description,
-          author: "You",
+          author: authorInfo.author,
+          ...(authorInfo.authorUserId
+            ? { authorUserId: authorInfo.authorUserId }
+            : {}),
           createdAt,
         }
       : null;
@@ -396,6 +591,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       id,
       lastClientContactAt: createdAt.slice(0, 10),
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
+      emailReminderEnabled: true,
+      ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
       comments: initialComment ? [initialComment] : [],
       todos: [],
       contacts: [],
@@ -407,7 +604,30 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       // Insert the comment only after the project row exists (FK constraint).
       void supabase
         .from("projects")
-        .insert(projectToRow(project))
+        .insert({
+          id: project.id,
+          name: project.name,
+          client: project.client,
+          country: project.country,
+          city: project.city,
+          series: project.series,
+          market: project.market,
+          size_kw: project.sizeKw,
+          stage: project.stage,
+          base_description: project.baseDescription,
+          ai_summary: project.aiSummary ?? null,
+          contract_value: null,
+          contract_signed_date: null,
+          expenses: null,
+          expected_profit: null,
+          last_client_contact_at: project.lastClientContactAt,
+          email_reminder_days: project.emailReminderDays,
+          email_reminder_enabled: project.emailReminderEnabled,
+          ...(supportsOwnershipFields
+            ? { lead_user_id: project.leadUserId ?? null }
+            : {}),
+          created_at: project.createdAt,
+        })
         .then((res) => {
           logDbError("project insert")(res);
           if (res.error || !initialComment) return;
@@ -418,6 +638,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               project_id: id,
               text: initialComment.text,
               author: initialComment.author,
+              ...(supportsCommentAuthorId
+                ? { author_user_id: initialComment.authorUserId ?? null }
+                : {}),
               stage_change: null,
               created_at: initialComment.createdAt,
             })
@@ -425,16 +648,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         });
     }
     return id;
-  }, []);
+  }, [supportsOwnershipFields, supportsCommentAuthorId, resolveAuthor]);
 
   const addComment = useCallback(
     (projectId: string, text: string, stageChange?: Stage) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
+      const authorInfo = resolveAuthor();
       const comment: ProjectComment = {
         id: crypto.randomUUID(),
         text,
-        author: "You",
+        author: authorInfo.author,
+        ...(authorInfo.authorUserId
+          ? { authorUserId: authorInfo.authorUserId }
+          : {}),
         createdAt: new Date().toISOString(),
         ...(stageChange ? { stageChange } : {}),
       };
@@ -452,6 +679,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             project_id: projectId,
             text: comment.text,
             author: comment.author,
+            ...(supportsCommentAuthorId
+              ? { author_user_id: comment.authorUserId ?? null }
+              : {}),
             stage_change: stageChange ?? null,
             created_at: comment.createdAt,
           })
@@ -466,7 +696,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary],
+    [requestAiSummary, resolveAuthor, supportsCommentAuthorId],
   );
 
   const updateProject = useCallback(
@@ -476,8 +706,26 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const updated: Project = { ...current, ...patch };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
-        const { id: _id, ai_summary: _summary, created_at: _created, ...row } =
-          projectToRow(updated);
+        const row: Record<string, string | number | boolean | null> = {};
+        if (patch.name !== undefined) row.name = patch.name;
+        if (patch.client !== undefined) row.client = patch.client;
+        if (patch.country !== undefined) row.country = patch.country;
+        if (patch.city !== undefined) row.city = patch.city;
+        if (patch.series !== undefined) row.series = patch.series;
+        if (patch.market !== undefined) row.market = patch.market;
+        if (patch.sizeKw !== undefined) row.size_kw = patch.sizeKw;
+        if (patch.stage !== undefined) row.stage = patch.stage;
+        if (patch.baseDescription !== undefined)
+          row.base_description = patch.baseDescription;
+        if (patch.lastClientContactAt !== undefined)
+          row.last_client_contact_at = patch.lastClientContactAt;
+        if (patch.emailReminderDays !== undefined)
+          row.email_reminder_days = patch.emailReminderDays;
+        if (patch.emailReminderEnabled !== undefined)
+          row.email_reminder_enabled = patch.emailReminderEnabled;
+        if (supportsOwnershipFields && patch.leadUserId !== undefined) {
+          row.lead_user_id = patch.leadUserId ?? null;
+        }
         void supabase
           .from("projects")
           .update(row)
@@ -486,10 +734,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary],
+    [requestAiSummary, supportsOwnershipFields],
   );
 
-  const markClientEmailed = useCallback(
+  const markClientContacted = useCallback(
     (projectId: string) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
@@ -501,7 +749,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .from("projects")
           .update({ last_client_contact_at: lastClientContactAt })
           .eq("id", projectId)
-          .then(logDbError("mark client emailed"));
+          .then(logDbError("mark client contacted"));
       }
     },
     [],
@@ -571,13 +819,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addTodo = useCallback(
-    (projectId: string, kind: TodoKind, text: string, dueDate?: string) => {
+    (
+      projectId: string,
+      kind: TodoKind,
+      text: string,
+      dueDate?: string,
+      ownerUserId?: string,
+    ) => {
       const todo: ProjectTodo = {
         id: crypto.randomUUID(),
         kind,
         text,
         done: false,
         ...(dueDate ? { dueDate } : {}),
+        ...(ownerUserId ? { ownerUserId } : {}),
         createdAt: new Date().toISOString(),
       };
       mutateTodos(projectId, (todos) => [...todos, todo]);
@@ -591,12 +846,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             text: todo.text,
             done: false,
             due_date: dueDate ?? null,
+            ...(supportsOwnershipFields
+              ? { owner_user_id: todo.ownerUserId ?? null }
+              : {}),
             created_at: todo.createdAt,
           })
           .then(logDbError("todo insert"));
       }
     },
-    [mutateTodos],
+    [mutateTodos, supportsOwnershipFields],
   );
 
   const toggleTodo = useCallback(
@@ -636,6 +894,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.dueDate === null) delete next.dueDate;
             else next.dueDate = patch.dueDate;
           }
+          if (patch.ownerUserId !== undefined) {
+            if (patch.ownerUserId === null) delete next.ownerUserId;
+            else next.ownerUserId = patch.ownerUserId;
+          }
           return next;
         }),
       );
@@ -644,6 +906,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.text !== undefined) row.text = patch.text;
         if (patch.answer !== undefined) row.answer = patch.answer;
         if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
+        if (supportsOwnershipFields && patch.ownerUserId !== undefined) {
+          row.owner_user_id = patch.ownerUserId;
+        }
         void supabase
           .from("project_todos")
           .update(row)
@@ -651,7 +916,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo update"));
       }
     },
-    [mutateTodos],
+    [mutateTodos, supportsOwnershipFields],
   );
 
   const deleteTodo = useCallback(
@@ -1155,6 +1420,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   return (
     <ProjectsContext.Provider
       value={{
+        teamMembers,
+        addTeamMember,
+        updateTeamMember,
+        currentUserId,
+        setCurrentUserId,
+        showFinancials,
+        setShowFinancials,
         projects,
         ready,
         aiEnabled,
@@ -1162,7 +1434,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addProject,
         addComment,
         updateProject,
-        markClientEmailed,
+        markClientContacted,
         updateComment,
         deleteComment,
         regenerateSummary,

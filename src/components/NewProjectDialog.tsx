@@ -10,7 +10,7 @@ const inputCls =
 const labelCls = "mb-1 block text-xs font-semibold uppercase tracking-wide text-muted";
 
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
-  const { addProject } = useProjects();
+  const { addProject, teamMembers } = useProjects();
   const router = useRouter();
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
@@ -19,7 +19,8 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [series, setSeries] = useState<Series>("Z Series");
   const [market, setMarket] = useState<Market>("Clean H2");
   const [sizeKw, setSizeKw] = useState("");
-  const [stage, setStage] = useState<Stage>("new-lead");
+  const [stage, setStage] = useState<Stage>("cold-lead");
+  const [leadUserId, setLeadUserId] = useState("");
   const [description, setDescription] = useState("");
 
   const valid =
@@ -38,6 +39,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       sizeKw: Number(sizeKw),
       stage,
       baseDescription: description.trim(),
+      leadUserId: leadUserId || undefined,
     });
     onClose();
     router.push(`/projects/${id}`);
@@ -130,13 +132,13 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Stage</label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {STAGES.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setStage(s)}
-                  className={`flex-1 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                  className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${
                     stage === s
                       ? "border-teal-accent bg-teal-soft text-teal-accent"
                       : "border-line bg-panel text-muted hover:border-teal-accent/40"
@@ -155,6 +157,21 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What is this project about? This is posted as the project's first update."
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Project lead</label>
+            <select
+              className={inputCls}
+              value={leadUserId}
+              onChange={(e) => setLeadUserId(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {teamMembers.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

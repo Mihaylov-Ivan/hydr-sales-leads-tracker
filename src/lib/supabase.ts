@@ -15,6 +15,7 @@ import {
   TodoKind,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  normalizeStage,
 } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -46,6 +47,8 @@ export interface ProjectRow {
   expected_profit: number | null;
   last_client_contact_at: string | null;
   email_reminder_days: number | null;
+  email_reminder_enabled: boolean | null;
+  lead_user_id: string | null;
   created_at: string;
 }
 
@@ -55,6 +58,7 @@ export interface CommentRow {
   project_id: string;
   text: string;
   author: string;
+  author_user_id: string | null;
   stage_change: Stage | null;
   created_at: string;
 }
@@ -68,6 +72,7 @@ export interface TodoRow {
   answer: string | null;
   done: boolean;
   due_date: string | null;
+  owner_user_id: string | null;
   created_at: string;
   done_at: string | null;
 }
@@ -81,6 +86,7 @@ export function todoFromRow(row: TodoRow): ProjectTodo {
     ...(row.answer ? { answer: row.answer } : {}),
     done: row.done,
     ...(row.due_date ? { dueDate: row.due_date } : {}),
+    ...(row.owner_user_id ? { ownerUserId: row.owner_user_id } : {}),
     createdAt: row.created_at,
     ...(row.done_at ? { doneAt: row.done_at } : {}),
   };
@@ -181,8 +187,11 @@ export function commentFromRow(row: CommentRow): ProjectComment {
     id: row.id,
     text: row.text,
     author: row.author,
+    ...(row.author_user_id ? { authorUserId: row.author_user_id } : {}),
     createdAt: row.created_at,
-    ...(row.stage_change ? { stageChange: row.stage_change } : {}),
+    ...(row.stage_change
+      ? { stageChange: normalizeStage(row.stage_change) }
+      : {}),
   };
 }
 
@@ -230,12 +239,14 @@ export function projectFromRow(
     // Rows created before the markets feature have no market column value
     market: row.market ?? "Clean H2",
     sizeKw: row.size_kw,
-    stage: row.stage,
+    stage: normalizeStage(row.stage),
     baseDescription: row.base_description,
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
     lastClientContactAt:
       row.last_client_contact_at ?? row.created_at.slice(0, 10),
     emailReminderDays: row.email_reminder_days ?? DEFAULT_EMAIL_REMINDER_DAYS,
+    emailReminderEnabled: row.email_reminder_enabled !== false,
+    ...(row.lead_user_id ? { leadUserId: row.lead_user_id } : {}),
     comments,
     todos,
     contacts,
@@ -263,6 +274,8 @@ export function projectToRow(p: Project): ProjectRow {
     expected_profit: p.financials.expectedProfit ?? null,
     last_client_contact_at: p.lastClientContactAt,
     email_reminder_days: p.emailReminderDays,
+    email_reminder_enabled: p.emailReminderEnabled,
+    lead_user_id: p.leadUserId ?? null,
     created_at: p.createdAt,
   };
 }

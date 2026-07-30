@@ -145,6 +145,10 @@ export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const {
+    teamMembers,
+    currentUserId,
+    showFinancials,
+    setShowFinancials,
     projects,
     ready,
     aiEnabled,
@@ -181,6 +185,8 @@ export default function ProjectPage() {
 
   const summary = project.aiSummary ?? generateSummary(project);
   const isSummarizing = Boolean(summarizing[project.id]);
+  const currentUserName =
+    teamMembers.find((m) => m.id === currentUserId)?.name ?? null;
   const timeline = [...project.comments].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
@@ -243,7 +249,7 @@ export default function ProjectPage() {
       </div>
 
       {/* Key facts (click a value to edit) */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             System
@@ -322,6 +328,27 @@ export default function ProjectPage() {
             {new Date(project.createdAt).toLocaleDateString("en-GB")}
           </p>
         </div>
+
+        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Project Lead
+          </p>
+          <select
+            value={project.leadUserId ?? ""}
+            onChange={(e) =>
+              updateProject(project.id, { leadUserId: e.target.value || undefined })
+            }
+            title="Click to assign the project lead"
+            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
+          >
+            <option value="">Unassigned</option>
+            {teamMembers.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Living summary */}
@@ -378,9 +405,17 @@ export default function ProjectPage() {
 
       {/* New comment */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-deep">
-          Post an Update
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+            Post an Update
+          </h2>
+          <p className="text-xs text-muted">
+            Posting as{" "}
+            <span className="font-semibold text-deep">
+              {currentUserName ?? "unselected user"}
+            </span>
+          </p>
+        </div>
         <form onSubmit={submit} className="flex flex-col gap-3">
           <textarea
             value={text}
@@ -532,10 +567,37 @@ export default function ProjectPage() {
       <ContactList projectId={project.id} contacts={project.contacts} />
 
       {/* Financials & timeline */}
-      <FinancialsPanel
-        projectId={project.id}
-        financials={project.financials}
-      />
+      <section className="rounded-xl border border-line bg-panel p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+              Financials
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Contract value, payments, expenses, and milestones.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showFinancials}
+            onClick={() => setShowFinancials(!showFinancials)}
+            className={`rounded-lg border px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition ${
+              showFinancials
+                ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
+                : "border-line bg-surface text-deep hover:border-teal-accent/40"
+            }`}
+          >
+            {showFinancials ? "Hide" : "Show"}
+          </button>
+        </div>
+      </section>
+      {showFinancials && (
+        <FinancialsPanel
+          projectId={project.id}
+          financials={project.financials}
+        />
+      )}
 
       {/* Danger zone */}
       <div className="flex justify-end border-t border-line pt-4">

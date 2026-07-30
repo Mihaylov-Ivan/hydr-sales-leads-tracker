@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useRef } from "react";
 import { Project, isEmailReminderDue } from "@/lib/types";
 import { generateSummary } from "@/lib/summary";
+import { useProjects } from "@/lib/store";
 
 export const PROJECT_DRAG_TYPE = "application/x-hydr-project-id";
 
 export default function ProjectCard({ project }: { project: Project }) {
+  const { teamMembers } = useProjects();
   const raw = project.aiSummary ?? generateSummary(project);
   const openTodos = project.todos.filter((t) => !t.done).length;
   const emailDue = isEmailReminderDue(project);
@@ -19,6 +21,7 @@ export default function ProjectCard({ project }: { project: Project }) {
     .join(" ");
 
   const suppressClick = useRef(false);
+  const lead = teamMembers.find((m) => m.id === project.leadUserId);
 
   return (
     <Link
@@ -63,13 +66,13 @@ export default function ProjectCard({ project }: { project: Project }) {
         </div>
         {emailDue && (
           <span
-            title="Client email due"
+            title="Client follow-up due"
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-accent/15 px-2 py-1 text-[11px] font-semibold text-amber-accent"
           >
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
               <path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9Zm1.5-.5a.5.5 0 0 0-.5.5v.25l5.25 3.15a.5.5 0 0 0 .5 0L13.5 3.75V3.5a.5.5 0 0 0-.5-.5H3Zm10.5 2.1-4.9 2.94a1.5 1.5 0 0 1-1.5 0L2.2 5.1v7.4a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V5.1Z" />
             </svg>
-            Email
+            Contact
           </span>
         )}
       </div>
@@ -77,6 +80,11 @@ export default function ProjectCard({ project }: { project: Project }) {
       <span className="w-fit rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
         {project.market}
       </span>
+      {lead && (
+        <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
+          Lead: {lead.name}
+        </span>
+      )}
 
       <p className="line-clamp-3 text-sm leading-relaxed text-muted">
         {summary}

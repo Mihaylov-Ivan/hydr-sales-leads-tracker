@@ -1,12 +1,36 @@
-export type Stage = "new-lead" | "under-development" | "commissioned";
+export type Stage =
+  | "cold-lead"
+  | "hot-lead"
+  | "under-development"
+  | "commissioned";
 
-export const STAGES: Stage[] = ["new-lead", "under-development", "commissioned"];
+export const STAGES: Stage[] = [
+  "cold-lead",
+  "hot-lead",
+  "under-development",
+  "commissioned",
+];
 
 export const STAGE_LABELS: Record<Stage, string> = {
-  "new-lead": "New Lead",
+  "cold-lead": "Cold Lead (In Contact)",
+  "hot-lead": "Hot Lead (Offer Sent)",
   "under-development": "Under Development",
   commissioned: "Commissioned",
 };
+
+/** Map legacy stage ids (and unknown values) onto the current set. */
+export function normalizeStage(value: string | null | undefined): Stage {
+  if (value === "new-lead") return "cold-lead";
+  if (
+    value === "cold-lead" ||
+    value === "hot-lead" ||
+    value === "under-development" ||
+    value === "commissioned"
+  ) {
+    return value;
+  }
+  return "cold-lead";
+}
 
 export type Series = "Z Series" | "E Series" | "Custom";
 
@@ -25,10 +49,30 @@ export const MARKETS: Market[] = [
   "Burner Optimisation",
 ];
 
+export interface TeamMember {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+/**
+ * Temporary in-app team directory used for ownership assignment.
+ * Later this can be replaced with real users from auth/DB.
+ */
+export const TEAM_MEMBERS: TeamMember[] = [
+  { id: "u-andrew", name: "Andrew" },
+  { id: "u-maria", name: "Maria" },
+  { id: "u-daniel", name: "Daniel" },
+  { id: "u-irina", name: "Irina" },
+];
+
 export interface ProjectComment {
   id: string;
   text: string;
+  /** Display name of the author at the time of posting */
   author: string;
+  /** Team member id when posted by a selected app user */
+  authorUserId?: string;
   createdAt: string; // ISO
   /** Present when the comment also moved the project to a new stage */
   stageChange?: Stage;
@@ -150,6 +194,8 @@ export interface ProjectTodo {
   done: boolean;
   /** Date (yyyy-mm-dd) the item should be completed by */
   dueDate?: string;
+  /** Team member responsible for this item */
+  ownerUserId?: string;
   createdAt: string; // ISO
   /** Set when the item was checked off */
   doneAt?: string; // ISO
@@ -175,8 +221,12 @@ export interface Project {
    * Defaults to the project creation date when unset.
    */
   lastClientContactAt: string;
-  /** Days between follow-up emails (e.g. 7 = weekly) */
+  /** Days between follow-up contacts (e.g. 7 = weekly) */
   emailReminderDays: number;
+  /** When false, follow-up reminders are paused for this project */
+  emailReminderEnabled: boolean;
+  /** Team member responsible for this project/deal */
+  leadUserId?: string;
   comments: ProjectComment[];
   todos: ProjectTodo[];
   contacts: ProjectContact[];
@@ -221,8 +271,9 @@ export function nextEmailReminderDate(p: Project): string {
   return addDays(lastContactDate(p), p.emailReminderDays || DEFAULT_EMAIL_REMINDER_DAYS);
 }
 
-/** True when it's time (or overdue) to email the client */
+/** True when reminders are on and it's time (or overdue) to contact the client */
 export function isEmailReminderDue(p: Project): boolean {
+  if (p.emailReminderEnabled === false) return false;
   return todayDate() >= nextEmailReminderDate(p);
 }
 

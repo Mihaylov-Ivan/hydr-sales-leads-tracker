@@ -24,8 +24,13 @@ create table if not exists public.projects (
     )),
   size_kw integer not null
     check (size_kw > 0),
-  stage text not null default 'new-lead'
-    check (stage in ('new-lead', 'under-development', 'commissioned')),
+  stage text not null default 'cold-lead'
+    check (stage in (
+      'cold-lead',
+      'hot-lead',
+      'under-development',
+      'commissioned'
+    )),
   base_description text not null default '',
   ai_summary text,
   -- Financial scalars (optional)
@@ -37,6 +42,7 @@ create table if not exists public.projects (
   last_client_contact_at date not null default current_date,
   email_reminder_days integer not null default 7
     check (email_reminder_days > 0),
+  email_reminder_enabled boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -45,9 +51,15 @@ create table if not exists public.project_comments (
   project_id uuid not null references public.projects (id) on delete cascade,
   text text not null,
   author text not null default 'You',
+  author_user_id text,
   -- Set when the comment also moved the project to a new stage
   stage_change text
-    check (stage_change in ('new-lead', 'under-development', 'commissioned')),
+    check (stage_change in (
+      'cold-lead',
+      'hot-lead',
+      'under-development',
+      'commissioned'
+    )),
   created_at timestamptz not null default now()
 );
 
@@ -225,12 +237,12 @@ values
    now() - interval '120 days'),
   ('22222222-2222-4222-8222-222222222222',
    'Warsaw Glassworks Oxy-Fuel Boost', 'Vitro-Pol S.A.', 'Poland', 'Warsaw',
-   'E Series', 'Burner Optimisation', 250, 'new-lead',
+   'E Series', 'Burner Optimisation', 250, 'cold-lead',
    'E Series system to feed hydrogen and oxygen into the glass furnace combustion process to cut natural gas consumption.',
    now() - interval '14 days'),
   ('33333333-3333-4333-8333-333333333333',
    'Munich Bus Fleet Refuelling', 'Stadtwerke München', 'Germany', 'Munich',
-   'Z Series', 'Clean H2', 2000, 'new-lead',
+   'Z Series', 'Clean H2', 2000, 'hot-lead',
    'Hydrogen production and compression for a municipal bus refuelling station, initial fleet of 12 fuel-cell buses.',
    now() - interval '21 days'),
   ('44444444-4444-4444-8444-444444444444',
@@ -240,7 +252,7 @@ values
    now() - interval '300 days'),
   ('55555555-5555-4555-8555-555555555555',
    'Plovdiv Greenhouse CHP', 'AgroTherm EOOD', 'Bulgaria', 'Plovdiv',
-   'E Series', 'Burner Optimisation', 100, 'new-lead',
+   'E Series', 'Burner Optimisation', 100, 'cold-lead',
    'Small E Series unit to enrich the CHP combustion for a tomato greenhouse complex, improving burner efficiency and CO2 dosing.',
    now() - interval '7 days')
 on conflict (id) do nothing;

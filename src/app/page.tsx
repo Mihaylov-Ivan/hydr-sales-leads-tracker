@@ -6,6 +6,7 @@ import { Market, MARKETS, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import OverviewTimeline from "@/components/OverviewTimeline";
+import TeamMembersPanel from "@/components/TeamMembersPanel";
 
 type SizeBucket = "any" | "small" | "medium" | "large";
 
@@ -17,8 +18,9 @@ const SIZE_BUCKETS: { id: SizeBucket; label: string; match: (kw: number) => bool
 ];
 
 const COLUMN_ACCENT: Record<Stage, string> = {
-  "new-lead": "border-t-teal-accent",
-  "under-development": "border-t-amber-accent",
+  "cold-lead": "border-t-teal-accent",
+  "hot-lead": "border-t-amber-accent",
+  "under-development": "border-t-olive",
   commissioned: "border-t-green-accent",
 };
 
@@ -144,7 +146,8 @@ function MarketMultiSelect({
 }
 
 export default function Dashboard() {
-  const { projects, ready, updateProject } = useProjects();
+  const { projects, ready, updateProject, showFinancials, setShowFinancials } =
+    useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState<Set<Market>>(
     () => new Set(MARKETS),
@@ -152,6 +155,7 @@ export default function Dashboard() {
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showTeamMembers, setShowTeamMembers] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
 
   const countries = useMemo(
@@ -186,7 +190,8 @@ export default function Dashboard() {
 
   const byStage = useMemo(() => {
     const map: Record<Stage, typeof filtered> = {
-      "new-lead": [],
+      "cold-lead": [],
+      "hot-lead": [],
       "under-development": [],
       commissioned: [],
     };
@@ -210,12 +215,33 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-deep">Projects</h1>
         </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
-        >
-          + New Project
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showFinancials}
+            onClick={() => setShowFinancials(!showFinancials)}
+            className={`rounded-lg border px-4 py-2.5 text-sm font-bold uppercase tracking-wide shadow-sm transition ${
+              showFinancials
+                ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
+                : "border-line bg-panel text-deep hover:border-teal-accent/40 hover:text-teal-accent"
+            }`}
+          >
+            Financials {showFinancials ? "On" : "Off"}
+          </button>
+          <button
+            onClick={() => setShowTeamMembers(true)}
+            className="rounded-lg border border-line bg-panel px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
+          >
+            Team Members
+          </button>
+          <button
+            onClick={() => setShowNew(true)}
+            className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
+          >
+            + New Project
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -258,10 +284,10 @@ export default function Dashboard() {
       </div>
 
       {/* Cash-in timeline */}
-      <OverviewTimeline projects={filtered} />
+      {showFinancials && <OverviewTimeline projects={filtered} />}
 
       {/* Stage board — drag cards between columns to change stage */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {STAGES.map((stage) => {
           const isOver = dragOverStage === stage;
           return (
@@ -326,6 +352,9 @@ export default function Dashboard() {
       </div>
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}
+      {showTeamMembers && (
+        <TeamMembersPanel onClose={() => setShowTeamMembers(false)} />
+      )}
     </div>
   );
 }

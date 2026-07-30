@@ -86,9 +86,11 @@ function SidebarAnswer({
 function OutstandingItem({
   projectId,
   todo,
+  ownerName,
 }: {
   projectId: string;
   todo: ProjectTodo;
+  ownerName: string;
 }) {
   const { toggleTodo, updateTodo } = useProjects();
 
@@ -112,6 +114,9 @@ function OutstandingItem({
             <span className="sr-only">{TODO_KIND_LABELS[todo.kind]}</span>
           </div>
           <p className="mt-1 text-xs leading-snug text-ink">{todo.text}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Owner: {ownerName}
+          </p>
           {todo.kind === "question" && (
             <SidebarAnswer
               todo={todo}
@@ -131,7 +136,7 @@ type Group = {
 };
 
 export default function OutstandingSidebar() {
-  const { projects, ready, markClientEmailed } = useProjects();
+  const { projects, ready, markClientContacted, teamMembers } = useProjects();
 
   const groups = useMemo(() => {
     const list: Group[] = [];
@@ -206,17 +211,17 @@ export default function OutstandingSidebar() {
                           </span>
                           <div className="min-w-0 flex-1">
                             <span className="rounded bg-amber-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-accent">
-                              Email
+                              Contact
                             </span>
                             <p className="mt-1 text-xs text-ink">
                               Follow up with {project.client}
                             </p>
                             <button
                               type="button"
-                              onClick={() => markClientEmailed(project.id)}
+                              onClick={() => markClientContacted(project.id)}
                               className="mt-1.5 text-[11px] font-semibold text-teal-accent hover:underline"
                             >
-                              Mark emailed
+                              Contacted
                             </button>
                           </div>
                         </div>
@@ -227,6 +232,10 @@ export default function OutstandingSidebar() {
                         key={todo.id}
                         projectId={project.id}
                         todo={todo}
+                        ownerName={
+                          teamMembers.find((m) => m.id === todo.ownerUserId)?.name ??
+                          "Unassigned"
+                        }
                       />
                     ))}
                   </ul>
