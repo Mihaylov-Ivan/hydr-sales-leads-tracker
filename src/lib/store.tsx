@@ -520,17 +520,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
-  const teamUpdateTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
-
-  useEffect(() => {
-    const timers = teamUpdateTimers.current;
-    return () => {
-      for (const t of timers.values()) clearTimeout(t);
-      timers.clear();
-    };
-  }, []);
 
   useEffect(() => {
     setShowFinancialsState(loadShowFinancials());
@@ -662,7 +651,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (supabase) {
         void supabase
           .from("team_members")
-          .insert(teamMemberToRow(member))
+          .upsert(teamMemberToRow(member), { onConflict: "id" })
           .then(logDbError("team member insert"));
       }
     },
@@ -671,38 +660,34 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateTeamMember = useCallback(
     (memberId: string, patch: { name?: string; email?: string | null }) => {
-      let updated: TeamMember | null = null;
+      const current = teamMembersRef.current.find((m) => m.id === memberId);
+      if (!current) return;
+
+      const next: TeamMember = { ...current };
+      if (patch.name !== undefined) {
+        const trimmed = patch.name.trim();
+        // Keep non-empty trimmed names; allow brief untrimmed input while typing
+        if (trimmed) next.name = trimmed;
+        else if (patch.name.length > 0) next.name = patch.name;
+      }
+      if (patch.email !== undefined) {
+        if (patch.email === null || !patch.email.trim()) delete next.email;
+        else next.email = patch.email.trim();
+      }
+
+      teamMembersRef.current = teamMembersRef.current.map((m) =>
+        m.id === memberId ? next : m,
+      );
       setTeamMembers((prev) =>
-        prev.map((m) => {
-          if (m.id !== memberId) return m;
-          const next = { ...m };
-          if (patch.name !== undefined) {
-            const trimmed = patch.name.trim();
-            if (trimmed) next.name = trimmed;
-          }
-          if (patch.email !== undefined) {
-            if (patch.email === null || !patch.email.trim()) delete next.email;
-            else next.email = patch.email.trim();
-          }
-          updated = next;
-          return next;
-        }),
+        prev.map((m) => (m.id === memberId ? next : m)),
       );
-      if (!supabase || !updated) return;
-      const db = supabase;
-      const row = teamMemberToRow(updated);
-      const existing = teamUpdateTimers.current.get(memberId);
-      if (existing) clearTimeout(existing);
-      teamUpdateTimers.current.set(
-        memberId,
-        setTimeout(() => {
-          teamUpdateTimers.current.delete(memberId);
-          void db
-            .from("team_members")
-            .upsert(row, { onConflict: "id" })
-            .then(logDbError("team member update"));
-        }, 400),
-      );
+
+      if (supabase) {
+        void supabase
+          .from("team_members")
+          .upsert(teamMemberToRow(next), { onConflict: "id" })
+          .then(logDbError("team member update"));
+      }
     },
     [],
   );
