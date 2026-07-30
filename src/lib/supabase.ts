@@ -14,6 +14,7 @@ import {
   ProjectTodo,
   Series,
   Stage,
+  TeamMember,
   TodoKind,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
@@ -145,6 +146,30 @@ export function fileFromRow(row: FileRow): ProjectFile {
       : {}),
     ...(row.uploaded_by_name ? { uploadedByName: row.uploaded_by_name } : {}),
     createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.team_members */
+export interface TeamMemberRow {
+  id: string;
+  name: string;
+  email: string | null;
+  created_at: string;
+}
+
+export function teamMemberFromRow(row: TeamMemberRow): TeamMember {
+  return {
+    id: row.id,
+    name: row.name,
+    ...(row.email ? { email: row.email } : {}),
+  };
+}
+
+export function teamMemberToRow(member: TeamMember): Omit<TeamMemberRow, "created_at"> {
+  return {
+    id: member.id,
+    name: member.name,
+    email: member.email ?? null,
   };
 }
 

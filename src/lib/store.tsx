@@ -40,6 +40,8 @@ import {
   milestoneFromRow,
   paymentFromRow,
   projectFromRow,
+  teamMemberFromRow,
+  teamMemberToRow,
   todoFromRow,
 } from "./supabase";
 import type {
@@ -50,11 +52,13 @@ import type {
   MilestoneRow,
   PaymentRow,
   ProjectRow,
+  TeamMemberRow,
   TodoRow,
 } from "./supabase";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
+const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
 const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
 const FILE_STORAGE_BUCKET = "project-files";
@@ -269,6 +273,83 @@ function loadLocalTeamMembers(): TeamMember[] {
   }
 }
 
+function sanitizeTeamMembers(rows: TeamMember[]): TeamMember[] {
+  return rows
+    .map((m) => ({
+      id: m.id,
+      name: m.name?.trim() ?? "",
+      ...(m.email?.trim() ? { email: m.email.trim() } : {}),
+    }))
+    .filter((m) => m.id && m.name);
+}
+
+/**
+ * Load team members from Supabase. If the table is empty (or missing),
+ * seed once from browser localStorage so existing name edits are not lost.
+ */
+async function loadRemoteTeamMembers(): Promise<TeamMember[]> {
+  const res = await supabase!
+    .from("team_members")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (res.error) {
+    console.error("Supabase team members load failed:", res.error.message);
+    return loadLocalTeamMembers();
+  }
+
+  const remote = sanitizeTeamMembers(
+    ((res.data ?? []) as TeamMemberRow[]).map(teamMemberFromRow),
+  );
+
+  let migrated = false;
+  let hadLocalStore = false;
+  try {
+    migrated = window.localStorage.getItem(TEAM_MIGRATED_KEY) === "1";
+    hadLocalStore = window.localStorage.getItem(TEAM_STORAGE_KEY) != null;
+  } catch {
+    // ignore
+  }
+
+  if (!migrated) {
+    const local = loadLocalTeamMembers();
+    const byId = new Map<string, TeamMember>();
+    for (const m of remote) byId.set(m.id, m);
+
+    if (remote.length === 0) {
+      for (const m of local) byId.set(m.id, m);
+    } else if (hadLocalStore) {
+      // This browser had edited the roster before DB sync — push those
+      // names up once, then treat Supabase as the source of truth.
+      for (const m of local) byId.set(m.id, m);
+    } else {
+      for (const m of local) {
+        if (!byId.has(m.id)) byId.set(m.id, m);
+      }
+    }
+
+    const merged = sanitizeTeamMembers([...byId.values()]);
+    if (merged.length > 0) {
+      const { error } = await supabase!
+        .from("team_members")
+        .upsert(merged.map(teamMemberToRow), { onConflict: "id" });
+      if (error) {
+        console.error("Supabase team members seed failed:", error.message);
+      } else {
+        try {
+          window.localStorage.setItem(TEAM_MIGRATED_KEY, "1");
+        } catch {
+          // ignore
+        }
+        return merged.sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
+  }
+
+  if (remote.length > 0) return remote;
+  return loadLocalTeamMembers();
+}
+
 function loadLocalCurrentUserId(members: TeamMember[]): string | null {
   try {
     const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
@@ -439,24 +520,48 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
+  const teamUpdateTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
   useEffect(() => {
-    const members = loadLocalTeamMembers();
-    setTeamMembers(members);
-    setCurrentUserIdState(loadLocalCurrentUserId(members));
+    const timers = teamUpdateTimers.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     setShowFinancialsState(loadShowFinancials());
-    if (supabase) {
-      loadRemote()
-        .then(setProjects)
-        .catch((e) => {
-          console.error("Failed to load projects from Supabase:", e);
-          setProjects([]);
-        })
-        .finally(() => setReady(true));
-    } else {
-      setProjects(loadLocal());
-      setReady(true);
+
+    async function boot() {
+      if (supabase) {
+        const [members, remoteProjects] = await Promise.all([
+          loadRemoteTeamMembers().catch((e) => {
+            console.error("Failed to load team members from Supabase:", e);
+            return loadLocalTeamMembers();
+          }),
+          loadRemote().catch((e) => {
+            console.error("Failed to load projects from Supabase:", e);
+            return [] as Project[];
+          }),
+        ]);
+        setTeamMembers(members);
+        setCurrentUserIdState(loadLocalCurrentUserId(members));
+        setProjects(remoteProjects);
+        setReady(true);
+      } else {
+        const members = loadLocalTeamMembers();
+        setTeamMembers(members);
+        setCurrentUserIdState(loadLocalCurrentUserId(members));
+        setProjects(loadLocal());
+        setReady(true);
+      }
     }
+
+    void boot();
+
     fetch("/api/summarize")
       .then((r) => r.json())
       .then((d) => setAiEnabled(Boolean(d.enabled)))
@@ -488,7 +593,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [projects, ready]);
 
   useEffect(() => {
-    if (ready) {
+    if (ready && !supabase) {
       window.localStorage.setItem(TEAM_STORAGE_KEY, JSON.stringify(teamMembers));
     }
   }, [teamMembers, ready]);
@@ -551,13 +656,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         name,
         ...(email ? { email } : {}),
       };
-      setTeamMembers((prev) => [...prev, member]);
+      setTeamMembers((prev) =>
+        [...prev, member].sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      if (supabase) {
+        void supabase
+          .from("team_members")
+          .insert(teamMemberToRow(member))
+          .then(logDbError("team member insert"));
+      }
     },
     [],
   );
 
   const updateTeamMember = useCallback(
     (memberId: string, patch: { name?: string; email?: string | null }) => {
+      let updated: TeamMember | null = null;
       setTeamMembers((prev) =>
         prev.map((m) => {
           if (m.id !== memberId) return m;
@@ -570,8 +684,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.email === null || !patch.email.trim()) delete next.email;
             else next.email = patch.email.trim();
           }
+          updated = next;
           return next;
         }),
+      );
+      if (!supabase || !updated) return;
+      const db = supabase;
+      const row = teamMemberToRow(updated);
+      const existing = teamUpdateTimers.current.get(memberId);
+      if (existing) clearTimeout(existing);
+      teamUpdateTimers.current.set(
+        memberId,
+        setTimeout(() => {
+          teamUpdateTimers.current.delete(memberId);
+          void db
+            .from("team_members")
+            .upsert(row, { onConflict: "id" })
+            .then(logDbError("team member update"));
+        }, 400),
       );
     },
     [],

@@ -7,6 +7,13 @@
 
 -- ---------- Tables ----------
 
+create table if not exists public.team_members (
+  id text primary key,
+  name text not null,
+  email text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -179,10 +186,14 @@ create table if not exists public.project_files (
 create index if not exists project_files_project_created_idx
   on public.project_files (project_id, created_at desc);
 
+create index if not exists team_members_name_idx
+  on public.team_members (name);
+
 -- ---------- Row Level Security ----------
 -- The app has no user accounts yet, so the browser (anon key) gets full
 -- access. If you add Supabase Auth later, tighten these policies.
 
+alter table public.team_members enable row level security;
 alter table public.projects enable row level security;
 alter table public.project_comments enable row level security;
 alter table public.project_todos enable row level security;
@@ -191,6 +202,14 @@ alter table public.project_milestones enable row level security;
 alter table public.project_payments enable row level security;
 alter table public.project_expenses enable row level security;
 alter table public.project_files enable row level security;
+
+drop policy if exists "anon full access" on public.team_members;
+create policy "anon full access"
+  on public.team_members
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
 
 drop policy if exists "anon full access" on public.projects;
 create policy "anon full access"
@@ -259,6 +278,14 @@ create policy "anon full access"
 -- ---------- Seed data (optional) ----------
 -- The same demo projects the app used to ship with. Delete this section
 -- if you want to start with an empty tracker.
+
+insert into public.team_members (id, name)
+values
+  ('u-andrew', 'Andrew'),
+  ('u-maria', 'Maria'),
+  ('u-daniel', 'Daniel'),
+  ('u-irina', 'Irina')
+on conflict (id) do nothing;
 
 insert into public.projects
   (id, name, client, country, city, series, market, size_kw, stage, base_description, created_at)

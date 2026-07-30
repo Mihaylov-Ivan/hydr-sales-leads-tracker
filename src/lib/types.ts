@@ -65,8 +65,8 @@ export interface TeamMember {
 }
 
 /**
- * Temporary in-app team directory used for ownership assignment.
- * Later this can be replaced with real users from auth/DB.
+ * Default team roster used when no DB / local list exists yet.
+ * Live data lives in Supabase `team_members` (or localStorage without DB).
  */
 export const TEAM_MEMBERS: TeamMember[] = [
   { id: "u-andrew", name: "Andrew" },
