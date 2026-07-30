@@ -197,7 +197,7 @@ export interface ProjectPayment {
 export interface ProjectExpenseItem {
   id: string;
   amount: number;
-  /** Share of overall project expenses, e.g. 40 for 40% */
+  /** Share of contract value, e.g. 40 for 40% */
   percent?: number;
   /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
   dueDate: string;

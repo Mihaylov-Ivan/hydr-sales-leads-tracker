@@ -537,8 +537,8 @@ function ExpenseRow({
   function handlePercentChange(raw: string) {
     setPercent(raw);
     const pct = parseOptionalNumber(raw);
-    if (pct != null && financials.expenses != null) {
-      setAmount(String(amountFromPercent(financials.expenses, pct)));
+    if (pct != null && financials.contractValue != null) {
+      setAmount(String(amountFromPercent(financials.contractValue, pct)));
     }
   }
 
@@ -553,8 +553,8 @@ function ExpenseRow({
   function save() {
     const pct = parseOptionalNumber(percent);
     let amt = parseOptionalNumber(amount);
-    if (amt == null && pct != null && financials.expenses != null) {
-      amt = amountFromPercent(financials.expenses, pct);
+    if (amt == null && pct != null && financials.contractValue != null) {
+      amt = amountFromPercent(financials.contractValue, pct);
     }
     const date = linked?.date ?? dueDate;
     if (amt == null || amt <= 0 || !date) return;
@@ -575,7 +575,7 @@ function ExpenseRow({
           <input
             value={percent}
             onChange={(e) => handlePercentChange(e.target.value)}
-            placeholder="% of expenses"
+            placeholder="% of contract"
             className={inputCls}
           />
           <input
@@ -849,8 +849,8 @@ export default function FinancialsPanel({
   function handleExpPercentChange(raw: string) {
     setExpPercent(raw);
     const pct = parseOptionalNumber(raw);
-    if (pct != null && financials.expenses != null) {
-      setExpAmount(String(amountFromPercent(financials.expenses, pct)));
+    if (pct != null && financials.contractValue != null) {
+      setExpAmount(String(amountFromPercent(financials.contractValue, pct)));
     }
   }
 
@@ -873,11 +873,11 @@ export default function FinancialsPanel({
 
   useEffect(() => {
     const pct = parseOptionalNumber(expPercent);
-    if (pct != null && financials.expenses != null) {
-      setExpAmount(String(amountFromPercent(financials.expenses, pct)));
+    if (pct != null && financials.contractValue != null) {
+      setExpAmount(String(amountFromPercent(financials.contractValue, pct)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [financials.expenses]);
+  }, [financials.contractValue]);
 
   // Keep linked payment date in sync if the chosen milestone's date changes
   useEffect(() => {
@@ -922,8 +922,12 @@ export default function FinancialsPanel({
     if (!dueDate) return;
     const percent = parseOptionalNumber(expPercent);
     let amount = parseOptionalNumber(expAmount);
-    if (amount == null && percent != null && financials.expenses != null) {
-      amount = amountFromPercent(financials.expenses, percent);
+    if (
+      amount == null &&
+      percent != null &&
+      financials.contractValue != null
+    ) {
+      amount = amountFromPercent(financials.contractValue, percent);
     }
     if (amount == null || amount <= 0) return;
     addExpense(projectId, {
@@ -960,7 +964,7 @@ export default function FinancialsPanel({
   const canAddExpense =
     Boolean(linkedExpMilestone?.date || expDate) &&
     (Boolean(expAmount.trim()) ||
-      (Boolean(expPercent.trim()) && financials.expenses != null));
+      (Boolean(expPercent.trim()) && financials.contractValue != null));
 
   const sortedPayments = [...financials.payments].sort(
     (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
@@ -1132,12 +1136,12 @@ export default function FinancialsPanel({
             <input
               value={expPercent}
               onChange={(e) => handleExpPercentChange(e.target.value)}
-              placeholder="% of expenses"
+              placeholder="% of contract"
               className={inputCls}
               title={
-                financials.expenses == null
-                  ? "Set overall expenses first to auto-calculate from %"
-                  : "Amount is calculated from overall expenses × %"
+                financials.contractValue == null
+                  ? "Set a contract value first to auto-calculate the amount"
+                  : "Amount is calculated from contract value × %"
               }
             />
             <input
@@ -1180,9 +1184,9 @@ export default function FinancialsPanel({
               className={`${inputCls} col-span-2`}
             />
           </form>
-          {financials.expenses == null && (
+          {financials.contractValue == null && (
             <p className="mb-2 text-[11px] text-muted">
-              Set overall expenses above to auto-fill amount from %.
+              Set a contract value above to auto-fill amount from %.
             </p>
           )}
           {sortedExpenses.length === 0 ? (
