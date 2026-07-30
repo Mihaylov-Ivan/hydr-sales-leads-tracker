@@ -2,14 +2,22 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 
 export default function Header() {
+  const router = useRouter();
   const { teamMembers, currentUserId, setCurrentUserId, ready } = useProjects();
   const selectedUserId =
     currentUserId && teamMembers.some((m) => m.id === currentUserId)
       ? currentUserId
       : (teamMembers[0]?.id ?? "");
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
@@ -28,30 +36,39 @@ export default function Header() {
           </span>
         </Link>
 
-        <label className="flex min-w-0 items-center gap-2">
-          <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-muted sm:inline">
-            Working as
-          </span>
-          <select
-            value={selectedUserId}
-            disabled={!ready || teamMembers.length === 0}
-            onChange={(e) => setCurrentUserId(e.target.value)}
-            aria-label="Select current user"
-            className="max-w-[12rem] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-medium text-deep shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[16rem]"
-          >
-            {teamMembers.length === 0 ? (
-              <option value="" disabled>
-                No team members
-              </option>
-            ) : (
-              teamMembers.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <label className="flex min-w-0 items-center gap-2">
+            <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-muted sm:inline">
+              Working as
+            </span>
+            <select
+              value={selectedUserId}
+              disabled={!ready || teamMembers.length === 0}
+              onChange={(e) => setCurrentUserId(e.target.value)}
+              aria-label="Select current user"
+              className="max-w-[12rem] rounded-lg border border-line bg-panel px-3 py-2 text-sm font-medium text-deep shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[16rem]"
+            >
+              {teamMembers.length === 0 ? (
+                <option value="" disabled>
+                  No team members
                 </option>
-              ))
-            )}
-          </select>
-        </label>
+              ) : (
+                teamMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void logout()}
+            className="shrink-0 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
+          >
+            Log out
+          </button>
+        </div>
       </div>
     </header>
   );
