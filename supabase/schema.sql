@@ -1,7 +1,8 @@
 -- ============================================================
 -- Hydrogenera Sales Leads Tracker — Supabase schema (full)
 -- Run this in the Supabase Dashboard -> SQL Editor for a fresh DB.
--- For existing databases, run migration-003-app-features.sql instead.
+-- For existing databases matching the pre-ownership schema, run:
+--   migration-005-ownership-reminders-stages.sql
 -- ============================================================
 
 -- ---------- Tables ----------
@@ -38,7 +39,8 @@ create table if not exists public.projects (
   contract_signed_date date,
   expenses numeric,
   expected_profit numeric,
-  -- Client email follow-up
+  -- Ownership + client follow-up
+  lead_user_id text,
   last_client_contact_at date not null default current_date,
   email_reminder_days integer not null default 7
     check (email_reminder_days > 0),
@@ -72,6 +74,7 @@ create table if not exists public.project_todos (
   answer text,
   done boolean not null default false,
   due_date date,
+  owner_user_id text,
   created_at timestamptz not null default now(),
   -- Set when the item is checked off, cleared when unchecked
   done_at timestamptz
