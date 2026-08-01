@@ -10,6 +10,7 @@ import {
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
+  todayDate,
 } from "@/lib/types";
 
 const inputCls =
@@ -458,6 +459,31 @@ function PaymentRow({
   const linkedName = displayLinked
     ? MILESTONE_LABELS[displayLinked.kind]
     : null;
+  const expectedDate = displayLinked?.date ?? payment.dueDate;
+  const isActual = Boolean(payment.actualDate);
+  const isDelayed = !isActual && expectedDate < todayDate();
+
+  function markReceived() {
+    updatePayment(projectId, payment.id, {
+      amount: payment.amount,
+      ...(payment.percent != null ? { percent: payment.percent } : {}),
+      dueDate: payment.dueDate,
+      label: payment.label ?? "",
+      ...(payment.milestoneId ? { milestoneId: payment.milestoneId } : {}),
+      actualDate: todayDate(),
+    });
+  }
+
+  function clearActual() {
+    updatePayment(projectId, payment.id, {
+      amount: payment.amount,
+      ...(payment.percent != null ? { percent: payment.percent } : {}),
+      dueDate: payment.dueDate,
+      label: payment.label ?? "",
+      ...(payment.milestoneId ? { milestoneId: payment.milestoneId } : {}),
+      actualDate: null,
+    });
+  }
 
   return (
     <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
@@ -470,8 +496,18 @@ function PaymentRow({
         )}
       </span>
       <span className="text-muted">
-        on {formatDate(displayLinked?.date ?? payment.dueDate)}
+        on {formatDate(expectedDate)}
       </span>
+      {isActual && (
+        <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
+          Received {formatDate(payment.actualDate!)}
+        </span>
+      )}
+      {isDelayed && (
+        <span className="rounded-full bg-amber-accent/15 px-2 py-0.5 text-[11px] font-semibold text-amber-accent">
+          Delayed
+        </span>
+      )}
       {linkedName && (
         <span className="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
           ↔ {linkedName}
@@ -481,6 +517,23 @@ function PaymentRow({
         <span className="truncate text-xs text-muted">· {payment.label}</span>
       )}
       <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
+        {!isActual ? (
+          <button
+            type="button"
+            onClick={markReceived}
+            className="text-xs font-semibold text-green-accent hover:underline"
+          >
+            Mark received
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={clearActual}
+            className="text-xs font-semibold text-muted hover:underline"
+          >
+            Undo received
+          </button>
+        )}
         <button
           type="button"
           onClick={startEdit}
@@ -636,6 +689,31 @@ function ExpenseRow({
   const linkedName = displayLinked
     ? MILESTONE_LABELS[displayLinked.kind]
     : null;
+  const expectedDate = displayLinked?.date ?? expense.dueDate;
+  const isActual = Boolean(expense.actualDate);
+  const isDelayed = !isActual && expectedDate < todayDate();
+
+  function markPaid() {
+    updateExpense(projectId, expense.id, {
+      amount: expense.amount,
+      ...(expense.percent != null ? { percent: expense.percent } : {}),
+      dueDate: expense.dueDate,
+      label: expense.label ?? "",
+      ...(expense.milestoneId ? { milestoneId: expense.milestoneId } : {}),
+      actualDate: todayDate(),
+    });
+  }
+
+  function clearActual() {
+    updateExpense(projectId, expense.id, {
+      amount: expense.amount,
+      ...(expense.percent != null ? { percent: expense.percent } : {}),
+      dueDate: expense.dueDate,
+      label: expense.label ?? "",
+      ...(expense.milestoneId ? { milestoneId: expense.milestoneId } : {}),
+      actualDate: null,
+    });
+  }
 
   return (
     <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
@@ -648,8 +726,18 @@ function ExpenseRow({
         )}
       </span>
       <span className="text-muted">
-        on {formatDate(displayLinked?.date ?? expense.dueDate)}
+        on {formatDate(expectedDate)}
       </span>
+      {isActual && (
+        <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
+          Paid {formatDate(expense.actualDate!)}
+        </span>
+      )}
+      {isDelayed && (
+        <span className="rounded-full bg-amber-accent/15 px-2 py-0.5 text-[11px] font-semibold text-amber-accent">
+          Delayed
+        </span>
+      )}
       {linkedName && (
         <span className="rounded-full bg-amber-accent/15 px-2 py-0.5 text-[11px] font-semibold text-amber-accent">
           ↔ {linkedName}
@@ -659,6 +747,23 @@ function ExpenseRow({
         <span className="truncate text-xs text-muted">· {expense.label}</span>
       )}
       <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
+        {!isActual ? (
+          <button
+            type="button"
+            onClick={markPaid}
+            className="text-xs font-semibold text-green-accent hover:underline"
+          >
+            Mark paid
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={clearActual}
+            className="text-xs font-semibold text-muted hover:underline"
+          >
+            Undo paid
+          </button>
+        )}
         <button
           type="button"
           onClick={startEdit}

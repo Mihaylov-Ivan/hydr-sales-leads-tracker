@@ -16,7 +16,12 @@ import {
   Stage,
   TeamMember,
   TodoKind,
+  CompanyFinanceSettings,
+  CompanyMonthlyExpense,
+  CompanyMonthlyExpenseStatus,
+  StageProbabilities,
   DEFAULT_EMAIL_REMINDER_DAYS,
+  DEFAULT_STAGE_PROBABILITIES,
   emptyFinancials,
   normalizeStage,
 } from "./types";
@@ -180,6 +185,7 @@ export interface PaymentRow {
   amount: number;
   percent: number | null;
   due_date: string;
+  actual_date: string | null;
   label: string | null;
   milestone_id: string | null;
   created_at: string;
@@ -191,6 +197,7 @@ export function paymentFromRow(row: PaymentRow): ProjectPayment {
     amount: row.amount,
     ...(row.percent != null ? { percent: row.percent } : {}),
     dueDate: row.due_date,
+    ...(row.actual_date ? { actualDate: row.actual_date } : {}),
     ...(row.label ? { label: row.label } : {}),
     ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
     createdAt: row.created_at,
@@ -204,6 +211,7 @@ export interface ExpenseRow {
   amount: number;
   percent: number | null;
   due_date: string;
+  actual_date: string | null;
   label: string | null;
   milestone_id: string | null;
   created_at: string;
@@ -215,9 +223,83 @@ export function expenseFromRow(row: ExpenseRow): ProjectExpenseItem {
     amount: row.amount,
     ...(row.percent != null ? { percent: row.percent } : {}),
     dueDate: row.due_date,
+    ...(row.actual_date ? { actualDate: row.actual_date } : {}),
     ...(row.label ? { label: row.label } : {}),
     ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
     createdAt: row.created_at,
+  };
+}
+
+/** Shape of the singleton row in public.company_finance_settings */
+export interface FinanceSettingsRow {
+  id: number;
+  opening_cash: number;
+  min_working_capital: number;
+  stage_probabilities: StageProbabilities | null;
+  monthly_expenses: CompanyMonthlyExpense[] | null;
+  opening_cash_as_of: string | null;
+  updated_at: string;
+}
+
+function normalizeStageProbabilities(
+  raw: StageProbabilities | null | undefined,
+): StageProbabilities {
+  return {
+    ...DEFAULT_STAGE_PROBABILITIES,
+    ...(raw ?? {}),
+  };
+}
+
+function normalizeMonthlyExpenses(
+  raw: CompanyMonthlyExpense[] | null | undefined,
+): CompanyMonthlyExpense[] {
+  if (!Array.isArray(raw)) return [];
+  const byMonth = new Map<string, CompanyMonthlyExpense>();
+  for (const item of raw) {
+    if (!item || typeof item.month !== "string") continue;
+    const month = item.month.slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const amount = Number(item.amount);
+    if (!Number.isFinite(amount) || amount < 0) continue;
+    const status: CompanyMonthlyExpenseStatus =
+      item.status === "actual" ? "actual" : "projected";
+    byMonth.set(month, { month, amount, status });
+  }
+  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function normalizeAsOf(raw: string | null | undefined): string | undefined {
+  if (!raw || typeof raw !== "string") return undefined;
+  const month = raw.slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(month) ? month : undefined;
+}
+
+export function financeSettingsFromRow(
+  row: FinanceSettingsRow,
+): CompanyFinanceSettings {
+  return {
+    openingCash: Number(row.opening_cash) || 0,
+    minWorkingCapital: Number(row.min_working_capital) || 0,
+    stageProbabilities: normalizeStageProbabilities(row.stage_probabilities),
+    monthlyExpenses: normalizeMonthlyExpenses(row.monthly_expenses),
+    ...(normalizeAsOf(row.opening_cash_as_of)
+      ? { openingCashAsOf: normalizeAsOf(row.opening_cash_as_of) }
+      : {}),
+  };
+}
+
+export function financeSettingsToRow(
+  settings: CompanyFinanceSettings,
+): Omit<FinanceSettingsRow, "updated_at"> {
+  return {
+    id: 1,
+    opening_cash: settings.openingCash,
+    min_working_capital: settings.minWorkingCapital,
+    stage_probabilities: normalizeStageProbabilities(
+      settings.stageProbabilities,
+    ),
+    monthly_expenses: normalizeMonthlyExpenses(settings.monthlyExpenses),
+    opening_cash_as_of: settings.openingCashAsOf ?? null,
   };
 }
 

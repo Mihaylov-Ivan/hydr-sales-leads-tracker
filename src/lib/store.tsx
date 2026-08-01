@@ -23,9 +23,11 @@ import {
   Stage,
   TeamMember,
   TodoKind,
+  CompanyFinanceSettings,
   TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  defaultFinanceSettings,
   normalizeStage,
   todayDate,
 } from "./types";
@@ -37,6 +39,8 @@ import {
   expenseFromRow,
   fileFromRow,
   financialsFromParts,
+  financeSettingsFromRow,
+  financeSettingsToRow,
   milestoneFromRow,
   paymentFromRow,
   projectFromRow,
@@ -49,6 +53,7 @@ import type {
   ContactRow,
   ExpenseRow,
   FileRow,
+  FinanceSettingsRow,
   MilestoneRow,
   PaymentRow,
   ProjectRow,
@@ -61,6 +66,7 @@ const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
 const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
+const FINANCE_SETTINGS_STORAGE_KEY = "hydrogenera-finance-settings-v1";
 const FILE_STORAGE_BUCKET = "project-files";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -128,10 +134,20 @@ export interface PaymentInput {
   label?: string;
   /** Tie this payment to a project deadline (date follows the milestone) */
   milestoneId?: string;
+  /** Pass `null` to clear actualization; omit to leave unchanged on update */
+  actualDate?: string | null;
 }
 
 /** Same shape as a payment — dated cash outflow */
 export type ExpenseInput = PaymentInput;
+
+export interface FinanceSettingsPatch {
+  openingCash?: number;
+  openingCashAsOf?: string | null;
+  minWorkingCapital?: number;
+  stageProbabilities?: CompanyFinanceSettings["stageProbabilities"];
+  monthlyExpenses?: CompanyFinanceSettings["monthlyExpenses"];
+}
 
 export interface MilestoneInput {
   kind: MilestoneKind;
@@ -152,6 +168,9 @@ interface ProjectsApi {
   /** When false, financial panels/timelines stay hidden */
   showFinancials: boolean;
   setShowFinancials: (show: boolean) => void;
+  /** Company opening cash, min WC, stage win probabilities */
+  financeSettings: CompanyFinanceSettings;
+  updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
   projects: Project[];
   ready: boolean;
   /** True when the server has an AI API key configured */
@@ -372,6 +391,67 @@ function loadShowFinancials(): boolean {
   }
 }
 
+function loadLocalFinanceSettings(): CompanyFinanceSettings {
+  try {
+    const raw = window.localStorage.getItem(FINANCE_SETTINGS_STORAGE_KEY);
+    if (!raw) return defaultFinanceSettings();
+    const parsed = JSON.parse(raw) as Partial<CompanyFinanceSettings>;
+    const base = defaultFinanceSettings();
+    return {
+      openingCash:
+        typeof parsed.openingCash === "number"
+          ? parsed.openingCash
+          : base.openingCash,
+      minWorkingCapital:
+        typeof parsed.minWorkingCapital === "number"
+          ? parsed.minWorkingCapital
+          : base.minWorkingCapital,
+      stageProbabilities: {
+        ...base.stageProbabilities,
+        ...(parsed.stageProbabilities ?? {}),
+      },
+      monthlyExpenses: Array.isArray(parsed.monthlyExpenses)
+        ? parsed.monthlyExpenses
+        : base.monthlyExpenses,
+      ...(typeof parsed.openingCashAsOf === "string"
+        ? { openingCashAsOf: parsed.openingCashAsOf.slice(0, 7) }
+        : {}),
+    };
+  } catch {
+    return defaultFinanceSettings();
+  }
+}
+
+async function loadRemoteFinanceSettings(): Promise<CompanyFinanceSettings> {
+  if (!supabase) return loadLocalFinanceSettings();
+  const { data, error } = await supabase
+    .from("company_finance_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    console.error("Supabase finance settings load failed:", error.message);
+    return loadLocalFinanceSettings();
+  }
+  if (!data) {
+    const defaults = defaultFinanceSettings();
+    const row = financeSettingsToRow(defaults);
+    void supabase
+      .from("company_finance_settings")
+      .upsert({ ...row, updated_at: new Date().toISOString() })
+      .then(({ error: upsertError }) => {
+        if (upsertError) {
+          console.error(
+            "Supabase finance settings seed failed:",
+            upsertError.message,
+          );
+        }
+      });
+    return defaults;
+  }
+  return financeSettingsFromRow(data as FinanceSettingsRow);
+}
+
 async function loadRemote(): Promise<Project[]> {
   const [
     projectsRes,
@@ -509,6 +589,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
   const [showFinancials, setShowFinancialsState] = useState(false);
+  const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
+    defaultFinanceSettings,
+  );
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
@@ -526,7 +609,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
     async function boot() {
       if (supabase) {
-        const [members, remoteProjects] = await Promise.all([
+        const [members, remoteProjects, settings] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
             console.error("Failed to load team members from Supabase:", e);
             return loadLocalTeamMembers();
@@ -535,16 +618,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to load projects from Supabase:", e);
             return [] as Project[];
           }),
+          loadRemoteFinanceSettings().catch((e) => {
+            console.error("Failed to load finance settings from Supabase:", e);
+            return loadLocalFinanceSettings();
+          }),
         ]);
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(remoteProjects);
+        setFinanceSettings(settings);
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(loadLocal());
+        setFinanceSettings(loadLocalFinanceSettings());
         setReady(true);
       }
     }
@@ -588,6 +677,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [teamMembers, ready]);
 
   useEffect(() => {
+    if (ready && !supabase) {
+      window.localStorage.setItem(
+        FINANCE_SETTINGS_STORAGE_KEY,
+        JSON.stringify(financeSettings),
+      );
+    }
+  }, [financeSettings, ready]);
+
+  useEffect(() => {
     if (ready) {
       window.localStorage.setItem(
         CURRENT_USER_STORAGE_KEY,
@@ -622,6 +720,43 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const setShowFinancials = useCallback((show: boolean) => {
     setShowFinancialsState(show);
+  }, []);
+
+  const updateFinanceSettings = useCallback((patch: FinanceSettingsPatch) => {
+    setFinanceSettings((prev) => {
+      const next: CompanyFinanceSettings = {
+        openingCash:
+          patch.openingCash !== undefined
+            ? patch.openingCash
+            : prev.openingCash,
+        minWorkingCapital:
+          patch.minWorkingCapital !== undefined
+            ? patch.minWorkingCapital
+            : prev.minWorkingCapital,
+        stageProbabilities: {
+          ...prev.stageProbabilities,
+          ...(patch.stageProbabilities ?? {}),
+        },
+        monthlyExpenses:
+          patch.monthlyExpenses !== undefined
+            ? patch.monthlyExpenses
+            : prev.monthlyExpenses,
+      };
+      if (patch.openingCashAsOf !== undefined) {
+        if (patch.openingCashAsOf) next.openingCashAsOf = patch.openingCashAsOf;
+        // else omit / clear
+      } else if (prev.openingCashAsOf) {
+        next.openingCashAsOf = prev.openingCashAsOf;
+      }
+      if (supabase) {
+        const row = financeSettingsToRow(next);
+        void supabase
+          .from("company_finance_settings")
+          .upsert({ ...row, updated_at: new Date().toISOString() })
+          .then(logDbError("finance settings update"));
+      }
+      return next;
+    });
   }, []);
 
   const resolveAuthor = useCallback(() => {
@@ -1429,6 +1564,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         amount: input.amount,
         ...(input.percent != null ? { percent: input.percent } : {}),
         dueDate,
+        ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
         ...(linked ? { milestoneId: linked.id } : {}),
         createdAt: new Date().toISOString(),
@@ -1446,6 +1582,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             amount: payment.amount,
             percent: payment.percent ?? null,
             due_date: payment.dueDate,
+            actual_date: payment.actualDate ?? null,
             label: payment.label ?? null,
             milestone_id: payment.milestoneId ?? null,
             created_at: payment.createdAt,
@@ -1476,6 +1613,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
           if (linked) next.milestoneId = linked.id;
+          if (patch.actualDate !== undefined) {
+            if (patch.actualDate) next.actualDate = patch.actualDate;
+          } else if (p.actualDate) {
+            next.actualDate = p.actualDate;
+          }
           return next;
         }),
       }));
@@ -1488,6 +1630,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             due_date: dueDate,
             label: patch.label?.trim() || null,
             milestone_id: linked?.id ?? null,
+            ...(patch.actualDate !== undefined
+              ? { actual_date: patch.actualDate }
+              : {}),
           })
           .eq("id", paymentId)
           .then(logDbError("payment update"));
@@ -1525,6 +1670,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         amount: input.amount,
         ...(input.percent != null ? { percent: input.percent } : {}),
         dueDate,
+        ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
         ...(linked ? { milestoneId: linked.id } : {}),
         createdAt: new Date().toISOString(),
@@ -1542,6 +1688,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             amount: expense.amount,
             percent: expense.percent ?? null,
             due_date: expense.dueDate,
+            actual_date: expense.actualDate ?? null,
             label: expense.label ?? null,
             milestone_id: expense.milestoneId ?? null,
             created_at: expense.createdAt,
@@ -1572,6 +1719,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
           if (linked) next.milestoneId = linked.id;
+          if (patch.actualDate !== undefined) {
+            if (patch.actualDate) next.actualDate = patch.actualDate;
+          } else if (e.actualDate) {
+            next.actualDate = e.actualDate;
+          }
           return next;
         }),
       }));
@@ -1584,6 +1736,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             due_date: dueDate,
             label: patch.label?.trim() || null,
             milestone_id: linked?.id ?? null,
+            ...(patch.actualDate !== undefined
+              ? { actual_date: patch.actualDate }
+              : {}),
           })
           .eq("id", expenseId)
           .then(logDbError("expense update"));
@@ -1762,6 +1917,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setCurrentUserId,
         showFinancials,
         setShowFinancials,
+        financeSettings,
+        updateFinanceSettings,
         projects,
         ready,
         aiEnabled,

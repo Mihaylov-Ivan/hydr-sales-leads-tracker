@@ -123,6 +123,7 @@ create table if not exists public.project_payments (
   amount numeric not null,
   percent numeric,
   due_date date not null,
+  actual_date date,
   label text,
   milestone_id uuid references public.project_milestones (id) on delete set null,
   created_at timestamptz not null default now()
@@ -134,10 +135,31 @@ create table if not exists public.project_expenses (
   amount numeric not null,
   percent numeric,
   due_date date not null,
+  actual_date date,
   label text,
   milestone_id uuid references public.project_milestones (id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+-- Singleton company-level cash / probability settings (id must be 1)
+create table if not exists public.company_finance_settings (
+  id integer primary key default 1 check (id = 1),
+  opening_cash numeric not null default 0,
+  min_working_capital numeric not null default 0,
+  stage_probabilities jsonb not null default '{
+    "cold-lead": 10,
+    "hot-lead": 40,
+    "under-development": 100,
+    "commissioned": 100
+  }'::jsonb,
+  monthly_expenses jsonb not null default '[]'::jsonb,
+  opening_cash_as_of text,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.company_finance_settings (id)
+values (1)
+on conflict (id) do nothing;
 
 -- ---------- Indexes ----------
 
@@ -202,6 +224,7 @@ alter table public.project_milestones enable row level security;
 alter table public.project_payments enable row level security;
 alter table public.project_expenses enable row level security;
 alter table public.project_files enable row level security;
+alter table public.company_finance_settings enable row level security;
 
 drop policy if exists "anon full access" on public.team_members;
 create policy "anon full access"
@@ -262,6 +285,14 @@ create policy "anon full access"
 drop policy if exists "anon full access" on public.project_expenses;
 create policy "anon full access"
   on public.project_expenses
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.company_finance_settings;
+create policy "anon full access"
+  on public.company_finance_settings
   for all
   to anon, authenticated
   using (true)

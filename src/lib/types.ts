@@ -187,6 +187,11 @@ export interface ProjectPayment {
   percent?: number;
   /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
   dueDate: string;
+  /**
+   * When set, this payment is Actual (money received) on this date.
+   * Expected `dueDate` is kept for delay detection.
+   */
+  actualDate?: string;
   label?: string;
   /** Optional link to a project deadline — both share the same date on the timeline */
   milestoneId?: string;
@@ -201,9 +206,68 @@ export interface ProjectExpenseItem {
   percent?: number;
   /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
   dueDate: string;
+  /**
+   * When set, this expense is Actual (money paid) on this date.
+   * Expected `dueDate` is kept for delay detection.
+   */
+  actualDate?: string;
   label?: string;
   milestoneId?: string;
   createdAt: string; // ISO
+}
+
+/** Stage → win probability (0–100). Used for weighted pipeline. */
+export type StageProbabilities = Partial<Record<Stage, number>>;
+
+export const DEFAULT_STAGE_PROBABILITIES: Record<
+  Exclude<Stage, "cancelled">,
+  number
+> = {
+  "cold-lead": 10,
+  "hot-lead": 40,
+  "under-development": 100,
+  commissioned: 100,
+};
+
+/** Company overhead for one calendar month (opex, salaries, etc.) */
+export type CompanyMonthlyExpenseStatus = "actual" | "projected";
+
+export interface CompanyMonthlyExpense {
+  /** yyyy-mm */
+  month: string;
+  amount: number;
+  /**
+   * actual = money already spent (past / closed months)
+   * projected = planned company opex (current / future)
+   */
+  status: CompanyMonthlyExpenseStatus;
+}
+
+/** Company-level cash plan settings (singleton) */
+export interface CompanyFinanceSettings {
+  /**
+   * Bank / cash balance at the open of `openingCashAsOf`.
+   * All later inflows and outflows come from projects + company opex.
+   */
+  openingCash: number;
+  /**
+   * yyyy-mm — month whose opening equals `openingCash`.
+   * Independent of which months you choose to view in the table.
+   */
+  openingCashAsOf?: string;
+  minWorkingCapital: number;
+  stageProbabilities: StageProbabilities;
+  /** Company monthly operating expenses (not project-linked) */
+  monthlyExpenses: CompanyMonthlyExpense[];
+}
+
+export function defaultFinanceSettings(): CompanyFinanceSettings {
+  return {
+    openingCash: 0,
+    minWorkingCapital: 0,
+    stageProbabilities: { ...DEFAULT_STAGE_PROBABILITIES },
+    monthlyExpenses: [],
+  };
 }
 
 export interface ProjectMilestone {
