@@ -35,8 +35,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  font-size: 85%;
+}
+
 body {
-  background: linear-gradient(180deg, var(--surface) 0%, var(--surface) 40%, var(--surface-tint) 100%);
+  background: linear-gradient(
+    180deg,
+    var(--surface) 0%,
+    var(--surface) 40%,
+    var(--surface-tint) 100%
+  );
   background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
