@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/lib/store";
+import { mergeProjectFinancials } from "@/lib/finance-merge";
 import {
   MILESTONE_KINDS,
   MILESTONE_LABELS,
@@ -12,6 +13,10 @@ import {
   ProjectPayment,
   todayDate,
 } from "@/lib/types";
+
+function isImportedId(id: string): boolean {
+  return id.startsWith("import-");
+}
 
 const inputCls =
   "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent";
@@ -72,7 +77,7 @@ type TimelineEvent = {
   date: string;
   label: string;
   sub?: string;
-  kind: "payment" | "milestone" | "contract";
+  kind: "payment" | "expense" | "milestone" | "contract";
 };
 
 function buildEvents(financials: ProjectFinancials): TimelineEvent[] {
@@ -98,21 +103,47 @@ function buildEvents(financials: ProjectFinancials): TimelineEvent[] {
     const linked = p.milestoneId
       ? financials.milestones.find((m) => m.id === p.milestoneId)
       : undefined;
-    const pct = p.percent != null ? ` (${p.percent}%)` : "";
+    const pct = resolveContractPercent(
+      p.amount,
+      financials.contractValue,
+      p.percent,
+    );
+    const pctLabel = pct != null ? ` (${formatPercentLabel(pct)})` : "";
     events.push({
       id: `pay-${p.id}`,
-      // Linked payments sit on the milestone date so both markers share the day
-      date: linked?.date ?? p.dueDate,
-      label: p.label?.trim() || "Payment received",
-      sub: `${formatMoney(p.amount)}${pct}`,
+      date: p.actualDate ?? linked?.date ?? p.dueDate,
+      label: p.label?.trim() || (p.actualDate ? "Payment received" : "Payment"),
+      sub: `${formatMoney(p.amount)}${pctLabel}`,
       kind: "payment",
+    });
+  }
+  for (const e of financials.expenseSchedule ?? []) {
+    const linked = e.milestoneId
+      ? financials.milestones.find((m) => m.id === e.milestoneId)
+      : undefined;
+    const pct = resolveContractPercent(
+      e.amount,
+      financials.contractValue,
+      e.percent,
+    );
+    const pctLabel = pct != null ? ` (${formatPercentLabel(pct)})` : "";
+    events.push({
+      id: `exp-${e.id}`,
+      date: e.actualDate ?? linked?.date ?? e.dueDate,
+      label: e.label?.trim() || (e.actualDate ? "Expense paid" : "Expense"),
+      sub: `${formatMoney(e.amount)}${pctLabel}`,
+      kind: "expense",
     });
   }
   return events.sort((a, b) => {
     const dt = new Date(a.date).getTime() - new Date(b.date).getTime();
     if (dt !== 0) return dt;
-    // Same day: contract → milestone → payment so linked pairs stack above/below
-    const order = { contract: 0, milestone: 1, payment: 2 } as const;
+    const order = {
+      contract: 0,
+      milestone: 1,
+      payment: 2,
+      expense: 3,
+    } as const;
     return order[a.kind] - order[b.kind];
   });
 }
@@ -120,6 +151,7 @@ function buildEvents(financials: ProjectFinancials): TimelineEvent[] {
 const KIND_COLOR: Record<TimelineEvent["kind"], string> = {
   contract: "bg-deep border-deep",
   payment: "bg-olive border-olive",
+  expense: "bg-amber-accent border-amber-accent",
   milestone: "bg-teal-accent border-teal-accent",
 };
 
@@ -323,6 +355,24 @@ function amountFromPercent(contractValue: number, percent: number): number {
   return Math.round(raw * 100) / 100;
 }
 
+/** Stored % if present; else amount ÷ contract value when set. */
+function resolveContractPercent(
+  amount: number,
+  contractValue: number | null | undefined,
+  stored?: number,
+): number | undefined {
+  if (stored != null && Number.isFinite(stored)) return stored;
+  if (contractValue == null || !(contractValue > 0) || !(amount > 0)) {
+    return undefined;
+  }
+  const raw = (amount / contractValue) * 100;
+  return Math.round(raw * 10) / 10;
+}
+
+function formatPercentLabel(pct: number): string {
+  return pct % 1 === 0 ? `${pct}%` : `${pct.toFixed(1)}%`;
+}
+
 function PaymentRow({
   projectId,
   payment,
@@ -462,8 +512,10 @@ function PaymentRow({
   const expectedDate = displayLinked?.date ?? payment.dueDate;
   const isActual = Boolean(payment.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
+  const fromImport = isImportedId(payment.id);
 
   function markReceived() {
+    if (fromImport) return;
     updatePayment(projectId, payment.id, {
       amount: payment.amount,
       ...(payment.percent != null ? { percent: payment.percent } : {}),
@@ -475,6 +527,7 @@ function PaymentRow({
   }
 
   function clearActual() {
+    if (fromImport) return;
     updatePayment(projectId, payment.id, {
       amount: payment.amount,
       ...(payment.percent != null ? { percent: payment.percent } : {}),
@@ -489,11 +542,18 @@ function PaymentRow({
     <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
       <span className="font-semibold text-deep">
         {formatMoney(payment.amount)}
-        {payment.percent != null && (
-          <span className="ml-1 font-medium text-teal-accent">
-            ({payment.percent}%)
-          </span>
-        )}
+        {(() => {
+          const pct = resolveContractPercent(
+            payment.amount,
+            financials.contractValue,
+            payment.percent,
+          );
+          return pct != null ? (
+            <span className="ml-1 font-medium text-teal-accent">
+              ({formatPercentLabel(pct)})
+            </span>
+          ) : null;
+        })()}
       </span>
       <span className="text-muted">
         on {formatDate(expectedDate)}
@@ -501,6 +561,11 @@ function PaymentRow({
       {isActual && (
         <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
           Received {formatDate(payment.actualDate!)}
+        </span>
+      )}
+      {fromImport && (
+        <span className="rounded-full bg-muted/20 px-2 py-0.5 text-[11px] font-semibold text-muted">
+          From import
         </span>
       )}
       {isDelayed && (
@@ -516,6 +581,7 @@ function PaymentRow({
       {payment.label && (
         <span className="truncate text-xs text-muted">· {payment.label}</span>
       )}
+      {!fromImport && (
       <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
         {!isActual ? (
           <button
@@ -549,6 +615,7 @@ function PaymentRow({
           Remove
         </button>
       </span>
+      )}
     </li>
   );
 }
@@ -692,8 +759,10 @@ function ExpenseRow({
   const expectedDate = displayLinked?.date ?? expense.dueDate;
   const isActual = Boolean(expense.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
+  const fromImport = isImportedId(expense.id);
 
   function markPaid() {
+    if (fromImport) return;
     updateExpense(projectId, expense.id, {
       amount: expense.amount,
       ...(expense.percent != null ? { percent: expense.percent } : {}),
@@ -705,6 +774,7 @@ function ExpenseRow({
   }
 
   function clearActual() {
+    if (fromImport) return;
     updateExpense(projectId, expense.id, {
       amount: expense.amount,
       ...(expense.percent != null ? { percent: expense.percent } : {}),
@@ -719,11 +789,18 @@ function ExpenseRow({
     <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
       <span className="font-semibold text-deep">
         {formatMoney(expense.amount)}
-        {expense.percent != null && (
-          <span className="ml-1 font-medium text-amber-accent">
-            ({expense.percent}%)
-          </span>
-        )}
+        {(() => {
+          const pct = resolveContractPercent(
+            expense.amount,
+            financials.contractValue,
+            expense.percent,
+          );
+          return pct != null ? (
+            <span className="ml-1 font-medium text-amber-accent">
+              ({formatPercentLabel(pct)})
+            </span>
+          ) : null;
+        })()}
       </span>
       <span className="text-muted">
         on {formatDate(expectedDate)}
@@ -731,6 +808,11 @@ function ExpenseRow({
       {isActual && (
         <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
           Paid {formatDate(expense.actualDate!)}
+        </span>
+      )}
+      {fromImport && (
+        <span className="rounded-full bg-muted/20 px-2 py-0.5 text-[11px] font-semibold text-muted">
+          From import
         </span>
       )}
       {isDelayed && (
@@ -746,6 +828,7 @@ function ExpenseRow({
       {expense.label && (
         <span className="truncate text-xs text-muted">· {expense.label}</span>
       )}
+      {!fromImport && (
       <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
         {!isActual ? (
           <button
@@ -779,6 +862,7 @@ function ExpenseRow({
           Remove
         </button>
       </span>
+      )}
     </li>
   );
 }
@@ -893,7 +977,7 @@ function MilestoneRow({
 
 export default function FinancialsPanel({
   projectId,
-  financials,
+  financials: storedFinancials,
 }: {
   projectId: string;
   financials: ProjectFinancials;
@@ -903,7 +987,18 @@ export default function FinancialsPanel({
     addPayment,
     addExpense,
     addMilestone,
+    financeImport,
+    projects,
   } = useProjects();
+
+  const project = projects.find((p) => p.id === projectId);
+  const financials = useMemo(() => {
+    if (!project) return storedFinancials;
+    return mergeProjectFinancials(
+      { ...project, financials: storedFinancials },
+      financeImport,
+    );
+  }, [project, storedFinancials, financeImport]);
 
   const events = useMemo(() => buildEvents(financials), [financials]);
 
@@ -1086,6 +1181,13 @@ export default function FinancialsPanel({
       <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-deep">
         Financials &amp; Timeline
       </h2>
+      {financeImport && (
+        <p className="mb-4 text-[11px] text-muted">
+          Cash lines currently come only from the Finance Excel import. Local
+          future schedules are hidden while an import is loaded — add them in
+          the spreadsheet and re-upload, or clear the import to edit in-app.
+        </p>
+      )}
 
       {/* Summary fields */}
       <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

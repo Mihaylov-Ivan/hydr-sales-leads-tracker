@@ -40,7 +40,7 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur">
+    <header className="z-40 shrink-0 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-[1800px] items-center justify-between gap-4 px-4 sm:px-6 xl:px-8">
         <div className="flex min-w-0 items-center gap-4 sm:gap-6">
           <Link href="/" className="flex flex-col items-start gap-0.5">

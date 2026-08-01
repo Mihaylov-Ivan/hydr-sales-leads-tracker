@@ -142,6 +142,8 @@ export type BuildMonthlyPlanOptions = {
   futureMonths?: number;
   monthCount?: number;
   today?: string;
+  /** Company-level actual income by month (from Excel/CSV import) */
+  companyIncomesByMonth?: Map<string, number>;
 };
 
 function parseMonthKey(key: string): { year: number; monthIndex: number } {
@@ -276,6 +278,12 @@ export function buildMonthlyPlan(
     } else {
       add(opex.month, "companyOpexProjected", opex.amount);
       add(opex.month, "contractedOut", opex.amount);
+    }
+  }
+
+  if (options.companyIncomesByMonth) {
+    for (const [month, amount] of options.companyIncomesByMonth) {
+      if (amount > 0) add(month, "actualIn", amount);
     }
   }
 

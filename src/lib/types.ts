@@ -318,6 +318,22 @@ export interface ProjectTodo {
   doneAt?: string; // ISO
 }
 
+const TODO_KIND_ORDER: Record<TodoKind, number> = {
+  question: 0,
+  "our-action": 1,
+  "client-action": 2,
+};
+
+/** Closest deadline first; undated last; kind as secondary priority */
+export function compareTodosByDeadline(a: ProjectTodo, b: ProjectTodo): number {
+  const aDate = a.dueDate ?? "9999-12-31";
+  const bDate = b.dueDate ?? "9999-12-31";
+  if (aDate !== bDate) return aDate < bDate ? -1 : 1;
+  const byKind = TODO_KIND_ORDER[a.kind] - TODO_KIND_ORDER[b.kind];
+  if (byKind !== 0) return byKind;
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
 export interface Project {
   id: string;
   name: string;

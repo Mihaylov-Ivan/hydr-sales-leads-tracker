@@ -95,6 +95,20 @@ type CashFlow = {
   color: string;
 };
 
+/** Stored % if present; else amount ÷ contract value when contract value is set. */
+function resolveContractPercent(
+  amount: number,
+  contractValue: number | null | undefined,
+  stored?: number,
+): number | undefined {
+  if (stored != null && Number.isFinite(stored)) return stored;
+  if (contractValue == null || !(contractValue > 0) || !(amount > 0)) {
+    return undefined;
+  }
+  const raw = (amount / contractValue) * 100;
+  return Math.round(raw * 10) / 10;
+}
+
 function collectFlows(
   projects: Project[],
   colorById: Map<string, string>,
@@ -103,10 +117,12 @@ function collectFlows(
   for (const p of projects) {
     const f = p.financials;
     const color = colorById.get(p.id) ?? PROJECT_COLORS[0];
+    const cv = f.contractValue;
     for (const pay of f.payments) {
       const linked = pay.milestoneId
         ? f.milestones.find((m) => m.id === pay.milestoneId)
         : undefined;
+      const percent = resolveContractPercent(pay.amount, cv, pay.percent);
       list.push({
         id: `in-${p.id}-${pay.id}`,
         kind: "income",
@@ -114,8 +130,8 @@ function collectFlows(
         projectName: p.name,
         client: p.client,
         amount: pay.amount,
-        ...(pay.percent != null ? { percent: pay.percent } : {}),
-        date: linked?.date ?? pay.dueDate,
+        ...(percent != null ? { percent } : {}),
+        date: pay.actualDate ?? linked?.date ?? pay.dueDate,
         ...(pay.label ? { label: pay.label } : {}),
         ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
         color,
@@ -125,6 +141,7 @@ function collectFlows(
       const linked = exp.milestoneId
         ? f.milestones.find((m) => m.id === exp.milestoneId)
         : undefined;
+      const percent = resolveContractPercent(exp.amount, cv, exp.percent);
       list.push({
         id: `out-${p.id}-${exp.id}`,
         kind: "expense",
@@ -132,8 +149,8 @@ function collectFlows(
         projectName: p.name,
         client: p.client,
         amount: exp.amount,
-        ...(exp.percent != null ? { percent: exp.percent } : {}),
-        date: linked?.date ?? exp.dueDate,
+        ...(percent != null ? { percent } : {}),
+        date: exp.actualDate ?? linked?.date ?? exp.dueDate,
         ...(exp.label ? { label: exp.label } : {}),
         ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
         color,
@@ -411,36 +428,50 @@ function CashChart({
             const h = Math.max(Math.abs(y1 - y2), 2);
             const fill = item.kind === "income" ? INCOME_COLOR : EXPENSE_COLOR;
             return (
-              <rect
-                key={item.id}
-                x={x}
-                y={top}
-                width={barW}
-                height={h}
-                rx={3}
-                fill={fill}
-                opacity={0.9}
-                className="cursor-pointer"
-                onMouseEnter={(e) => {
-                  const rect = wrapRef.current?.getBoundingClientRect();
-                  if (!rect) return;
-                  setHover({
-                    item,
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
-                  });
-                }}
-                onMouseMove={(e) => {
-                  const rect = wrapRef.current?.getBoundingClientRect();
-                  if (!rect) return;
-                  setHover({
-                    item,
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
-                  });
-                }}
-                onMouseLeave={() => setHover(null)}
-              />
+              <g key={item.id}>
+                <rect
+                  x={x}
+                  y={top}
+                  width={barW}
+                  height={h}
+                  rx={3}
+                  fill={fill}
+                  opacity={0.9}
+                  className="cursor-pointer"
+                  onMouseEnter={(e) => {
+                    const rect = wrapRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    setHover({
+                      item,
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top,
+                    });
+                  }}
+                  onMouseMove={(e) => {
+                    const rect = wrapRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    setHover({
+                      item,
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top,
+                    });
+                  }}
+                  onMouseLeave={() => setHover(null)}
+                />
+                {item.percent != null && (
+                  <text
+                    x={x + barW / 2}
+                    y={item.kind === "income" ? top - 4 : top + h + 11}
+                    textAnchor="middle"
+                    className="fill-muted"
+                    style={{ fontSize: 9, fontWeight: 700 }}
+                  >
+                    {item.percent % 1 === 0
+                      ? `${item.percent}%`
+                      : `${item.percent.toFixed(1)}%`}
+                  </text>
+                )}
+              </g>
             );
           }),
         )}
@@ -495,7 +526,11 @@ function CashChart({
             {formatMoney(hover.item.amount)}
             {hover.item.percent != null && (
               <span className="ml-1.5 text-sm font-semibold text-teal-accent">
-                ({hover.item.percent}%)
+                (
+                {hover.item.percent % 1 === 0
+                  ? hover.item.percent
+                  : hover.item.percent.toFixed(1)}
+                % of contract)
               </span>
             )}
           </p>
@@ -764,8 +799,8 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
           Cash flow
         </h2>
         <p className="mt-3 text-sm text-muted">
-          No scheduled payments or expenses yet. Add them on a project page to
-          see income, costs, and profit over time here.
+          No cash flows yet. Upload actuals on Finance, or add future payments
+          and expenses on a project page.
         </p>
       </section>
     );
@@ -779,7 +814,8 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
             Cash flow
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Scheduled income and expenses across selected projects
+            Scheduled and actual income/expenses across selected projects
+            (Excel actuals + in-app forecasts)
           </p>
         </div>
         <div className="flex flex-wrap gap-4 text-right">

@@ -8,7 +8,12 @@ import {
   ProjectTodo,
   TodoKind,
   TODO_KIND_LABELS,
+  addDays,
+  compareTodosByDeadline,
+  emailReminderDeltaDays,
   isEmailReminderDue,
+  nextEmailReminderDate,
+  todayDate,
 } from "@/lib/types";
 
 const KIND_SHORT: Record<TodoKind, string> = {
@@ -22,6 +27,45 @@ const KIND_TONE: Record<TodoKind, string> = {
   "our-action": "bg-olive/15 text-olive-ink",
   "client-action": "bg-amber-accent/15 text-amber-accent",
 };
+
+function formatDue(date: string): string {
+  return new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function isOverdueDate(date: string): boolean {
+  return date < todayDate();
+}
+
+function DeadlineBadge({ date }: { date: string }) {
+  const today = todayDate();
+  const overdue = isOverdueDate(date);
+  const dueToday = date === today;
+  const dueTomorrow = date === addDays(today, 1);
+  const tone = overdue || dueToday
+    ? "bg-red-100 text-red-600"
+    : dueTomorrow
+      ? "bg-amber-accent/15 text-amber-accent"
+      : "bg-teal-soft text-teal-accent";
+  const label = overdue
+    ? "Overdue · "
+    : dueToday
+      ? "Due today · "
+      : dueTomorrow
+        ? "Due tomorrow · "
+        : "Due ";
+  return (
+    <span
+      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}
+    >
+      {label}
+      {formatDue(date)}
+    </span>
+  );
+}
 
 function SidebarAnswer({
   todo,
@@ -114,6 +158,7 @@ function OutstandingItem({
             <span className="sr-only">{TODO_KIND_LABELS[todo.kind]}</span>
           </div>
           <p className="mt-1 text-xs leading-snug text-ink">{todo.text}</p>
+          {todo.dueDate && <DeadlineBadge date={todo.dueDate} />}
           <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Owner: {ownerName}
           </p>
@@ -129,11 +174,83 @@ function OutstandingItem({
   );
 }
 
+function ContactItem({
+  project,
+  dueDate,
+  onContacted,
+}: {
+  project: Project;
+  dueDate: string;
+  onContacted: () => void;
+}) {
+  const delta = emailReminderDeltaDays(project);
+  const status =
+    delta < 0
+      ? `${Math.abs(delta)}d overdue`
+      : delta === 0
+        ? "Due today"
+        : null;
+
+  return (
+    <li className="rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-amber-accent">
+          <svg
+            viewBox="0 0 16 16"
+            className="h-3.5 w-3.5 fill-current"
+          >
+            <path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9Zm1.5-.5a.5.5 0 0 0-.5.5v.25l5.25 3.15a.5.5 0 0 0 .5 0L13.5 3.75V3.5a.5.5 0 0 0-.5-.5H3Zm10.5 2.1-4.9 2.94a1.5 1.5 0 0 1-1.5 0L2.2 5.1v7.4a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V5.1Z" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-amber-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-accent">
+              Contact
+            </span>
+            {status && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-accent">
+                {status}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-ink">
+            Follow up with {project.client}
+          </p>
+          <DeadlineBadge date={dueDate} />
+          <button
+            type="button"
+            onClick={onContacted}
+            className="mt-1.5 block text-[11px] font-semibold text-teal-accent hover:underline"
+          >
+            Contacted
+          </button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+type SidebarEntry =
+  | { type: "contact"; sortDate: string }
+  | { type: "todo"; todo: ProjectTodo; sortDate: string };
+
 type Group = {
   project: Project;
-  todos: ProjectTodo[];
-  emailDue: boolean;
+  entries: SidebarEntry[];
+  earliestDue: string;
 };
+
+function compareSidebarEntries(a: SidebarEntry, b: SidebarEntry): number {
+  if (a.sortDate !== b.sortDate) {
+    return a.sortDate < b.sortDate ? -1 : 1;
+  }
+  // Same day: contact follow-ups take priority over todos
+  if (a.type !== b.type) return a.type === "contact" ? -1 : 1;
+  if (a.type === "todo" && b.type === "todo") {
+    return compareTodosByDeadline(a.todo, b.todo);
+  }
+  return 0;
+}
 
 export default function OutstandingSidebar() {
   const { projects, ready, markClientContacted, teamMembers } = useProjects();
@@ -141,41 +258,53 @@ export default function OutstandingSidebar() {
   const groups = useMemo(() => {
     const list: Group[] = [];
     for (const project of projects) {
-      const todos = project.todos
-        .filter((t) => !t.done)
-        .sort((a, b) => {
-          const order: Record<TodoKind, number> = {
-            question: 0,
-            "our-action": 1,
-            "client-action": 2,
-          };
-          return order[a.kind] - order[b.kind];
-        });
+      const todos = project.todos.filter((t) => !t.done);
       const emailDue = isEmailReminderDue(project);
       if (todos.length === 0 && !emailDue) continue;
-      list.push({ project, todos, emailDue });
+
+      const entries: SidebarEntry[] = todos.map((todo) => ({
+        type: "todo" as const,
+        todo,
+        sortDate: todo.dueDate ?? "9999-12-31",
+      }));
+
+      if (emailDue) {
+        entries.push({
+          type: "contact",
+          sortDate: nextEmailReminderDate(project),
+        });
+      }
+
+      entries.sort(compareSidebarEntries);
+
+      const earliestDue = entries.reduce(
+        (min, e) => (e.sortDate < min ? e.sortDate : min),
+        "9999-12-31",
+      );
+
+      list.push({ project, entries, earliestDue });
     }
-    list.sort((a, b) => a.project.name.localeCompare(b.project.name));
+    list.sort((a, b) => {
+      if (a.earliestDue !== b.earliestDue) {
+        return a.earliestDue < b.earliestDue ? -1 : 1;
+      }
+      return a.project.name.localeCompare(b.project.name);
+    });
     return list;
   }, [projects]);
 
-  const totalOpen =
-    groups.reduce((n, g) => n + g.todos.length, 0) +
-    groups.filter((g) => g.emailDue).length;
+  const totalOpen = groups.reduce((n, g) => n + g.entries.length, 0);
 
   if (!ready) return null;
 
   return (
-    <aside className="w-full shrink-0 lg:sticky lg:top-[4.5rem] lg:w-72 lg:self-start xl:w-80">
-      <div className="flex max-h-none flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-sm lg:max-h-[calc(100vh-6rem)]">
+    <aside className="flex w-full shrink-0 flex-col lg:h-full lg:w-72 xl:w-80">
+      <div className="flex max-h-[min(28rem,70dvh)] min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-sm lg:max-h-none">
         <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
               Outstanding
             </h2>
-            <p className="mt-0.5 text-[11px] text-muted">
-              Open questions &amp; actions
-            </p>
           </div>
           <span className="rounded-full bg-teal-soft px-2.5 py-0.5 text-xs font-semibold text-teal-accent">
             {totalOpen}
@@ -189,7 +318,7 @@ export default function OutstandingSidebar() {
             </p>
           ) : (
             <div className="flex flex-col gap-4">
-              {groups.map(({ project, todos, emailDue }) => (
+              {groups.map(({ project, entries }) => (
                 <section key={project.id}>
                   <Link
                     href={`/projects/${project.id}`}
@@ -198,46 +327,27 @@ export default function OutstandingSidebar() {
                     {project.name}
                   </Link>
                   <ul className="flex flex-col gap-2">
-                    {emailDue && (
-                      <li className="rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5">
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-amber-accent">
-                            <svg
-                              viewBox="0 0 16 16"
-                              className="h-3.5 w-3.5 fill-current"
-                            >
-                              <path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9Zm1.5-.5a.5.5 0 0 0-.5.5v.25l5.25 3.15a.5.5 0 0 0 .5 0L13.5 3.75V3.5a.5.5 0 0 0-.5-.5H3Zm10.5 2.1-4.9 2.94a1.5 1.5 0 0 1-1.5 0L2.2 5.1v7.4a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V5.1Z" />
-                            </svg>
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <span className="rounded bg-amber-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-accent">
-                              Contact
-                            </span>
-                            <p className="mt-1 text-xs text-ink">
-                              Follow up with {project.client}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => markClientContacted(project.id)}
-                              className="mt-1.5 text-[11px] font-semibold text-teal-accent hover:underline"
-                            >
-                              Contacted
-                            </button>
-                          </div>
-                        </div>
-                      </li>
+                    {entries.map((entry) =>
+                      entry.type === "contact" ? (
+                        <ContactItem
+                          key="contact"
+                          project={project}
+                          dueDate={entry.sortDate}
+                          onContacted={() => markClientContacted(project.id)}
+                        />
+                      ) : (
+                        <OutstandingItem
+                          key={entry.todo.id}
+                          projectId={project.id}
+                          todo={entry.todo}
+                          ownerName={
+                            teamMembers.find(
+                              (m) => m.id === entry.todo.ownerUserId,
+                            )?.name ?? "Unassigned"
+                          }
+                        />
+                      ),
                     )}
-                    {todos.map((todo) => (
-                      <OutstandingItem
-                        key={todo.id}
-                        projectId={project.id}
-                        todo={todo}
-                        ownerName={
-                          teamMembers.find((m) => m.id === todo.ownerUserId)?.name ??
-                          "Unassigned"
-                        }
-                      />
-                    ))}
                   </ul>
                 </section>
               ))}

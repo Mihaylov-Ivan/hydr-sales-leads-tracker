@@ -1,27 +1,18 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
   Market,
-  MilestoneKind,
   Project,
   ProjectComment,
   ProjectContact,
-  ProjectExpenseItem,
   ProjectFile,
   ProjectFileKind,
   ProjectFinancials,
-  ProjectMilestone,
-  ProjectPayment,
   ProjectTodo,
   Series,
   Stage,
   TeamMember,
   TodoKind,
-  CompanyFinanceSettings,
-  CompanyMonthlyExpense,
-  CompanyMonthlyExpenseStatus,
-  StageProbabilities,
   DEFAULT_EMAIL_REMINDER_DAYS,
-  DEFAULT_STAGE_PROBABILITIES,
   emptyFinancials,
   normalizeStage,
 } from "./types";
@@ -49,10 +40,6 @@ export interface ProjectRow {
   stage: Stage;
   base_description: string;
   ai_summary: string | null;
-  contract_value: number | null;
-  contract_signed_date: string | null;
-  expenses: number | null;
-  expected_profit: number | null;
   last_client_contact_at: string | null;
   email_reminder_days: number | null;
   email_reminder_enabled: boolean | null;
@@ -178,151 +165,6 @@ export function teamMemberToRow(member: TeamMember): Omit<TeamMemberRow, "create
   };
 }
 
-/** Shape of a row in public.project_payments */
-export interface PaymentRow {
-  id: string;
-  project_id: string;
-  amount: number;
-  percent: number | null;
-  due_date: string;
-  actual_date: string | null;
-  label: string | null;
-  milestone_id: string | null;
-  created_at: string;
-}
-
-export function paymentFromRow(row: PaymentRow): ProjectPayment {
-  return {
-    id: row.id,
-    amount: row.amount,
-    ...(row.percent != null ? { percent: row.percent } : {}),
-    dueDate: row.due_date,
-    ...(row.actual_date ? { actualDate: row.actual_date } : {}),
-    ...(row.label ? { label: row.label } : {}),
-    ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-/** Shape of a row in public.project_expenses */
-export interface ExpenseRow {
-  id: string;
-  project_id: string;
-  amount: number;
-  percent: number | null;
-  due_date: string;
-  actual_date: string | null;
-  label: string | null;
-  milestone_id: string | null;
-  created_at: string;
-}
-
-export function expenseFromRow(row: ExpenseRow): ProjectExpenseItem {
-  return {
-    id: row.id,
-    amount: row.amount,
-    ...(row.percent != null ? { percent: row.percent } : {}),
-    dueDate: row.due_date,
-    ...(row.actual_date ? { actualDate: row.actual_date } : {}),
-    ...(row.label ? { label: row.label } : {}),
-    ...(row.milestone_id ? { milestoneId: row.milestone_id } : {}),
-    createdAt: row.created_at,
-  };
-}
-
-/** Shape of the singleton row in public.company_finance_settings */
-export interface FinanceSettingsRow {
-  id: number;
-  opening_cash: number;
-  min_working_capital: number;
-  stage_probabilities: StageProbabilities | null;
-  monthly_expenses: CompanyMonthlyExpense[] | null;
-  opening_cash_as_of: string | null;
-  updated_at: string;
-}
-
-function normalizeStageProbabilities(
-  raw: StageProbabilities | null | undefined,
-): StageProbabilities {
-  return {
-    ...DEFAULT_STAGE_PROBABILITIES,
-    ...(raw ?? {}),
-  };
-}
-
-function normalizeMonthlyExpenses(
-  raw: CompanyMonthlyExpense[] | null | undefined,
-): CompanyMonthlyExpense[] {
-  if (!Array.isArray(raw)) return [];
-  const byMonth = new Map<string, CompanyMonthlyExpense>();
-  for (const item of raw) {
-    if (!item || typeof item.month !== "string") continue;
-    const month = item.month.slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(month)) continue;
-    const amount = Number(item.amount);
-    if (!Number.isFinite(amount) || amount < 0) continue;
-    const status: CompanyMonthlyExpenseStatus =
-      item.status === "actual" ? "actual" : "projected";
-    byMonth.set(month, { month, amount, status });
-  }
-  return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
-}
-
-function normalizeAsOf(raw: string | null | undefined): string | undefined {
-  if (!raw || typeof raw !== "string") return undefined;
-  const month = raw.slice(0, 7);
-  return /^\d{4}-\d{2}$/.test(month) ? month : undefined;
-}
-
-export function financeSettingsFromRow(
-  row: FinanceSettingsRow,
-): CompanyFinanceSettings {
-  return {
-    openingCash: Number(row.opening_cash) || 0,
-    minWorkingCapital: Number(row.min_working_capital) || 0,
-    stageProbabilities: normalizeStageProbabilities(row.stage_probabilities),
-    monthlyExpenses: normalizeMonthlyExpenses(row.monthly_expenses),
-    ...(normalizeAsOf(row.opening_cash_as_of)
-      ? { openingCashAsOf: normalizeAsOf(row.opening_cash_as_of) }
-      : {}),
-  };
-}
-
-export function financeSettingsToRow(
-  settings: CompanyFinanceSettings,
-): Omit<FinanceSettingsRow, "updated_at"> {
-  return {
-    id: 1,
-    opening_cash: settings.openingCash,
-    min_working_capital: settings.minWorkingCapital,
-    stage_probabilities: normalizeStageProbabilities(
-      settings.stageProbabilities,
-    ),
-    monthly_expenses: normalizeMonthlyExpenses(settings.monthlyExpenses),
-    opening_cash_as_of: settings.openingCashAsOf ?? null,
-  };
-}
-
-/** Shape of a row in public.project_milestones */
-export interface MilestoneRow {
-  id: string;
-  project_id: string;
-  kind: MilestoneKind;
-  date: string;
-  note: string | null;
-  created_at: string;
-}
-
-export function milestoneFromRow(row: MilestoneRow): ProjectMilestone {
-  return {
-    id: row.id,
-    kind: row.kind,
-    date: row.date,
-    ...(row.note ? { note: row.note } : {}),
-    createdAt: row.created_at,
-  };
-}
-
 export function commentFromRow(row: CommentRow): ProjectComment {
   return {
     id: row.id,
@@ -333,33 +175,6 @@ export function commentFromRow(row: CommentRow): ProjectComment {
     ...(row.stage_change
       ? { stageChange: normalizeStage(row.stage_change) }
       : {}),
-  };
-}
-
-export function financialsFromParts(
-  row: ProjectRow,
-  payments: ProjectPayment[],
-  milestones: ProjectMilestone[],
-  expenseSchedule: ProjectExpenseItem[] = [],
-): ProjectFinancials {
-  const contractValue = row.contract_value ?? undefined;
-  const expenses = row.expenses ?? undefined;
-  const expectedProfit =
-    contractValue != null && expenses != null
-      ? contractValue - expenses
-      : row.expected_profit != null
-        ? row.expected_profit
-        : undefined;
-  return {
-    ...(contractValue != null ? { contractValue } : {}),
-    ...(row.contract_signed_date
-      ? { contractSignedDate: row.contract_signed_date }
-      : {}),
-    ...(expenses != null ? { expenses } : {}),
-    ...(expectedProfit != null ? { expectedProfit } : {}),
-    payments,
-    expenseSchedule,
-    milestones,
   };
 }
 
@@ -411,10 +226,6 @@ export function projectToRow(p: Project): ProjectRow {
     stage: p.stage,
     base_description: p.baseDescription,
     ai_summary: p.aiSummary ?? null,
-    contract_value: p.financials.contractValue ?? null,
-    contract_signed_date: p.financials.contractSignedDate ?? null,
-    expenses: p.financials.expenses ?? null,
-    expected_profit: p.financials.expectedProfit ?? null,
     last_client_contact_at: p.lastClientContactAt,
     email_reminder_days: p.emailReminderDays,
     email_reminder_enabled: p.emailReminderEnabled,

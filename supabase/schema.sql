@@ -1,8 +1,8 @@
 -- ============================================================
 -- Hydrogenera Sales Leads Tracker — Supabase schema (full)
 -- Run this in the Supabase Dashboard -> SQL Editor for a fresh DB.
--- For existing databases matching the pre-ownership schema, run:
---   migration-005-ownership-reminders-stages.sql
+-- For existing databases, apply migrations in order through
+--   migration-013-excel-finance-local.sql
 -- ============================================================
 
 -- ---------- Tables ----------
@@ -43,11 +43,6 @@ create table if not exists public.projects (
     )),
   base_description text not null default '',
   ai_summary text,
-  -- Financial scalars (optional)
-  contract_value numeric,
-  contract_signed_date date,
-  expenses numeric,
-  expected_profit numeric,
   -- Ownership + client follow-up
   lead_user_id text,
   last_client_contact_at date not null default current_date,
@@ -100,66 +95,8 @@ create table if not exists public.project_contacts (
   created_at timestamptz not null default now()
 );
 
-create table if not exists public.project_milestones (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects (id) on delete cascade,
-  kind text not null
-    check (kind in (
-      'contract-signed',
-      'engineering-done',
-      'manufacturing-done',
-      'fat',
-      'sat',
-      'commissioned'
-    )),
-  date date not null,
-  note text,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.project_payments (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects (id) on delete cascade,
-  amount numeric not null,
-  percent numeric,
-  due_date date not null,
-  actual_date date,
-  label text,
-  milestone_id uuid references public.project_milestones (id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists public.project_expenses (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects (id) on delete cascade,
-  amount numeric not null,
-  percent numeric,
-  due_date date not null,
-  actual_date date,
-  label text,
-  milestone_id uuid references public.project_milestones (id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
--- Singleton company-level cash / probability settings (id must be 1)
-create table if not exists public.company_finance_settings (
-  id integer primary key default 1 check (id = 1),
-  opening_cash numeric not null default 0,
-  min_working_capital numeric not null default 0,
-  stage_probabilities jsonb not null default '{
-    "cold-lead": 10,
-    "hot-lead": 40,
-    "under-development": 100,
-    "commissioned": 100
-  }'::jsonb,
-  monthly_expenses jsonb not null default '[]'::jsonb,
-  opening_cash_as_of text,
-  updated_at timestamptz not null default now()
-);
-
-insert into public.company_finance_settings (id)
-values (1)
-on conflict (id) do nothing;
+-- Finance (payments / expenses / milestones / company settings) is Excel +
+-- localStorage only — see migration-013-excel-finance-local.sql.
 
 -- ---------- Indexes ----------
 
@@ -174,21 +111,6 @@ create index if not exists project_todos_project_created_idx
 
 create index if not exists project_contacts_project_created_idx
   on public.project_contacts (project_id, created_at);
-
-create index if not exists project_milestones_project_date_idx
-  on public.project_milestones (project_id, date);
-
-create index if not exists project_payments_project_due_idx
-  on public.project_payments (project_id, due_date);
-
-create index if not exists project_payments_milestone_idx
-  on public.project_payments (milestone_id);
-
-create index if not exists project_expenses_project_due_idx
-  on public.project_expenses (project_id, due_date);
-
-create index if not exists project_expenses_milestone_idx
-  on public.project_expenses (milestone_id);
 
 create table if not exists public.project_files (
   id uuid primary key default gen_random_uuid(),
@@ -220,11 +142,7 @@ alter table public.projects enable row level security;
 alter table public.project_comments enable row level security;
 alter table public.project_todos enable row level security;
 alter table public.project_contacts enable row level security;
-alter table public.project_milestones enable row level security;
-alter table public.project_payments enable row level security;
-alter table public.project_expenses enable row level security;
 alter table public.project_files enable row level security;
-alter table public.company_finance_settings enable row level security;
 
 drop policy if exists "anon full access" on public.team_members;
 create policy "anon full access"
@@ -261,38 +179,6 @@ create policy "anon full access"
 drop policy if exists "anon full access" on public.project_contacts;
 create policy "anon full access"
   on public.project_contacts
-  for all
-  to anon, authenticated
-  using (true)
-  with check (true);
-
-drop policy if exists "anon full access" on public.project_milestones;
-create policy "anon full access"
-  on public.project_milestones
-  for all
-  to anon, authenticated
-  using (true)
-  with check (true);
-
-drop policy if exists "anon full access" on public.project_payments;
-create policy "anon full access"
-  on public.project_payments
-  for all
-  to anon, authenticated
-  using (true)
-  with check (true);
-
-drop policy if exists "anon full access" on public.project_expenses;
-create policy "anon full access"
-  on public.project_expenses
-  for all
-  to anon, authenticated
-  using (true)
-  with check (true);
-
-drop policy if exists "anon full access" on public.company_finance_settings;
-create policy "anon full access"
-  on public.company_finance_settings
   for all
   to anon, authenticated
   using (true)

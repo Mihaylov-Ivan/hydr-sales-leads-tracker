@@ -36,13 +36,7 @@ import {
   supabase,
   commentFromRow,
   contactFromRow,
-  expenseFromRow,
   fileFromRow,
-  financialsFromParts,
-  financeSettingsFromRow,
-  financeSettingsToRow,
-  milestoneFromRow,
-  paymentFromRow,
   projectFromRow,
   teamMemberFromRow,
   teamMemberToRow,
@@ -51,15 +45,16 @@ import {
 import type {
   CommentRow,
   ContactRow,
-  ExpenseRow,
   FileRow,
-  FinanceSettingsRow,
-  MilestoneRow,
-  PaymentRow,
   ProjectRow,
   TeamMemberRow,
   TodoRow,
 } from "./supabase";
+import {
+  FinanceImportData,
+  sanitizeAppFinancials,
+  settingsAfterImport,
+} from "./finance-import";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -67,8 +62,36 @@ const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
 const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
 const FINANCE_SETTINGS_STORAGE_KEY = "hydrogenera-finance-settings-v1";
+const FINANCE_IMPORT_STORAGE_KEY = "hydrogenera-finance-import-v1";
+const PROJECT_FINANCIALS_STORAGE_KEY = "hydrogenera-project-financials-v1";
 const FILE_STORAGE_BUCKET = "project-files";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
+  try {
+    const raw = window.localStorage.getItem(PROJECT_FINANCIALS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ProjectFinancials>;
+    if (!parsed || typeof parsed !== "object") return {};
+    const cleaned: Record<string, ProjectFinancials> = {};
+    for (const [id, f] of Object.entries(parsed)) {
+      cleaned[id] = sanitizeAppFinancials(f);
+    }
+    return cleaned;
+  } catch {
+    return {};
+  }
+}
+
+function withLocalFinancials(projects: Project[]): Project[] {
+  const local = loadLocalProjectFinancials();
+  return projects.map((p) => ({
+    ...p,
+    financials: sanitizeAppFinancials(
+      local[p.id] ?? p.financials ?? emptyFinancials(),
+    ),
+  }));
+}
 
 export interface NewProjectInput {
   name: string;
@@ -168,9 +191,13 @@ interface ProjectsApi {
   /** When false, financial panels/timelines stay hidden */
   showFinancials: boolean;
   setShowFinancials: (show: boolean) => void;
-  /** Company opening cash, min WC, stage win probabilities */
+  /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
+  /** CSV/Excel actuals import — source of past company + project cash */
+  financeImport: FinanceImportData | null;
+  applyFinanceImport: (data: FinanceImportData) => void;
+  clearFinanceImport: () => void;
   projects: Project[];
   ready: boolean;
   /** True when the server has an AI API key configured */
@@ -422,34 +449,29 @@ function loadLocalFinanceSettings(): CompanyFinanceSettings {
   }
 }
 
-async function loadRemoteFinanceSettings(): Promise<CompanyFinanceSettings> {
-  if (!supabase) return loadLocalFinanceSettings();
-  const { data, error } = await supabase
-    .from("company_finance_settings")
-    .select("*")
-    .eq("id", 1)
-    .maybeSingle();
-  if (error) {
-    console.error("Supabase finance settings load failed:", error.message);
-    return loadLocalFinanceSettings();
+function loadLocalFinanceImport(): FinanceImportData | null {
+  try {
+    const raw = window.localStorage.getItem(FINANCE_IMPORT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FinanceImportData;
+    if (!parsed || !Array.isArray(parsed.projectActuals)) {
+      return null;
+    }
+    return {
+      ...parsed,
+      companyMonths: Array.isArray(parsed.companyMonths)
+        ? parsed.companyMonths
+        : [],
+      projectExpected: Array.isArray(parsed.projectExpected)
+        ? parsed.projectExpected
+        : [],
+      projectMilestones: Array.isArray(parsed.projectMilestones)
+        ? parsed.projectMilestones
+        : [],
+    };
+  } catch {
+    return null;
   }
-  if (!data) {
-    const defaults = defaultFinanceSettings();
-    const row = financeSettingsToRow(defaults);
-    void supabase
-      .from("company_finance_settings")
-      .upsert({ ...row, updated_at: new Date().toISOString() })
-      .then(({ error: upsertError }) => {
-        if (upsertError) {
-          console.error(
-            "Supabase finance settings seed failed:",
-            upsertError.message,
-          );
-        }
-      });
-    return defaults;
-  }
-  return financeSettingsFromRow(data as FinanceSettingsRow);
 }
 
 async function loadRemote(): Promise<Project[]> {
@@ -458,9 +480,6 @@ async function loadRemote(): Promise<Project[]> {
     commentsRes,
     todosRes,
     contactsRes,
-    paymentsRes,
-    expensesRes,
-    milestonesRes,
     filesRes,
   ] = await Promise.all([
     supabase!
@@ -480,18 +499,6 @@ async function loadRemote(): Promise<Project[]> {
       .select("*")
       .order("created_at", { ascending: true }),
     supabase!
-      .from("project_payments")
-      .select("*")
-      .order("due_date", { ascending: true }),
-    supabase!
-      .from("project_expenses")
-      .select("*")
-      .order("due_date", { ascending: true }),
-    supabase!
-      .from("project_milestones")
-      .select("*")
-      .order("date", { ascending: true }),
-    supabase!
       .from("project_files")
       .select("*")
       .order("created_at", { ascending: false }),
@@ -499,21 +506,8 @@ async function loadRemote(): Promise<Project[]> {
   if (projectsRes.error) throw projectsRes.error;
   if (commentsRes.error) throw commentsRes.error;
   if (todosRes.error) throw todosRes.error;
-  // Non-fatal: tables/columns may not exist until the pending migration runs
   if (contactsRes.error) {
     console.error("Supabase contacts load failed:", contactsRes.error.message);
-  }
-  if (paymentsRes.error) {
-    console.error("Supabase payments load failed:", paymentsRes.error.message);
-  }
-  if (expensesRes.error) {
-    console.error("Supabase expenses load failed:", expensesRes.error.message);
-  }
-  if (milestonesRes.error) {
-    console.error(
-      "Supabase milestones load failed:",
-      milestonesRes.error.message,
-    );
   }
   if (filesRes.error) {
     console.error("Supabase files load failed:", filesRes.error.message);
@@ -543,36 +537,14 @@ async function loadRemote(): Promise<Project[]> {
     list.push(fileFromRow(row));
     filesByProject.set(row.project_id, list);
   }
-  const paymentsByProject = new Map<string, ProjectPayment[]>();
-  for (const row of (paymentsRes.data ?? []) as PaymentRow[]) {
-    const list = paymentsByProject.get(row.project_id) ?? [];
-    list.push(paymentFromRow(row));
-    paymentsByProject.set(row.project_id, list);
-  }
-  const expensesByProject = new Map<string, ProjectExpenseItem[]>();
-  for (const row of (expensesRes.data ?? []) as ExpenseRow[]) {
-    const list = expensesByProject.get(row.project_id) ?? [];
-    list.push(expenseFromRow(row));
-    expensesByProject.set(row.project_id, list);
-  }
-  const milestonesByProject = new Map<string, ProjectMilestone[]>();
-  for (const row of (milestonesRes.data ?? []) as MilestoneRow[]) {
-    const list = milestonesByProject.get(row.project_id) ?? [];
-    list.push(milestoneFromRow(row));
-    milestonesByProject.set(row.project_id, list);
-  }
+  // Financial schedules are local / Excel only — never loaded from DB.
   return ((projectsRes.data ?? []) as ProjectRow[]).map((row) =>
     projectFromRow(
       row,
       commentsByProject.get(row.id) ?? [],
       todosByProject.get(row.id) ?? [],
       contactsByProject.get(row.id) ?? [],
-      financialsFromParts(
-        row,
-        paymentsByProject.get(row.id) ?? [],
-        milestonesByProject.get(row.id) ?? [],
-        expensesByProject.get(row.id) ?? [],
-      ),
+      emptyFinancials(),
       filesByProject.get(row.id) ?? [],
     ),
   );
@@ -592,6 +564,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
+  const [financeImport, setFinanceImport] = useState<FinanceImportData | null>(
+    null,
+  );
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
@@ -609,7 +584,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
     async function boot() {
       if (supabase) {
-        const [members, remoteProjects, settings] = await Promise.all([
+        const [members, remoteProjects] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
             console.error("Failed to load team members from Supabase:", e);
             return loadLocalTeamMembers();
@@ -618,22 +593,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to load projects from Supabase:", e);
             return [] as Project[];
           }),
-          loadRemoteFinanceSettings().catch((e) => {
-            console.error("Failed to load finance settings from Supabase:", e);
-            return loadLocalFinanceSettings();
-          }),
         ]);
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(remoteProjects);
-        setFinanceSettings(settings);
+        setProjects(withLocalFinancials(remoteProjects));
+        setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(loadLocal());
+        setProjects(withLocalFinancials(loadLocal()));
         setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       }
     }
@@ -677,13 +650,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [teamMembers, ready]);
 
   useEffect(() => {
-    if (ready && !supabase) {
+    if (ready) {
       window.localStorage.setItem(
         FINANCE_SETTINGS_STORAGE_KEY,
         JSON.stringify(financeSettings),
       );
     }
   }, [financeSettings, ready]);
+
+  // App-entered schedules only — never persist Excel import-/expect- ids.
+  useEffect(() => {
+    if (!ready) return;
+    const map: Record<string, ProjectFinancials> = {};
+    for (const p of projects) {
+      map[p.id] = sanitizeAppFinancials(p.financials);
+    }
+    window.localStorage.setItem(
+      PROJECT_FINANCIALS_STORAGE_KEY,
+      JSON.stringify(map),
+    );
+  }, [projects, ready]);
+
+  useEffect(() => {
+    if (ready) {
+      if (financeImport) {
+        window.localStorage.setItem(
+          FINANCE_IMPORT_STORAGE_KEY,
+          JSON.stringify(financeImport),
+        );
+      } else {
+        window.localStorage.removeItem(FINANCE_IMPORT_STORAGE_KEY);
+      }
+    }
+  }, [financeImport, ready]);
 
   useEffect(() => {
     if (ready) {
@@ -748,15 +747,38 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       } else if (prev.openingCashAsOf) {
         next.openingCashAsOf = prev.openingCashAsOf;
       }
-      if (supabase) {
-        const row = financeSettingsToRow(next);
-        void supabase
-          .from("company_finance_settings")
-          .upsert({ ...row, updated_at: new Date().toISOString() })
-          .then(logDbError("finance settings update"));
-      }
       return next;
     });
+  }, []);
+
+  const applyFinanceImport = useCallback((data: FinanceImportData) => {
+    setFinanceImport(data);
+    setFinanceSettings((prev) => settingsAfterImport(prev, data));
+    // Drop local payment/expense schedules while Excel is the source of truth.
+    // Keep contract summary fields only.
+    setProjects((prev) =>
+      prev.map((p) => {
+        const f = sanitizeAppFinancials(p.financials);
+        return {
+          ...p,
+          financials: {
+            ...f,
+            payments: [],
+            expenseSchedule: [],
+          },
+        };
+      }),
+    );
+  }, []);
+
+  const clearFinanceImport = useCallback(() => {
+    setFinanceImport(null);
+    setFinanceSettings((prev) => ({
+      ...prev,
+      monthlyExpenses: (prev.monthlyExpenses ?? []).filter(
+        (e) => e.status === "projected",
+      ),
+    }));
   }, []);
 
   const resolveAuthor = useCallback(() => {
@@ -907,10 +929,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           stage: project.stage,
           base_description: project.baseDescription,
           ai_summary: project.aiSummary ?? null,
-          contract_value: null,
-          contract_signed_date: null,
-          expenses: null,
-          expected_profit: null,
           last_client_contact_at: project.lastClientContactAt,
           email_reminder_days: project.emailReminderDays,
           email_reminder_enabled: project.emailReminderEnabled,
@@ -1509,7 +1527,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateFinancials = useCallback(
     (projectId: string, patch: FinancialsPatch) => {
-      let syncedProfit: number | null | undefined;
       mutateFinancials(projectId, (f) => {
         const next = { ...f };
         if (patch.contractValue !== undefined) {
@@ -1524,30 +1541,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (patch.expenses === null) delete next.expenses;
           else next.expenses = patch.expenses;
         }
-        // Profit is always contract − overall expenses when both are set
         if (next.contractValue != null && next.expenses != null) {
           next.expectedProfit = next.contractValue - next.expenses;
-          syncedProfit = next.expectedProfit;
         } else {
           delete next.expectedProfit;
-          syncedProfit = null;
         }
         return next;
       });
-      if (supabase) {
-        const row: Record<string, number | string | null> = {};
-        if (patch.contractValue !== undefined)
-          row.contract_value = patch.contractValue;
-        if (patch.contractSignedDate !== undefined)
-          row.contract_signed_date = patch.contractSignedDate;
-        if (patch.expenses !== undefined) row.expenses = patch.expenses;
-        if (syncedProfit !== undefined) row.expected_profit = syncedProfit;
-        void supabase
-          .from("projects")
-          .update(row)
-          .eq("id", projectId)
-          .then(logDbError("financials update"));
-      }
     },
     [mutateFinancials],
   );
@@ -1573,22 +1573,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         payments: [...f.payments, payment],
       }));
-      if (supabase) {
-        void supabase
-          .from("project_payments")
-          .insert({
-            id: payment.id,
-            project_id: projectId,
-            amount: payment.amount,
-            percent: payment.percent ?? null,
-            due_date: payment.dueDate,
-            actual_date: payment.actualDate ?? null,
-            label: payment.label ?? null,
-            milestone_id: payment.milestoneId ?? null,
-            created_at: payment.createdAt,
-          })
-          .then(logDbError("payment insert"));
-      }
     },
     [mutateFinancials],
   );
@@ -1621,22 +1605,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_payments")
-          .update({
-            amount: patch.amount,
-            percent: patch.percent ?? null,
-            due_date: dueDate,
-            label: patch.label?.trim() || null,
-            milestone_id: linked?.id ?? null,
-            ...(patch.actualDate !== undefined
-              ? { actual_date: patch.actualDate }
-              : {}),
-          })
-          .eq("id", paymentId)
-          .then(logDbError("payment update"));
-      }
     },
     [mutateFinancials],
   );
@@ -1647,13 +1615,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         payments: f.payments.filter((p) => p.id !== paymentId),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_payments")
-          .delete()
-          .eq("id", paymentId)
-          .then(logDbError("payment delete"));
-      }
     },
     [mutateFinancials],
   );
@@ -1679,22 +1640,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         expenseSchedule: [...(f.expenseSchedule ?? []), expense],
       }));
-      if (supabase) {
-        void supabase
-          .from("project_expenses")
-          .insert({
-            id: expense.id,
-            project_id: projectId,
-            amount: expense.amount,
-            percent: expense.percent ?? null,
-            due_date: expense.dueDate,
-            actual_date: expense.actualDate ?? null,
-            label: expense.label ?? null,
-            milestone_id: expense.milestoneId ?? null,
-            created_at: expense.createdAt,
-          })
-          .then(logDbError("expense insert"));
-      }
     },
     [mutateFinancials],
   );
@@ -1727,22 +1672,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_expenses")
-          .update({
-            amount: patch.amount,
-            percent: patch.percent ?? null,
-            due_date: dueDate,
-            label: patch.label?.trim() || null,
-            milestone_id: linked?.id ?? null,
-            ...(patch.actualDate !== undefined
-              ? { actual_date: patch.actualDate }
-              : {}),
-          })
-          .eq("id", expenseId)
-          .then(logDbError("expense update"));
-      }
     },
     [mutateFinancials],
   );
@@ -1751,15 +1680,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     (projectId: string, expenseId: string) => {
       mutateFinancials(projectId, (f) => ({
         ...f,
-        expenseSchedule: (f.expenseSchedule ?? []).filter((e) => e.id !== expenseId),
+        expenseSchedule: (f.expenseSchedule ?? []).filter(
+          (e) => e.id !== expenseId,
+        ),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_expenses")
-          .delete()
-          .eq("id", expenseId)
-          .then(logDbError("expense delete"));
-      }
     },
     [mutateFinancials],
   );
@@ -1777,34 +1701,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         milestones: [...f.milestones, milestone],
       }));
-      if (supabase) {
-        void supabase
-          .from("project_milestones")
-          .insert({
-            id: milestone.id,
-            project_id: projectId,
-            kind: milestone.kind,
-            date: milestone.date,
-            note: milestone.note ?? null,
-            created_at: milestone.createdAt,
-          })
-          .then(logDbError("milestone insert"));
-      }
     },
     [mutateFinancials],
   );
 
   const updateMilestone = useCallback(
     (projectId: string, milestoneId: string, patch: MilestoneInput) => {
-      const current = projectsRef.current.find((p) => p.id === projectId);
-      const linkedPaymentIds =
-        current?.financials.payments
-          .filter((p) => p.milestoneId === milestoneId)
-          .map((p) => p.id) ?? [];
-      const linkedExpenseIds =
-        current?.financials.expenseSchedule
-          ?.filter((e) => e.milestoneId === milestoneId)
-          .map((e) => e.id) ?? [];
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.map((m) =>
@@ -1826,38 +1728,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           e.milestoneId === milestoneId ? { ...e, dueDate: patch.date } : e,
         ),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_milestones")
-          .update({
-            kind: patch.kind,
-            date: patch.date,
-            note: patch.note?.trim() || null,
-          })
-          .eq("id", milestoneId)
-          .then(logDbError("milestone update"));
-        for (const paymentId of linkedPaymentIds) {
-          void supabase
-            .from("project_payments")
-            .update({ due_date: patch.date })
-            .eq("id", paymentId)
-            .then(logDbError("linked payment date sync"));
-        }
-        for (const expenseId of linkedExpenseIds) {
-          void supabase
-            .from("project_expenses")
-            .update({ due_date: patch.date })
-            .eq("id", expenseId)
-            .then(logDbError("linked expense date sync"));
-        }
-      }
     },
     [mutateFinancials],
   );
 
   const deleteMilestone = useCallback(
     (projectId: string, milestoneId: string) => {
-      // Keep payments/expenses; just clear the link so they stay on the last known date.
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.filter((m) => m.id !== milestoneId),
@@ -1874,23 +1750,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
-      if (supabase) {
-        void supabase
-          .from("project_milestones")
-          .delete()
-          .eq("id", milestoneId)
-          .then(logDbError("milestone delete"));
-        void supabase
-          .from("project_payments")
-          .update({ milestone_id: null })
-          .eq("milestone_id", milestoneId)
-          .then(logDbError("unlink payments from milestone"));
-        void supabase
-          .from("project_expenses")
-          .update({ milestone_id: null })
-          .eq("milestone_id", milestoneId)
-          .then(logDbError("unlink expenses from milestone"));
-      }
     },
     [mutateFinancials],
   );
@@ -1919,6 +1778,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setShowFinancials,
         financeSettings,
         updateFinanceSettings,
+        financeImport,
+        applyFinanceImport,
+        clearFinanceImport,
         projects,
         ready,
         aiEnabled,

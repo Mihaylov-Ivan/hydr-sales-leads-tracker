@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects } from "@/lib/store";
 import {
   buildMonthlyPlan,
   partitionFinanceProjects,
 } from "@/lib/finance-plan";
+import { parseFinanceWorkbook } from "@/lib/finance-import";
+import { downloadFinanceWorkbook } from "@/lib/finance-export";
+import { projectsWithMergedFinancials } from "@/lib/finance-merge";
 import {
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
@@ -82,9 +85,21 @@ function loadViewRange(today: string): { from: string; to: string } {
   return fallback;
 }
 
+function isExcelFile(name: string): boolean {
+  const n = name.toLowerCase();
+  return n.endsWith(".xlsx") || n.endsWith(".xls") || n.endsWith(".xlsm");
+}
+
 export default function FinancePage() {
-  const { projects, ready, financeSettings, updateFinanceSettings } =
-    useProjects();
+  const {
+    projects,
+    ready,
+    financeSettings,
+    updateFinanceSettings,
+    financeImport,
+    applyFinanceImport,
+    clearFinanceImport,
+  } = useProjects();
 
   const [openingDraft, setOpeningDraft] = useState<string | null>(null);
   const [minWcDraft, setMinWcDraft] = useState<string | null>(null);
@@ -95,21 +110,29 @@ export default function FinancePage() {
     Record<string, string>
   >({});
   const [bulkProjected, setBulkProjected] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const today = todayDate();
   const [viewFrom, setViewFrom] = useState(() => loadViewRange(today).from);
   const [viewTo, setViewTo] = useState(() => loadViewRange(today).to);
 
+  const planProjects = useMemo(
+    () => projectsWithMergedFinancials(projects, financeImport, today),
+    [projects, financeImport, today],
+  );
+
   const months = useMemo(
     () =>
-      buildMonthlyPlan(projects, financeSettings, {
+      buildMonthlyPlan(planProjects, financeSettings, {
         fromMonth: viewFrom,
         toMonth: viewTo,
       }),
-    [projects, financeSettings, viewFrom, viewTo],
+    [planProjects, financeSettings, viewFrom, viewTo],
   );
   const { contracted, pipeline } = useMemo(
-    () => partitionFinanceProjects(projects, financeSettings, today),
-    [projects, financeSettings, today],
+    () => partitionFinanceProjects(planProjects, financeSettings, today),
+    [planProjects, financeSettings, today],
   );
 
   const opexByMonth = useMemo(() => {
@@ -119,6 +142,48 @@ export default function FinancePage() {
     }
     return map;
   }, [financeSettings.monthlyExpenses]);
+
+  async function onImportFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setImportBusy(true);
+    setImportError(null);
+    try {
+      const file = files[0];
+      if (!isExcelFile(file.name)) {
+        setImportError("Upload an Excel file (.xlsx) — e.g. finance2.xlsx");
+        return;
+      }
+      const buffer = await file.arrayBuffer();
+      const result = parseFinanceWorkbook(buffer, file.name);
+      if (!result.ok) {
+        setImportError(result.error);
+        return;
+      }
+
+      applyFinanceImport(result.data);
+
+      const importMonths = [
+        ...new Set(
+          result.data.projectActuals.map((a) => a.dueDate.slice(0, 7)),
+        ),
+      ].sort();
+      if (importMonths.length > 0) {
+        const earliest = importMonths[0];
+        const latest = importMonths[importMonths.length - 1];
+        setViewRange({
+          from: earliest < viewFrom ? earliest : viewFrom,
+          to: latest > viewTo ? latest : viewTo,
+        });
+      }
+
+      setImportError(null);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImportBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   function saveOpening() {
     const n = parseNum(openingDraft ?? String(financeSettings.openingCash));
@@ -277,9 +342,9 @@ export default function FinancePage() {
             Financial plan
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Past months show actual cash; future months show contracted and
-            weighted pipeline. Company opex is included in confirmed cash —
-            actual for closed months, projected for the rest.
+            Project actuals load from Excel. Future company opex starts at zero
+            — enter and apply it here. Pipeline projects keep projected
+            schedules from the app; contracted past cash comes from the file.
           </p>
         </div>
         {currentClosing && (
@@ -297,6 +362,100 @@ export default function FinancePage() {
           </div>
         )}
       </header>
+
+      {/* Import */}
+      <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-deep">
+              Actuals import
+            </h2>
+            <p className="max-w-2xl text-[11px] text-muted">
+              Upload{" "}
+              <code className="text-ink">finance2.xlsx</code> (sheet{" "}
+              <code className="text-ink">Data</code>: Project, Date, Income,
+              Expense, Deadline). While an import is loaded, only Excel rows
+              are shown. Add futures in the app after clearing the import, or
+              put them in the file and re-upload / export.
+            </p>
+            {financeImport && (
+              <p className="mt-2 text-xs text-green-accent">
+                Loaded {financeImport.projectActuals.length} actual
+                {financeImport.projectExpected?.length
+                  ? ` · ${financeImport.projectExpected.length} expected`
+                  : ""}
+                {financeImport.importedAt
+                  ? ` · ${new Date(financeImport.importedAt).toLocaleString()}`
+                  : ""}
+              </p>
+            )}
+            {importError && (
+              <p className="mt-2 text-xs text-amber-accent">{importError}</p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/templates/finance-import/finance2.xlsx"
+              download
+              className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-deep hover:bg-surface"
+            >
+              Download template
+            </a>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(e) => void onImportFiles(e.target.files)}
+            />
+            <button
+              type="button"
+              disabled={importBusy}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-lg bg-olive px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-50"
+            >
+              {importBusy ? "Importing…" : "Upload Excel"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  const { rowCount } = downloadFinanceWorkbook(
+                    projects,
+                    financeImport,
+                    `finance2-${today}.xlsx`,
+                  );
+                  setImportError(null);
+                  if (rowCount === 0) {
+                    setImportError(
+                      "Nothing to export yet — import actuals or add expected schedules on projects.",
+                    );
+                  }
+                } catch (e) {
+                  setImportError(
+                    e instanceof Error ? e.message : "Export failed",
+                  );
+                }
+              }}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-deep hover:border-teal-accent"
+            >
+              Export data
+            </button>
+            {financeImport && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearFinanceImport();
+                  setImportError(null);
+                }}
+                className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-muted hover:text-deep"
+              >
+                Clear import
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Settings */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
@@ -322,9 +481,7 @@ export default function FinancePage() {
             <input
               className={inputCls}
               type="month"
-              value={
-                financeSettings.openingCashAsOf ?? today.slice(0, 7)
-              }
+              value={financeSettings.openingCashAsOf ?? viewFrom}
               onChange={(e) => setAsOf(e.target.value)}
             />
           </div>
@@ -367,9 +524,9 @@ export default function FinancePage() {
         </div>
         <p className="mt-3 text-[11px] text-muted">
           Cash on hand is your bank balance at the start of the as-of month.
-          After that, every inflow and outflow comes from project schedules and
-          company opex. The table range below is only a view filter — it does
-          not change the baseline.
+          Flows before that month are ignored. Import sets as-of to the earliest
+          Excel month so project actuals appear in the table. Company opex is
+          manual (not in the Excel file). The table range is only a view filter.
           {windowFirstLabel != null && windowOpening != null && (
             <>
               {" "}
@@ -391,9 +548,10 @@ export default function FinancePage() {
               Monthly cashflow
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] text-muted">
-              Edit company opex inline. Actual opex hits Actual Out; projected
-              hits Contracted Out. Confirmed = opening + actual + contracted.
-              Expected = confirmed + weighted pipeline.
+              Actual opex comes from the import (read-only). Enter projected
+              opex for current/future months, or use Fill future opex. Confirmed
+              = opening + actual + contracted. Expected = confirmed + weighted
+              pipeline.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -551,9 +709,12 @@ export default function FinancePage() {
                     </td>
                     <td className="border-l border-line px-1.5 py-1">
                       <input
-                        className="w-[5.5rem] rounded border border-line bg-surface px-1.5 py-0.5 text-right text-[11px] text-ink outline-none focus:border-teal-accent"
+                        className="w-[5.5rem] rounded border border-line bg-surface px-1.5 py-0.5 text-right text-[11px] text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-70"
                         inputMode="decimal"
                         placeholder="—"
+                        disabled={
+                          Boolean(financeImport) && status === "actual"
+                        }
                         value={
                           opexAmountDrafts[row.month] ??
                           (entry ? String(entry.amount) : "")
@@ -578,7 +739,10 @@ export default function FinancePage() {
                           <button
                             key={value}
                             type="button"
-                            disabled={!entry && !opexAmountDrafts[row.month]}
+                            disabled={
+                              (!entry && !opexAmountDrafts[row.month]) ||
+                              (Boolean(financeImport) && status === "actual")
+                            }
                             title={
                               value === "actual" ? "Actual" : "Projected"
                             }

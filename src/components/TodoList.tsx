@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useProjects } from "@/lib/store";
-import { ProjectTodo, TeamMember, TodoKind, TODO_KIND_LABELS } from "@/lib/types";
+import {
+  ProjectTodo,
+  TeamMember,
+  TodoKind,
+  TODO_KIND_LABELS,
+  addDays,
+  compareTodosByDeadline,
+  todayDate,
+} from "@/lib/types";
 
 function Checkbox({ done }: { done: boolean }) {
   return (
@@ -38,12 +46,6 @@ function formatDue(date: string): string {
   });
 }
 
-function isOverdue(date: string): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return new Date(date + "T00:00:00") < today;
-}
-
 function DueDate({
   todo,
   onChange,
@@ -72,19 +74,31 @@ function DueDate({
     );
   }
   if (todo.dueDate) {
-    const overdue = !todo.done && isOverdue(todo.dueDate);
+    const today = todayDate();
+    const overdue = !todo.done && todo.dueDate < today;
+    const dueToday = !todo.done && todo.dueDate === today;
+    const dueTomorrow = !todo.done && todo.dueDate === addDays(today, 1);
+    const tone =
+      overdue || dueToday
+        ? "bg-red-100 text-red-600 hover:bg-red-200"
+        : dueTomorrow
+          ? "bg-amber-accent/15 text-amber-accent hover:bg-amber-accent/25"
+          : "bg-teal-soft text-teal-accent hover:bg-teal-accent/20";
+    const label = overdue
+      ? "Overdue · "
+      : dueToday
+        ? "Due today · "
+        : dueTomorrow
+          ? "Due tomorrow · "
+          : "Complete by ";
     return (
       <button
         type="button"
         onClick={() => setEditing(true)}
         title="Click to change the deadline"
-        className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${
-          overdue
-            ? "bg-red-100 text-red-600 hover:bg-red-200"
-            : "bg-teal-soft text-teal-accent hover:bg-teal-accent/20"
-        }`}
+        className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold transition ${tone}`}
       >
-        {overdue ? "Overdue · " : "Complete by "}
+        {label}
         {formatDue(todo.dueDate)}
       </button>
     );
@@ -295,8 +309,8 @@ export default function TodoList({
   const [dueDate, setDueDate] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
 
-  const open = todos.filter((t) => !t.done);
-  const done = todos.filter((t) => t.done);
+  const open = todos.filter((t) => !t.done).sort(compareTodosByDeadline);
+  const done = todos.filter((t) => t.done).sort(compareTodosByDeadline);
   const doneCount = done.length;
   const progress = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
 

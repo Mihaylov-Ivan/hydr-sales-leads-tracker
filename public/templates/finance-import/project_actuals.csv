@@ -1,0 +1,5 @@
+project_name,type,amount,actual_date,due_date,label,percent
+Sofia District Heating H2 Blend,income,500000,2026-03-15,2026-03-01,Down payment received,25
+Sofia District Heating H2 Blend,expense,80000,2026-04-10,2026-04-01,Supplier deposit,
+Istanbul Steel Annealing Line,income,250000,2026-05-20,2026-05-01,Milestone payment,20
+Istanbul Steel Annealing Line,expense,35000,2026-06-01,2026-06-01,Freight,
