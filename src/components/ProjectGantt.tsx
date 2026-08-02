@@ -16,6 +16,8 @@ import {
 
 const BAR_BLUE = "#5B9BD5";
 const MILESTONE_YELLOW = "#E8B923";
+const ACTUAL_BAR = "#c45c26";
+const ACTUAL_MILESTONE = "#a33d12";
 
 function formatDate(iso: string): string {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", {
@@ -57,8 +59,23 @@ function phaseColor(phase: ProjectGanttPhase, index: number): string {
   return phase.color ?? GANTT_PHASE_COLORS[index % GANTT_PHASE_COLORS.length];
 }
 
+function spanEndDate(startDate: string, durationDays: number): string {
+  return addDays(startDate, Math.max(1, durationDays) - 1);
+}
+
 function activityEndDate(a: ProjectGanttActivity): string {
-  return addDays(a.startDate, Math.max(1, a.durationDays) - 1);
+  return spanEndDate(a.startDate, a.durationDays);
+}
+
+function hasActualSpan(item: {
+  actualStartDate?: string;
+  actualDurationDays?: number;
+}): boolean {
+  return Boolean(
+    item.actualStartDate &&
+      item.actualDurationDays != null &&
+      item.actualDurationDays >= 1,
+  );
 }
 
 type ChartRow =
@@ -130,6 +147,7 @@ function buildRows(
 const LABEL_W = 280;
 const META_W = 0; // dates live in the left label column
 const ROW_H = 28;
+const ROW_H_ACTUAL = 40;
 const PAD = { top: 36, right: 12, bottom: 20 };
 
 type HoverState = {
@@ -144,14 +162,17 @@ function GanttChart({
   phases,
   activities,
   deadlines,
+  showActual,
 }: {
   phases: ProjectGanttPhase[];
   activities: ProjectGanttActivity[];
   deadlines: ProjectGanttDeadline[];
+  showActual: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(900);
   const [hover, setHover] = useState<HoverState | null>(null);
+  const rowH = showActual ? ROW_H_ACTUAL : ROW_H;
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -182,11 +203,26 @@ function GanttChart({
   const dates: string[] = [];
   for (const p of phases) {
     dates.push(p.startDate, phaseEndDate(p));
+    if (hasActualSpan(p)) {
+      dates.push(
+        p.actualStartDate!,
+        spanEndDate(p.actualStartDate!, p.actualDurationDays!),
+      );
+    }
   }
   for (const a of activities) {
     dates.push(a.startDate, activityEndDate(a));
+    if (hasActualSpan(a)) {
+      dates.push(
+        a.actualStartDate!,
+        spanEndDate(a.actualStartDate!, a.actualDurationDays!),
+      );
+    }
   }
-  for (const d of deadlines) dates.push(d.date);
+  for (const d of deadlines) {
+    dates.push(d.date);
+    if (d.actualDate) dates.push(d.actualDate);
+  }
   dates.push(today);
 
   const minT = Math.min(...dates.map((d) => new Date(d + "T00:00:00").getTime()));
@@ -198,7 +234,7 @@ function GanttChart({
 
   const chartW = Math.max(width, 640);
   const trackW = Math.max(chartW - LABEL_W - META_W - PAD.right, 200);
-  const chartH = PAD.top + rows.length * ROW_H + PAD.bottom;
+  const chartH = PAD.top + rows.length * rowH + PAD.bottom;
 
   function xOf(date: string): number {
     const t = new Date(date + "T00:00:00").getTime();
@@ -218,7 +254,7 @@ function GanttChart({
         : LABEL_W + trackW;
     const last = yearBands[yearBands.length - 1];
     if (last && last.year === y) {
-      last.w = nextX - (last.x);
+      last.w = nextX - last.x;
     } else {
       yearBands.push({ year: y, x, w: nextX - x });
     }
@@ -239,6 +275,97 @@ function GanttChart({
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     });
+  }
+
+  function renderSpanBars(
+    key: string,
+    label: string,
+    planStart: string,
+    planDays: number,
+    planColor: string,
+    actualStart: string | undefined,
+    actualDays: number | undefined,
+    y: number,
+    barH: number,
+    owner?: string,
+  ) {
+    const planEnd = spanEndDate(planStart, planDays);
+    const x1 = xOf(planStart);
+    const x2 = xOf(planEnd);
+    const barW = Math.max(x2 - x1, 4);
+    const hasActual =
+      showActual &&
+      actualStart &&
+      actualDays != null &&
+      actualDays >= 1;
+    const planY = hasActual ? y + 4 : y + (rowH - barH) / 2;
+    const actualY = y + rowH / 2 + 1;
+    const actualEnd = hasActual
+      ? spanEndDate(actualStart!, actualDays!)
+      : null;
+
+    return (
+      <g key={key}>
+        <rect
+          x={x1}
+          y={planY}
+          width={barW}
+          height={hasActual ? Math.max(barH - 2, 8) : barH}
+          rx={2}
+          fill={planColor}
+          opacity={hasActual ? 0.45 : 0.92}
+          stroke={hasActual ? planColor : undefined}
+          strokeWidth={hasActual ? 1 : 0}
+          className="cursor-pointer"
+          onMouseEnter={(e) =>
+            setHoverFromEvent(
+              e,
+              label,
+              `Plan · ${formatDate(planStart)} → ${formatDate(planEnd)}`,
+              `${planDays} days${owner ? ` · ${owner}` : ""}`,
+            )
+          }
+          onMouseMove={(e) =>
+            setHoverFromEvent(
+              e,
+              label,
+              `Plan · ${formatDate(planStart)} → ${formatDate(planEnd)}`,
+              `${planDays} days${owner ? ` · ${owner}` : ""}`,
+            )
+          }
+          onMouseLeave={() => setHover(null)}
+        />
+        {hasActual && actualEnd && (
+          <rect
+            x={xOf(actualStart!)}
+            y={actualY}
+            width={Math.max(xOf(actualEnd) - xOf(actualStart!), 4)}
+            height={Math.max(barH - 2, 8)}
+            rx={2}
+            fill={ACTUAL_BAR}
+            opacity={0.95}
+            className="cursor-pointer"
+            onMouseEnter={(e) =>
+              setHoverFromEvent(
+                e,
+                label,
+                `Actual · ${formatDate(actualStart!)} → ${formatDate(actualEnd)}`,
+                `${actualDays} days${owner ? ` · ${owner}` : ""}`,
+              )
+            }
+            onMouseMove={(e) =>
+              setHoverFromEvent(
+                e,
+                label,
+                `Actual · ${formatDate(actualStart!)} → ${formatDate(actualEnd)}`,
+                `${actualDays} days${owner ? ` · ${owner}` : ""}`,
+              )
+            }
+            onMouseLeave={() => setHover(null)}
+          />
+        )}
+      </g>
+    );
   }
 
   return (
@@ -313,14 +440,11 @@ function GanttChart({
         />
 
         {rows.map((row, i) => {
-          const y = PAD.top + i * ROW_H;
-          const midY = y + ROW_H / 2;
+          const y = PAD.top + i * rowH;
+          const midY = y + rowH / 2;
 
           if (row.kind === "phase") {
             const color = phaseColor(row.phase, row.phaseIndex);
-            const x1 = xOf(row.phase.startDate);
-            const x2 = xOf(phaseEndDate(row.phase));
-            const barW = Math.max(x2 - x1, 4);
             const label = `${row.phase.wbs ? `${row.phase.wbs} ` : ""}${row.phase.name}`;
             return (
               <g key={`phase-${row.phase.id}`}>
@@ -328,7 +452,7 @@ function GanttChart({
                   x={0}
                   y={y}
                   width={chartW}
-                  height={ROW_H}
+                  height={rowH}
                   fill="var(--teal-soft)"
                   opacity={0.35}
                 />
@@ -340,33 +464,18 @@ function GanttChart({
                 >
                   {label.length > 36 ? `${label.slice(0, 35)}…` : label}
                 </text>
-                <rect
-                  x={x1}
-                  y={midY - 7}
-                  width={barW}
-                  height={14}
-                  rx={2}
-                  fill={color}
-                  opacity={0.95}
-                  className="cursor-pointer"
-                  onMouseEnter={(e) =>
-                    setHoverFromEvent(
-                      e,
-                      label,
-                      `${formatDate(row.phase.startDate)} → ${formatDate(phaseEndDate(row.phase))}`,
-                      `${row.phase.durationDays} days${row.phase.owner ? ` · ${row.phase.owner}` : ""}`,
-                    )
-                  }
-                  onMouseMove={(e) =>
-                    setHoverFromEvent(
-                      e,
-                      label,
-                      `${formatDate(row.phase.startDate)} → ${formatDate(phaseEndDate(row.phase))}`,
-                      `${row.phase.durationDays} days${row.phase.owner ? ` · ${row.phase.owner}` : ""}`,
-                    )
-                  }
-                  onMouseLeave={() => setHover(null)}
-                />
+                {renderSpanBars(
+                  `phase-bars-${row.phase.id}`,
+                  label,
+                  row.phase.startDate,
+                  row.phase.durationDays,
+                  color,
+                  row.phase.actualStartDate,
+                  row.phase.actualDurationDays,
+                  y,
+                  14,
+                  row.phase.owner,
+                )}
               </g>
             );
           }
@@ -374,9 +483,6 @@ function GanttChart({
           if (row.kind === "activity") {
             const a = row.activity;
             const color = a.color ?? BAR_BLUE;
-            const x1 = xOf(a.startDate);
-            const x2 = xOf(activityEndDate(a));
-            const barW = Math.max(x2 - x1, 4);
             const label = `${a.wbs ? `${a.wbs} ` : ""}${a.name}`;
             return (
               <g key={`act-${a.id}`}>
@@ -388,33 +494,18 @@ function GanttChart({
                 >
                   {label.length > 38 ? `${label.slice(0, 37)}…` : label}
                 </text>
-                <rect
-                  x={x1}
-                  y={midY - 6}
-                  width={barW}
-                  height={12}
-                  rx={2}
-                  fill={color}
-                  opacity={0.92}
-                  className="cursor-pointer"
-                  onMouseEnter={(e) =>
-                    setHoverFromEvent(
-                      e,
-                      label,
-                      `${formatDate(a.startDate)} → ${formatDate(activityEndDate(a))}`,
-                      `${a.durationDays} days${a.owner ? ` · ${a.owner}` : ""}${a.status ? ` · ${a.status}` : ""}`,
-                    )
-                  }
-                  onMouseMove={(e) =>
-                    setHoverFromEvent(
-                      e,
-                      label,
-                      `${formatDate(a.startDate)} → ${formatDate(activityEndDate(a))}`,
-                      `${a.durationDays} days${a.owner ? ` · ${a.owner}` : ""}${a.status ? ` · ${a.status}` : ""}`,
-                    )
-                  }
-                  onMouseLeave={() => setHover(null)}
-                />
+                {renderSpanBars(
+                  `act-bars-${a.id}`,
+                  label,
+                  a.startDate,
+                  a.durationDays,
+                  color,
+                  a.actualStartDate,
+                  a.actualDurationDays,
+                  y,
+                  12,
+                  a.owner,
+                )}
               </g>
             );
           }
@@ -423,7 +514,9 @@ function GanttChart({
           const d = row.deadline;
           const dx = xOf(d.date);
           const label = `${d.wbs ? `${d.wbs} ` : ""}${d.name}`;
-          const size = 7;
+          const size = showActual && d.actualDate ? 6 : 7;
+          const planY = showActual && d.actualDate ? midY - 6 : midY;
+          const actualDx = d.actualDate ? xOf(d.actualDate) : dx;
           return (
             <g key={`dl-${d.id}`}>
               <text
@@ -435,8 +528,9 @@ function GanttChart({
                 {label.length > 38 ? `${label.slice(0, 37)}…` : label}
               </text>
               <polygon
-                points={`${dx},${midY - size} ${dx + size},${midY} ${dx},${midY + size} ${dx - size},${midY}`}
+                points={`${dx},${planY - size} ${dx + size},${planY} ${dx},${planY + size} ${dx - size},${planY}`}
                 fill={MILESTONE_YELLOW}
+                opacity={showActual && d.actualDate ? 0.55 : 1}
                 stroke="#b8860b"
                 strokeWidth={0.75}
                 className="cursor-pointer"
@@ -444,7 +538,7 @@ function GanttChart({
                   setHoverFromEvent(
                     e,
                     label,
-                    formatDate(d.date),
+                    `Plan · ${formatDate(d.date)}`,
                     d.owner ? `Milestone · ${d.owner}` : "Milestone",
                   )
                 }
@@ -452,12 +546,38 @@ function GanttChart({
                   setHoverFromEvent(
                     e,
                     label,
-                    formatDate(d.date),
+                    `Plan · ${formatDate(d.date)}`,
                     d.owner ? `Milestone · ${d.owner}` : "Milestone",
                   )
                 }
                 onMouseLeave={() => setHover(null)}
               />
+              {showActual && d.actualDate && (
+                <polygon
+                  points={`${actualDx},${midY + 6 - size} ${actualDx + size},${midY + 6} ${actualDx},${midY + 6 + size} ${actualDx - size},${midY + 6}`}
+                  fill={ACTUAL_MILESTONE}
+                  stroke="#7a2e0e"
+                  strokeWidth={0.75}
+                  className="cursor-pointer"
+                  onMouseEnter={(e) =>
+                    setHoverFromEvent(
+                      e,
+                      label,
+                      `Actual · ${formatDate(d.actualDate!)}`,
+                      d.owner ? `Milestone · ${d.owner}` : "Milestone",
+                    )
+                  }
+                  onMouseMove={(e) =>
+                    setHoverFromEvent(
+                      e,
+                      label,
+                      `Actual · ${formatDate(d.actualDate!)}`,
+                      d.owner ? `Milestone · ${d.owner}` : "Milestone",
+                    )
+                  }
+                  onMouseLeave={() => setHover(null)}
+                />
+              )}
             </g>
           );
         })}
@@ -492,13 +612,88 @@ function GanttChart({
   );
 }
 
+/** Shared start / duration / end inputs (planned or actual). */
+function SpanDateFields({
+  labelPrefix,
+  startDate,
+  durationDays,
+  endDate,
+  onStart,
+  onDuration,
+  onEnd,
+  optional,
+}: {
+  labelPrefix: string;
+  startDate: string;
+  durationDays: string;
+  endDate: string;
+  onStart: (v: string) => void;
+  onDuration: (v: string) => void;
+  onEnd: (v: string) => void;
+  optional?: boolean;
+}) {
+  return (
+    <>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          {labelPrefix} start{optional ? " (optional)" : ""}
+        </span>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => {
+            onStart(e.target.value);
+            const days = Math.max(1, Math.round(Number(durationDays)) || 1);
+            if (e.target.value) onEnd(addDays(e.target.value, days - 1));
+          }}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          {labelPrefix} duration (days)
+        </span>
+        <input
+          type="number"
+          min={1}
+          value={durationDays}
+          onChange={(e) => {
+            onDuration(e.target.value);
+            const n = Math.max(1, Math.round(Number(e.target.value)) || 1);
+            if (startDate) onEnd(addDays(startDate, n - 1));
+          }}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          {labelPrefix} end
+        </span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => {
+            onEnd(e.target.value);
+            if (startDate && e.target.value && e.target.value >= startDate) {
+              onDuration(String(daysBetween(startDate, e.target.value) + 1));
+            }
+          }}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+    </>
+  );
+}
+
 function PhaseForm({
   projectId,
   initial,
+  showActual,
   onDone,
 }: {
   projectId: string;
   initial?: ProjectGanttPhase;
+  showActual: boolean;
   onDone: () => void;
 }) {
   const { addGanttPhase, updateGanttPhase } = useProjects();
@@ -514,24 +709,27 @@ function PhaseForm({
   const [endDate, setEndDate] = useState(
     initial ? phaseEndDate(initial) : addDays(todayDate(), 29),
   );
-
-  function syncDurationFromEnd(nextEnd: string) {
-    setEndDate(nextEnd);
-    if (startDate && nextEnd >= startDate) {
-      setDurationDays(String(daysBetween(startDate, nextEnd) + 1));
-    }
-  }
-
-  function syncEndFromDuration(nextDuration: string) {
-    setDurationDays(nextDuration);
-    const n = Math.max(1, Math.round(Number(nextDuration)) || 1);
-    if (startDate) setEndDate(addDays(startDate, n - 1));
-  }
+  const [actualStartDate, setActualStartDate] = useState(
+    initial?.actualStartDate ?? "",
+  );
+  const [actualDurationDays, setActualDurationDays] = useState(
+    initial?.actualDurationDays != null
+      ? String(initial.actualDurationDays)
+      : "",
+  );
+  const [actualEndDate, setActualEndDate] = useState(
+    initial?.actualStartDate && initial.actualDurationDays
+      ? spanEndDate(initial.actualStartDate, initial.actualDurationDays)
+      : "",
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const days = Math.max(1, Math.round(Number(durationDays)) || 1);
     if (!name.trim() || !startDate) return;
+    const actualDays = actualStartDate
+      ? Math.max(1, Math.round(Number(actualDurationDays)) || 1)
+      : null;
     const payload = {
       name: name.trim(),
       startDate,
@@ -540,6 +738,8 @@ function PhaseForm({
       owner,
       color: initial?.color,
       sortOrder: initial?.sortOrder,
+      actualStartDate: actualStartDate || null,
+      actualDurationDays: actualDays,
     };
     if (initial) updateGanttPhase(projectId, initial.id, payload);
     else addGanttPhase(projectId, payload);
@@ -585,44 +785,35 @@ function PhaseForm({
           className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
         />
       </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Start
-        </span>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => {
-            setStartDate(e.target.value);
-            const days = Math.max(1, Math.round(Number(durationDays)) || 1);
-            if (e.target.value) setEndDate(addDays(e.target.value, days - 1));
-          }}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Duration (days)
-        </span>
-        <input
-          type="number"
-          min={1}
-          value={durationDays}
-          onChange={(e) => syncEndFromDuration(e.target.value)}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          End
-        </span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => syncDurationFromEnd(e.target.value)}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
+      <p className="sm:col-span-2 lg:col-span-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Planned
+      </p>
+      <SpanDateFields
+        labelPrefix="Plan"
+        startDate={startDate}
+        durationDays={durationDays}
+        endDate={endDate}
+        onStart={setStartDate}
+        onDuration={setDurationDays}
+        onEnd={setEndDate}
+      />
+      {showActual && (
+        <>
+          <p className="sm:col-span-2 lg:col-span-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Actual
+          </p>
+          <SpanDateFields
+            labelPrefix="Actual"
+            startDate={actualStartDate}
+            durationDays={actualDurationDays || "1"}
+            endDate={actualEndDate}
+            onStart={setActualStartDate}
+            onDuration={setActualDurationDays}
+            onEnd={setActualEndDate}
+            optional
+          />
+        </>
+      )}
       <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
         <button
           type="submit"
@@ -647,11 +838,13 @@ function ActivityForm({
   projectId,
   phases,
   initial,
+  showActual,
   onDone,
 }: {
   projectId: string;
   phases: ProjectGanttPhase[];
   initial?: ProjectGanttActivity;
+  showActual: boolean;
   onDone: () => void;
 }) {
   const { addGanttActivity, updateGanttActivity } = useProjects();
@@ -668,16 +861,30 @@ function ActivityForm({
     String(initial?.durationDays ?? 30),
   );
   const [endDate, setEndDate] = useState(
-    initial
-      ? activityEndDate(initial)
-      : addDays(todayDate(), 29),
+    initial ? activityEndDate(initial) : addDays(todayDate(), 29),
   );
   const [color, setColor] = useState(initial?.color ?? BAR_BLUE);
+  const [actualStartDate, setActualStartDate] = useState(
+    initial?.actualStartDate ?? "",
+  );
+  const [actualDurationDays, setActualDurationDays] = useState(
+    initial?.actualDurationDays != null
+      ? String(initial.actualDurationDays)
+      : "",
+  );
+  const [actualEndDate, setActualEndDate] = useState(
+    initial?.actualStartDate && initial.actualDurationDays
+      ? spanEndDate(initial.actualStartDate, initial.actualDurationDays)
+      : "",
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const days = Math.max(1, Math.round(Number(durationDays)) || 1);
     if (!name.trim() || !phaseId || !startDate) return;
+    const actualDays = actualStartDate
+      ? Math.max(1, Math.round(Number(actualDurationDays)) || 1)
+      : null;
     const payload = {
       phaseId,
       name: name.trim(),
@@ -688,6 +895,8 @@ function ActivityForm({
       color,
       status: initial?.status ?? "Planned",
       sortOrder: initial?.sortOrder,
+      actualStartDate: actualStartDate || null,
+      actualDurationDays: actualDays,
     };
     if (initial) updateGanttActivity(projectId, initial.id, payload);
     else addGanttActivity(projectId, payload);
@@ -755,55 +964,6 @@ function ActivityForm({
       </label>
       <label className="block">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Start
-        </span>
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => {
-            setStartDate(e.target.value);
-            const days = Math.max(1, Math.round(Number(durationDays)) || 1);
-            if (e.target.value) setEndDate(addDays(e.target.value, days - 1));
-          }}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Duration (days)
-        </span>
-        <input
-          type="number"
-          min={1}
-          value={durationDays}
-          onChange={(e) => {
-            setDurationDays(e.target.value);
-            const n = Math.max(1, Math.round(Number(e.target.value)) || 1);
-            if (startDate) setEndDate(addDays(startDate, n - 1));
-          }}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          End
-        </span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => {
-            setEndDate(e.target.value);
-            if (startDate && e.target.value >= startDate) {
-              setDurationDays(
-                String(daysBetween(startDate, e.target.value) + 1),
-              );
-            }
-          }}
-          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
           Bar colour
         </span>
         <select
@@ -817,7 +977,36 @@ function ActivityForm({
           <option value="#d99a06">Amber</option>
         </select>
       </label>
-      <div className="flex items-end gap-2 sm:col-span-2">
+      <p className="sm:col-span-2 lg:col-span-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Planned
+      </p>
+      <SpanDateFields
+        labelPrefix="Plan"
+        startDate={startDate}
+        durationDays={durationDays}
+        endDate={endDate}
+        onStart={setStartDate}
+        onDuration={setDurationDays}
+        onEnd={setEndDate}
+      />
+      {showActual && (
+        <>
+          <p className="sm:col-span-2 lg:col-span-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Actual
+          </p>
+          <SpanDateFields
+            labelPrefix="Actual"
+            startDate={actualStartDate}
+            durationDays={actualDurationDays || "1"}
+            endDate={actualEndDate}
+            onStart={setActualStartDate}
+            onDuration={setActualDurationDays}
+            onEnd={setActualEndDate}
+            optional
+          />
+        </>
+      )}
+      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-3">
         <button
           type="submit"
           disabled={!name.trim() || !phaseId || !startDate}
@@ -841,11 +1030,13 @@ function DeadlineForm({
   projectId,
   phases,
   initial,
+  showActual,
   onDone,
 }: {
   projectId: string;
   phases: ProjectGanttPhase[];
   initial?: ProjectGanttDeadline;
+  showActual: boolean;
   onDone: () => void;
 }) {
   const { addGanttDeadline, updateGanttDeadline } = useProjects();
@@ -856,12 +1047,21 @@ function DeadlineForm({
   const [wbs, setWbs] = useState(initial?.wbs ?? "");
   const [owner, setOwner] = useState(initial?.owner ?? "");
   const [date, setDate] = useState(initial?.date ?? todayDate());
+  const [actualDate, setActualDate] = useState(initial?.actualDate ?? "");
   const [note, setNote] = useState(initial?.note ?? "");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !phaseId || !date) return;
-    const payload = { phaseId, name: name.trim(), date, wbs, owner, note };
+    const payload = {
+      phaseId,
+      name: name.trim(),
+      date,
+      wbs,
+      owner,
+      note,
+      actualDate: actualDate || null,
+    };
     if (initial) updateGanttDeadline(projectId, initial.id, payload);
     else addGanttDeadline(projectId, payload);
     onDone();
@@ -918,7 +1118,7 @@ function DeadlineForm({
       </label>
       <label className="block">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Date
+          Plan date
         </span>
         <input
           type="date"
@@ -927,6 +1127,19 @@ function DeadlineForm({
           className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
         />
       </label>
+      {showActual && (
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Actual date (optional)
+          </span>
+          <input
+            type="date"
+            value={actualDate}
+            onChange={(e) => setActualDate(e.target.value)}
+            className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+          />
+        </label>
+      )}
       <label className="block">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
           Owner
@@ -979,6 +1192,7 @@ export default function ProjectGantt({
     deleteGanttActivity,
     deleteGanttDeadline,
   } = useProjects();
+  const [showActual, setShowActual] = useState(false);
   const [form, setForm] = useState<
     null | "phase" | "activity" | "deadline"
   >(null);
@@ -1017,10 +1231,26 @@ export default function ProjectGantt({
             Project schedule
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Phases, timed activities, and milestones on one Gantt timeline.
+            {showActual
+              ? "Planned (faded) and actual (solid) shown on each row."
+              : "Phases, timed activities, and milestones on one Gantt timeline."}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showActual}
+            onClick={() => setShowActual((v) => !v)}
+            className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition ${
+              showActual
+                ? "border-transparent text-white"
+                : "border-line bg-surface text-deep hover:border-teal-accent/40"
+            }`}
+            style={showActual ? { backgroundColor: ACTUAL_BAR } : undefined}
+          >
+            {showActual ? "Actuals on" : "Track actuals"}
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1060,13 +1290,23 @@ export default function ProjectGantt({
         phases={phases}
         activities={activities}
         deadlines={deadlines}
+        showActual={showActual}
       />
 
       <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-4 rounded-sm" style={{ background: BAR_BLUE }} />
-          Activity
+          Planned
         </span>
+        {showActual && (
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="h-2 w-4 rounded-sm"
+              style={{ background: ACTUAL_BAR }}
+            />
+            Actual
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-4 rounded-sm" style={{ background: "#70AD47" }} />
           Review
@@ -1084,6 +1324,7 @@ export default function ProjectGantt({
         <div className="mt-4">
           <PhaseForm
             projectId={projectId}
+            showActual={showActual}
             initial={
               editingPhaseId
                 ? phases.find((p) => p.id === editingPhaseId)
@@ -1098,6 +1339,7 @@ export default function ProjectGantt({
           <ActivityForm
             projectId={projectId}
             phases={phases}
+            showActual={showActual}
             initial={
               editingActivityId
                 ? activities.find((a) => a.id === editingActivityId)
@@ -1112,6 +1354,7 @@ export default function ProjectGantt({
           <DeadlineForm
             projectId={projectId}
             phases={phases}
+            showActual={showActual}
             initial={
               editingDeadlineId
                 ? deadlines.find((d) => d.id === editingDeadlineId)

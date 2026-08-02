@@ -330,6 +330,8 @@ export interface GanttPhaseInput {
   name: string;
   startDate: string;
   durationDays: number;
+  actualStartDate?: string | null;
+  actualDurationDays?: number | null;
   color?: string;
   wbs?: string;
   owner?: string;
@@ -341,6 +343,8 @@ export interface GanttActivityInput {
   name: string;
   startDate: string;
   durationDays: number;
+  actualStartDate?: string | null;
+  actualDurationDays?: number | null;
   wbs?: string;
   owner?: string;
   color?: string;
@@ -352,6 +356,7 @@ export interface GanttDeadlineInput {
   phaseId: string;
   name: string;
   date: string;
+  actualDate?: string | null;
   wbs?: string;
   owner?: string;
   note?: string;
@@ -2239,6 +2244,17 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         color,
         ...(input.wbs?.trim() ? { wbs: input.wbs.trim() } : {}),
         ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
+        ...(input.actualStartDate
+          ? { actualStartDate: input.actualStartDate }
+          : {}),
+        ...(input.actualDurationDays != null && input.actualDurationDays >= 1
+          ? {
+              actualDurationDays: Math.max(
+                1,
+                Math.round(input.actualDurationDays),
+              ),
+            }
+          : {}),
         sortOrder:
           input.sortOrder ??
           (existing.length > 0
@@ -2259,6 +2275,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             name: phase.name,
             start_date: phase.startDate,
             duration_days: phase.durationDays,
+            actual_start_date: phase.actualStartDate ?? null,
+            actual_duration_days: phase.actualDurationDays ?? null,
             color: phase.color ?? null,
             wbs: phase.wbs ?? null,
             owner: phase.owner ?? null,
@@ -2298,6 +2316,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.owner.trim()) next.owner = patch.owner.trim();
             else delete next.owner;
           }
+          if (patch.actualStartDate !== undefined) {
+            if (patch.actualStartDate) next.actualStartDate = patch.actualStartDate;
+            else delete next.actualStartDate;
+          }
+          if (patch.actualDurationDays !== undefined) {
+            if (patch.actualDurationDays != null && patch.actualDurationDays >= 1) {
+              next.actualDurationDays = Math.max(
+                1,
+                Math.round(patch.actualDurationDays),
+              );
+            } else delete next.actualDurationDays;
+          }
           if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
           return next;
         }),
@@ -2308,6 +2338,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.startDate) row.start_date = patch.startDate;
         if (patch.durationDays !== undefined) {
           row.duration_days = Math.max(1, Math.round(patch.durationDays) || 1);
+        }
+        if (patch.actualStartDate !== undefined) {
+          row.actual_start_date = patch.actualStartDate || null;
+        }
+        if (patch.actualDurationDays !== undefined) {
+          row.actual_duration_days =
+            patch.actualDurationDays != null && patch.actualDurationDays >= 1
+              ? Math.max(1, Math.round(patch.actualDurationDays))
+              : null;
         }
         if (patch.color !== undefined) row.color = patch.color || null;
         if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
@@ -2360,6 +2399,17 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
         ...(input.color ? { color: input.color } : {}),
         ...(input.status?.trim() ? { status: input.status.trim() } : {}),
+        ...(input.actualStartDate
+          ? { actualStartDate: input.actualStartDate }
+          : {}),
+        ...(input.actualDurationDays != null && input.actualDurationDays >= 1
+          ? {
+              actualDurationDays: Math.max(
+                1,
+                Math.round(input.actualDurationDays),
+              ),
+            }
+          : {}),
         sortOrder:
           input.sortOrder ??
           (existing.length > 0
@@ -2381,6 +2431,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             name: activity.name,
             start_date: activity.startDate,
             duration_days: activity.durationDays,
+            actual_start_date: activity.actualStartDate ?? null,
+            actual_duration_days: activity.actualDurationDays ?? null,
             wbs: activity.wbs ?? null,
             owner: activity.owner ?? null,
             color: activity.color ?? null,
@@ -2426,6 +2478,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.status.trim()) next.status = patch.status.trim();
             else delete next.status;
           }
+          if (patch.actualStartDate !== undefined) {
+            if (patch.actualStartDate) next.actualStartDate = patch.actualStartDate;
+            else delete next.actualStartDate;
+          }
+          if (patch.actualDurationDays !== undefined) {
+            if (patch.actualDurationDays != null && patch.actualDurationDays >= 1) {
+              next.actualDurationDays = Math.max(
+                1,
+                Math.round(patch.actualDurationDays),
+              );
+            } else delete next.actualDurationDays;
+          }
           if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
           return next;
         }),
@@ -2437,6 +2501,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.startDate) row.start_date = patch.startDate;
         if (patch.durationDays !== undefined) {
           row.duration_days = Math.max(1, Math.round(patch.durationDays) || 1);
+        }
+        if (patch.actualStartDate !== undefined) {
+          row.actual_start_date = patch.actualStartDate || null;
+        }
+        if (patch.actualDurationDays !== undefined) {
+          row.actual_duration_days =
+            patch.actualDurationDays != null && patch.actualDurationDays >= 1
+              ? Math.max(1, Math.round(patch.actualDurationDays))
+              : null;
         }
         if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
         if (patch.owner !== undefined) row.owner = patch.owner.trim() || null;
@@ -2482,6 +2555,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...(input.wbs?.trim() ? { wbs: input.wbs.trim() } : {}),
         ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
         ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         createdAt: new Date().toISOString(),
       };
       mutateSchedule(projectId, (s) => ({
@@ -2497,6 +2571,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             phase_id: deadline.phaseId,
             name: deadline.name,
             date: deadline.date,
+            actual_date: deadline.actualDate ?? null,
             wbs: deadline.wbs ?? null,
             owner: deadline.owner ?? null,
             note: deadline.note ?? null,
@@ -2532,6 +2607,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.note.trim()) next.note = patch.note.trim();
             else delete next.note;
           }
+          if (patch.actualDate !== undefined) {
+            if (patch.actualDate) next.actualDate = patch.actualDate;
+            else delete next.actualDate;
+          }
           return next;
         }),
       }));
@@ -2540,6 +2619,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.phaseId) row.phase_id = patch.phaseId;
         if (patch.name !== undefined) row.name = patch.name.trim();
         if (patch.date) row.date = patch.date;
+        if (patch.actualDate !== undefined) {
+          row.actual_date = patch.actualDate || null;
+        }
         if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
         if (patch.owner !== undefined) row.owner = patch.owner.trim() || null;
         if (patch.note !== undefined) row.note = patch.note.trim() || null;

@@ -177,6 +177,8 @@ export interface GanttPhaseRow {
   name: string;
   start_date: string;
   duration_days: number;
+  actual_start_date: string | null;
+  actual_duration_days: number | null;
   color: string | null;
   wbs: string | null;
   owner: string | null;
@@ -190,6 +192,12 @@ export function ganttPhaseFromRow(row: GanttPhaseRow): ProjectGanttPhase {
     name: row.name,
     startDate: row.start_date.slice(0, 10),
     durationDays: Math.max(1, row.duration_days),
+    ...(row.actual_start_date
+      ? { actualStartDate: row.actual_start_date.slice(0, 10) }
+      : {}),
+    ...(row.actual_duration_days != null && row.actual_duration_days >= 1
+      ? { actualDurationDays: row.actual_duration_days }
+      : {}),
     ...(row.color ? { color: row.color } : {}),
     ...(row.wbs ? { wbs: row.wbs } : {}),
     ...(row.owner ? { owner: row.owner } : {}),
@@ -206,6 +214,8 @@ export interface GanttActivityRow {
   name: string;
   start_date: string;
   duration_days: number;
+  actual_start_date: string | null;
+  actual_duration_days: number | null;
   wbs: string | null;
   owner: string | null;
   color: string | null;
@@ -221,6 +231,12 @@ export function ganttActivityFromRow(row: GanttActivityRow): ProjectGanttActivit
     name: row.name,
     startDate: row.start_date.slice(0, 10),
     durationDays: Math.max(1, row.duration_days),
+    ...(row.actual_start_date
+      ? { actualStartDate: row.actual_start_date.slice(0, 10) }
+      : {}),
+    ...(row.actual_duration_days != null && row.actual_duration_days >= 1
+      ? { actualDurationDays: row.actual_duration_days }
+      : {}),
     ...(row.wbs ? { wbs: row.wbs } : {}),
     ...(row.owner ? { owner: row.owner } : {}),
     ...(row.color ? { color: row.color } : {}),
@@ -237,6 +253,7 @@ export interface GanttDeadlineRow {
   phase_id: string;
   name: string;
   date: string;
+  actual_date: string | null;
   wbs: string | null;
   owner: string | null;
   note: string | null;
@@ -249,6 +266,7 @@ export function ganttDeadlineFromRow(row: GanttDeadlineRow): ProjectGanttDeadlin
     phaseId: row.phase_id,
     name: row.name,
     date: row.date.slice(0, 10),
+    ...(row.actual_date ? { actualDate: row.actual_date.slice(0, 10) } : {}),
     ...(row.wbs ? { wbs: row.wbs } : {}),
     ...(row.owner ? { owner: row.owner } : {}),
     ...(row.note ? { note: row.note } : {}),

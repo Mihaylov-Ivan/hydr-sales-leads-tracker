@@ -245,11 +245,14 @@ create policy "anon full access"
 
 alter table public.project_gantt_phases
   add column if not exists wbs text,
-  add column if not exists owner text;
+  add column if not exists owner text,
+  add column if not exists actual_start_date date,
+  add column if not exists actual_duration_days integer;
 
 alter table public.project_gantt_deadlines
   add column if not exists wbs text,
-  add column if not exists owner text;
+  add column if not exists owner text,
+  add column if not exists actual_date date;
 
 create table if not exists public.project_gantt_activities (
   id uuid primary key default gen_random_uuid(),
@@ -258,6 +261,8 @@ create table if not exists public.project_gantt_activities (
   name text not null,
   start_date date not null,
   duration_days integer not null check (duration_days >= 1),
+  actual_start_date date,
+  actual_duration_days integer,
   wbs text,
   owner text,
   color text,

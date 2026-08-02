@@ -328,6 +328,10 @@ export interface ProjectGanttPhase {
   startDate: string;
   /** Inclusive length in calendar days (≥ 1) */
   durationDays: number;
+  /** Actual start when tracking progress (yyyy-mm-dd) */
+  actualStartDate?: string;
+  /** Actual inclusive duration in calendar days */
+  actualDurationDays?: number;
   /** Accent color for the bar (hex). Assigned if omitted. */
   color?: string;
   /** Optional WBS / outline code, e.g. "1.0" */
@@ -348,6 +352,10 @@ export interface ProjectGanttActivity {
   startDate: string;
   /** Inclusive length in calendar days (≥ 1). Use 1 for a milestone bar. */
   durationDays: number;
+  /** Actual start when tracking progress (yyyy-mm-dd) */
+  actualStartDate?: string;
+  /** Actual inclusive duration in calendar days */
+  actualDurationDays?: number;
   /** Optional WBS code, e.g. "2.1" */
   wbs?: string;
   owner?: string;
@@ -366,6 +374,8 @@ export interface ProjectGanttDeadline {
   name: string;
   /** Deadline date (yyyy-mm-dd) — should fall within the phase span */
   date: string;
+  /** Actual completion date when tracking progress */
+  actualDate?: string;
   /** Optional WBS code, e.g. "1.1" */
   wbs?: string;
   owner?: string;
