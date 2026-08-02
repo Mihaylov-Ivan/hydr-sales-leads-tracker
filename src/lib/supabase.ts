@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import {
+  CompanyMetricsSettings,
   Market,
   Project,
   ProjectComment,
@@ -13,6 +14,7 @@ import {
   TeamMember,
   TodoKind,
   DEFAULT_EMAIL_REMINDER_DAYS,
+  defaultMetricsSettings,
   emptyFinancials,
   normalizeStage,
 } from "./types";
@@ -45,6 +47,29 @@ export interface ProjectRow {
   email_reminder_enabled: boolean | null;
   lead_user_id: string | null;
   created_at: string;
+  /** Pipeline metrics columns (migration-014); may be absent before migration */
+  cold_lead_entered_at?: string | null;
+  hot_lead_entered_at?: string | null;
+  under_development_at?: string | null;
+  commissioned_at?: string | null;
+  cancelled_at?: string | null;
+  last_meaningful_activity_at?: string | null;
+  next_action_text?: string | null;
+  next_action_due_at?: string | null;
+  cancellation_reason?: string | null;
+}
+
+/** Shape of company_metrics_settings singleton (migration-015) */
+export interface MetricsSettingsRow {
+  id: number;
+  stale_cold_days: number;
+  stale_hot_days: number;
+  stale_under_development_days: number;
+  maturity_under_development_months: number;
+  maturity_commissioned_months: number;
+  healthy_conversion_probability: number;
+  stale_recovery_probability: number;
+  updated_at: string;
 }
 
 /** Shape of a row in public.project_comments */
@@ -178,6 +203,18 @@ export function commentFromRow(row: CommentRow): ProjectComment {
   };
 }
 
+function dateOnly(value: string | null | undefined, fallback: string): string {
+  if (!value) return fallback.slice(0, 10);
+  return value.slice(0, 10);
+}
+
+function optionalDate(
+  value: string | null | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  return value.slice(0, 10);
+}
+
 export function projectFromRow(
   row: ProjectRow,
   comments: ProjectComment[],
@@ -186,6 +223,8 @@ export function projectFromRow(
   financials: ProjectFinancials = emptyFinancials(),
   files: ProjectFile[] = [],
 ): Project {
+  const createdAt = row.created_at;
+  const createdDate = createdAt.slice(0, 10);
   return {
     id: row.id,
     name: row.name,
@@ -200,16 +239,42 @@ export function projectFromRow(
     baseDescription: row.base_description,
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
     lastClientContactAt:
-      row.last_client_contact_at ?? row.created_at.slice(0, 10),
+      row.last_client_contact_at ?? createdDate,
     emailReminderDays: row.email_reminder_days ?? DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: row.email_reminder_enabled !== false,
     ...(row.lead_user_id ? { leadUserId: row.lead_user_id } : {}),
+    coldLeadEnteredAt: dateOnly(row.cold_lead_entered_at, createdDate),
+    ...(optionalDate(row.hot_lead_entered_at)
+      ? { hotLeadEnteredAt: optionalDate(row.hot_lead_entered_at) }
+      : {}),
+    ...(optionalDate(row.under_development_at)
+      ? { underDevelopmentAt: optionalDate(row.under_development_at) }
+      : {}),
+    ...(optionalDate(row.commissioned_at)
+      ? { commissionedAt: optionalDate(row.commissioned_at) }
+      : {}),
+    ...(optionalDate(row.cancelled_at)
+      ? { cancelledAt: optionalDate(row.cancelled_at) }
+      : {}),
+    lastMeaningfulActivityAt: dateOnly(
+      row.last_meaningful_activity_at,
+      row.last_client_contact_at ?? createdDate,
+    ),
+    ...(row.next_action_text?.trim()
+      ? { nextActionText: row.next_action_text.trim() }
+      : {}),
+    ...(optionalDate(row.next_action_due_at)
+      ? { nextActionDueAt: optionalDate(row.next_action_due_at) }
+      : {}),
+    ...(row.cancellation_reason?.trim()
+      ? { cancellationReason: row.cancellation_reason.trim() }
+      : {}),
     comments,
     todos,
     contacts,
     files,
     financials,
-    createdAt: row.created_at,
+    createdAt,
   };
 }
 
@@ -231,5 +296,45 @@ export function projectToRow(p: Project): ProjectRow {
     email_reminder_enabled: p.emailReminderEnabled,
     lead_user_id: p.leadUserId ?? null,
     created_at: p.createdAt,
+    cold_lead_entered_at: p.coldLeadEnteredAt,
+    hot_lead_entered_at: p.hotLeadEnteredAt ?? null,
+    under_development_at: p.underDevelopmentAt ?? null,
+    commissioned_at: p.commissionedAt ?? null,
+    cancelled_at: p.cancelledAt ?? null,
+    last_meaningful_activity_at: p.lastMeaningfulActivityAt,
+    next_action_text: p.nextActionText ?? null,
+    next_action_due_at: p.nextActionDueAt ?? null,
+    cancellation_reason: p.cancellationReason ?? null,
   };
 }
+
+export function metricsSettingsFromRow(
+  row: MetricsSettingsRow,
+): CompanyMetricsSettings {
+  return {
+    staleColdDays: row.stale_cold_days,
+    staleHotDays: row.stale_hot_days,
+    staleUnderDevelopmentDays: row.stale_under_development_days,
+    maturityUnderDevelopmentMonths: row.maturity_under_development_months,
+    maturityCommissionedMonths: row.maturity_commissioned_months,
+    healthyConversionProbability: Number(row.healthy_conversion_probability),
+    staleRecoveryProbability: Number(row.stale_recovery_probability),
+  };
+}
+
+export function metricsSettingsToRow(
+  s: CompanyMetricsSettings,
+): Omit<MetricsSettingsRow, "updated_at"> {
+  return {
+    id: 1,
+    stale_cold_days: s.staleColdDays,
+    stale_hot_days: s.staleHotDays,
+    stale_under_development_days: s.staleUnderDevelopmentDays,
+    maturity_under_development_months: s.maturityUnderDevelopmentMonths,
+    maturity_commissioned_months: s.maturityCommissionedMonths,
+    healthy_conversion_probability: s.healthyConversionProbability,
+    stale_recovery_probability: s.staleRecoveryProbability,
+  };
+}
+
+export { defaultMetricsSettings };

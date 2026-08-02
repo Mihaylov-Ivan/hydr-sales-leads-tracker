@@ -365,6 +365,159 @@ export default function ProjectPage() {
         </div>
       </div>
 
+      {/* Pipeline metrics fields */}
+      <section className="rounded-xl border border-line bg-panel p-4 shadow-sm sm:p-5">
+        <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-deep">
+          Pipeline activity
+        </h2>
+        <p className="mb-4 text-xs text-muted">
+          Stage entered dates power conversion metrics. Last meaningful activity
+          drives stale detection for Cold and Hot leads (Under Development is
+          never stale).
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Last meaningful activity
+            </span>
+            <input
+              type="date"
+              value={project.lastMeaningfulActivityAt}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  lastMeaningfulActivityAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Next action
+            </span>
+            <input
+              type="text"
+              value={project.nextActionText ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  nextActionText: e.target.value,
+                })
+              }
+              placeholder="Agreed next step with the client"
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Next action due
+            </span>
+            <input
+              type="date"
+              value={project.nextActionDueAt ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  nextActionDueAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Cold lead entered
+            </span>
+            <input
+              type="date"
+              value={project.coldLeadEnteredAt}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  coldLeadEnteredAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Hot lead entered
+            </span>
+            <input
+              type="date"
+              value={project.hotLeadEnteredAt ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  hotLeadEnteredAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Under development entered
+            </span>
+            <input
+              type="date"
+              value={project.underDevelopmentAt ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  underDevelopmentAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Commissioned at
+            </span>
+            <input
+              type="date"
+              value={project.commissionedAt ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  commissionedAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Cancelled at
+            </span>
+            <input
+              type="date"
+              value={project.cancelledAt ?? ""}
+              onChange={(e) =>
+                updateProject(project.id, {
+                  cancelledAt: e.target.value,
+                })
+              }
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          {(project.stage === "cancelled" || project.cancellationReason) && (
+            <label className="block sm:col-span-2 lg:col-span-3">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Cancellation reason
+              </span>
+              <input
+                type="text"
+                value={project.cancellationReason ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    cancellationReason: e.target.value,
+                  })
+                }
+                placeholder="Why was this project cancelled?"
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+          )}
+        </div>
+      </section>
+
       {/* Living summary */}
       <section className="rounded-xl border border-teal-accent/30 bg-teal-soft/50 p-5">
         <div className="mb-2 flex flex-wrap items-center gap-2">

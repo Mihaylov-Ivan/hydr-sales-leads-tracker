@@ -24,10 +24,12 @@ import {
   TeamMember,
   TodoKind,
   CompanyFinanceSettings,
+  CompanyMetricsSettings,
   TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
   defaultFinanceSettings,
+  defaultMetricsSettings,
   normalizeStage,
   todayDate,
 } from "./types";
@@ -37,6 +39,8 @@ import {
   commentFromRow,
   contactFromRow,
   fileFromRow,
+  metricsSettingsFromRow,
+  metricsSettingsToRow,
   projectFromRow,
   teamMemberFromRow,
   teamMemberToRow,
@@ -46,6 +50,7 @@ import type {
   CommentRow,
   ContactRow,
   FileRow,
+  MetricsSettingsRow,
   ProjectRow,
   TeamMemberRow,
   TodoRow,
@@ -55,6 +60,12 @@ import {
   sanitizeAppFinancials,
   settingsAfterImport,
 } from "./finance-import";
+import { METRICS_SETTINGS_STORAGE_KEY } from "./metrics/config";
+import {
+  ensureProjectMetricsDefaults,
+  initialMetricsFields,
+  stageChangeTimestampPatch,
+} from "./metrics/project-bridge";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -85,12 +96,69 @@ function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
 
 function withLocalFinancials(projects: Project[]): Project[] {
   const local = loadLocalProjectFinancials();
-  return projects.map((p) => ({
-    ...p,
-    financials: sanitizeAppFinancials(
-      local[p.id] ?? p.financials ?? emptyFinancials(),
-    ),
-  }));
+  return projects.map((p) =>
+    ensureProjectMetricsDefaults({
+      ...p,
+      financials: sanitizeAppFinancials(
+        local[p.id] ?? p.financials ?? emptyFinancials(),
+      ),
+    }),
+  );
+}
+
+function loadLocalMetricsSettings(): CompanyMetricsSettings {
+  try {
+    const raw = window.localStorage.getItem(METRICS_SETTINGS_STORAGE_KEY);
+    if (!raw) return defaultMetricsSettings();
+    const parsed = JSON.parse(raw) as Partial<CompanyMetricsSettings>;
+    const base = defaultMetricsSettings();
+    return {
+      staleColdDays:
+        typeof parsed.staleColdDays === "number" && parsed.staleColdDays > 0
+          ? parsed.staleColdDays
+          : base.staleColdDays,
+      staleHotDays:
+        typeof parsed.staleHotDays === "number" && parsed.staleHotDays > 0
+          ? parsed.staleHotDays
+          : base.staleHotDays,
+      staleUnderDevelopmentDays:
+        typeof parsed.staleUnderDevelopmentDays === "number" &&
+        parsed.staleUnderDevelopmentDays > 0
+          ? parsed.staleUnderDevelopmentDays
+          : base.staleUnderDevelopmentDays,
+      maturityUnderDevelopmentMonths:
+        typeof parsed.maturityUnderDevelopmentMonths === "number" &&
+        parsed.maturityUnderDevelopmentMonths > 0
+          ? parsed.maturityUnderDevelopmentMonths
+          : base.maturityUnderDevelopmentMonths,
+      maturityCommissionedMonths:
+        typeof parsed.maturityCommissionedMonths === "number" &&
+        parsed.maturityCommissionedMonths > 0
+          ? parsed.maturityCommissionedMonths
+          : base.maturityCommissionedMonths,
+      healthyConversionProbability:
+        typeof parsed.healthyConversionProbability === "number"
+          ? Math.min(1, Math.max(0, parsed.healthyConversionProbability))
+          : base.healthyConversionProbability,
+      staleRecoveryProbability:
+        typeof parsed.staleRecoveryProbability === "number"
+          ? Math.min(1, Math.max(0, parsed.staleRecoveryProbability))
+          : base.staleRecoveryProbability,
+    };
+  } catch {
+    return defaultMetricsSettings();
+  }
+}
+
+async function loadRemoteMetricsSettings(): Promise<CompanyMetricsSettings> {
+  if (!supabase) return loadLocalMetricsSettings();
+  const { data, error } = await supabase
+    .from("company_metrics_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error || !data) return loadLocalMetricsSettings();
+  return metricsSettingsFromRow(data as MetricsSettingsRow);
 }
 
 export interface NewProjectInput {
@@ -104,6 +172,9 @@ export interface NewProjectInput {
   stage: Stage;
   baseDescription: string;
   leadUserId?: string;
+  lastMeaningfulActivityAt?: string;
+  nextActionText?: string;
+  nextActionDueAt?: string;
 }
 
 export type ProjectPatch = Partial<
@@ -122,8 +193,19 @@ export type ProjectPatch = Partial<
     | "emailReminderDays"
     | "emailReminderEnabled"
     | "leadUserId"
+    | "coldLeadEnteredAt"
+    | "hotLeadEnteredAt"
+    | "underDevelopmentAt"
+    | "commissionedAt"
+    | "cancelledAt"
+    | "lastMeaningfulActivityAt"
+    | "nextActionText"
+    | "nextActionDueAt"
+    | "cancellationReason"
   >
 >;
+
+export type MetricsSettingsPatch = Partial<CompanyMetricsSettings>;
 
 /** `null` clears the field, `undefined` leaves it unchanged. */
 export interface TodoPatch {
@@ -194,6 +276,9 @@ interface ProjectsApi {
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
+  /** Pipeline metrics thresholds (DB when available, else localStorage) */
+  metricsSettings: CompanyMetricsSettings;
+  updateMetricsSettings: (patch: MetricsSettingsPatch) => void;
   /** CSV/Excel actuals import — source of past company + project cash */
   financeImport: FinanceImportData | null;
   applyFinanceImport: (data: FinanceImportData) => void;
@@ -564,6 +649,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
+  const [metricsSettings, setMetricsSettings] = useState<CompanyMetricsSettings>(
+    defaultMetricsSettings,
+  );
   const [financeImport, setFinanceImport] = useState<FinanceImportData | null>(
     null,
   );
@@ -571,6 +659,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
   const [supportsCommentAuthorId, setSupportsCommentAuthorId] = useState(false);
+  const [supportsMetricsFields, setSupportsMetricsFields] = useState(false);
+  const [supportsMetricsSettingsTable, setSupportsMetricsSettingsTable] =
+    useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
   projectsRef.current = projects;
@@ -584,7 +675,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
     async function boot() {
       if (supabase) {
-        const [members, remoteProjects] = await Promise.all([
+        const [members, remoteProjects, remoteMetrics] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
             console.error("Failed to load team members from Supabase:", e);
             return loadLocalTeamMembers();
@@ -593,11 +684,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to load projects from Supabase:", e);
             return [] as Project[];
           }),
+          loadRemoteMetricsSettings().catch(() => loadLocalMetricsSettings()),
         ]);
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(withLocalFinancials(remoteProjects));
         setFinanceSettings(loadLocalFinanceSettings());
+        setMetricsSettings(remoteMetrics);
         setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       } else {
@@ -606,6 +699,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(withLocalFinancials(loadLocal()));
         setFinanceSettings(loadLocalFinanceSettings());
+        setMetricsSettings(loadLocalMetricsSettings());
         setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       }
@@ -622,16 +716,30 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("lead_user_id").limit(1),
         supabase.from("project_todos").select("owner_user_id").limit(1),
         supabase.from("project_comments").select("author_user_id").limit(1),
+        supabase.from("projects").select("next_action_text").limit(1),
+        supabase.from("company_metrics_settings").select("id").limit(1),
       ])
-        .then(([projectsCols, todosCols, commentsCols]) => {
-          setSupportsOwnershipFields(
-            !projectsCols.error && !todosCols.error,
-          );
-          setSupportsCommentAuthorId(!commentsCols.error);
-        })
+        .then(
+          ([
+            projectsCols,
+            todosCols,
+            commentsCols,
+            metricsCols,
+            settingsTable,
+          ]) => {
+            setSupportsOwnershipFields(
+              !projectsCols.error && !todosCols.error,
+            );
+            setSupportsCommentAuthorId(!commentsCols.error);
+            setSupportsMetricsFields(!metricsCols.error);
+            setSupportsMetricsSettingsTable(!settingsTable.error);
+          },
+        )
         .catch(() => {
           setSupportsOwnershipFields(false);
           setSupportsCommentAuthorId(false);
+          setSupportsMetricsFields(false);
+          setSupportsMetricsSettingsTable(false);
         });
     }
   }, []);
@@ -750,6 +858,36 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  const updateMetricsSettings = useCallback(
+    (patch: MetricsSettingsPatch) => {
+      setMetricsSettings((prev) => {
+        const next: CompanyMetricsSettings = {
+          ...prev,
+          ...patch,
+        };
+        try {
+          window.localStorage.setItem(
+            METRICS_SETTINGS_STORAGE_KEY,
+            JSON.stringify(next),
+          );
+        } catch {
+          /* ignore */
+        }
+        if (supabase && supportsMetricsSettingsTable) {
+          void supabase
+            .from("company_metrics_settings")
+            .upsert({
+              ...metricsSettingsToRow(next),
+              updated_at: new Date().toISOString(),
+            })
+            .then(logDbError("metrics settings upsert"));
+        }
+        return next;
+      });
+    },
+    [supportsMetricsSettingsTable],
+  );
 
   const applyFinanceImport = useCallback((data: FinanceImportData) => {
     setFinanceImport(data);
@@ -905,6 +1043,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: true,
       ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
+      ...initialMetricsFields({
+        stage: input.stage,
+        createdDate: createdAt.slice(0, 10),
+        lastMeaningfulActivityAt: input.lastMeaningfulActivityAt,
+        nextActionText: input.nextActionText,
+        nextActionDueAt: input.nextActionDueAt,
+      }),
       comments: initialComment ? [initialComment] : [],
       todos: [],
       contacts: [],
@@ -936,6 +1081,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             ? { lead_user_id: project.leadUserId ?? null }
             : {}),
           created_at: project.createdAt,
+          ...(supportsMetricsFields
+            ? {
+                cold_lead_entered_at: project.coldLeadEnteredAt,
+                hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
+                under_development_at: project.underDevelopmentAt ?? null,
+                commissioned_at: project.commissionedAt ?? null,
+                cancelled_at: project.cancelledAt ?? null,
+                last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+                next_action_text: project.nextActionText ?? null,
+                next_action_due_at: project.nextActionDueAt ?? null,
+              }
+            : {}),
         })
         .then((res) => {
           logDbError("project insert")(res);
@@ -954,10 +1111,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               created_at: initialComment.createdAt,
             })
             .then(logDbError("initial comment insert"));
+          if (!res.error && supportsMetricsFields) {
+            void supabase!
+              .from("project_stage_history")
+              .insert({
+                project_id: id,
+                stage: project.stage,
+                entered_at: project.coldLeadEnteredAt,
+              })
+              .then(logDbError("stage history insert"));
+          }
         });
     }
     return id;
-  }, [supportsOwnershipFields, supportsCommentAuthorId, resolveAuthor]);
+  }, [
+    supportsOwnershipFields,
+    supportsCommentAuthorId,
+    supportsMetricsFields,
+    resolveAuthor,
+  ]);
 
   const addComment = useCallback(
     (projectId: string, text: string, stageChange?: Stage) => {
@@ -974,8 +1146,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
         ...(stageChange ? { stageChange } : {}),
       };
+      const stagePatch = stageChange
+        ? stageChangeTimestampPatch(current, stageChange)
+        : {};
       const updated: Project = {
         ...current,
+        ...stagePatch,
         stage: stageChange ?? current.stage,
         comments: [...current.comments, comment],
       };
@@ -996,54 +1172,131 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           })
           .then(logDbError("comment insert"));
         if (stageChange) {
+          const row: Record<string, string | null> = { stage: stageChange };
+          if (supportsMetricsFields) {
+            if (stagePatch.hotLeadEnteredAt)
+              row.hot_lead_entered_at = stagePatch.hotLeadEnteredAt;
+            if (stagePatch.underDevelopmentAt)
+              row.under_development_at = stagePatch.underDevelopmentAt;
+            if (stagePatch.commissionedAt)
+              row.commissioned_at = stagePatch.commissionedAt;
+            if (stagePatch.cancelledAt)
+              row.cancelled_at = stagePatch.cancelledAt;
+          }
           void supabase
             .from("projects")
-            .update({ stage: stageChange })
+            .update(row)
             .eq("id", projectId)
             .then(logDbError("stage update"));
+          if (supportsMetricsFields) {
+            void supabase
+              .from("project_stage_history")
+              .insert({
+                project_id: projectId,
+                stage: stageChange,
+                entered_at: todayDate(),
+              })
+              .then(logDbError("stage history insert"));
+          }
         }
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, resolveAuthor, supportsCommentAuthorId],
+    [
+      requestAiSummary,
+      resolveAuthor,
+      supportsCommentAuthorId,
+      supportsMetricsFields,
+    ],
   );
 
   const updateProject = useCallback(
     (projectId: string, patch: ProjectPatch) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
-      const updated: Project = { ...current, ...patch };
+      const stageExtras =
+        patch.stage && patch.stage !== current.stage
+          ? stageChangeTimestampPatch(current, patch.stage)
+          : {};
+      const mergedPatch = { ...stageExtras, ...patch };
+      const updated: Project = { ...current, ...mergedPatch };
+      // Empty strings clear optional text/date fields
+      if (mergedPatch.nextActionText === "") delete updated.nextActionText;
+      if (mergedPatch.nextActionDueAt === "") delete updated.nextActionDueAt;
+      if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
+      if (mergedPatch.underDevelopmentAt === "")
+        delete updated.underDevelopmentAt;
+      if (mergedPatch.commissionedAt === "") delete updated.commissionedAt;
+      if (mergedPatch.cancelledAt === "") delete updated.cancelledAt;
+      if (mergedPatch.cancellationReason === "")
+        delete updated.cancellationReason;
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
         const row: Record<string, string | number | boolean | null> = {};
-        if (patch.name !== undefined) row.name = patch.name;
-        if (patch.client !== undefined) row.client = patch.client;
-        if (patch.country !== undefined) row.country = patch.country;
-        if (patch.city !== undefined) row.city = patch.city;
-        if (patch.series !== undefined) row.series = patch.series;
-        if (patch.market !== undefined) row.market = patch.market;
-        if (patch.sizeKw !== undefined) row.size_kw = patch.sizeKw;
-        if (patch.stage !== undefined) row.stage = patch.stage;
-        if (patch.baseDescription !== undefined)
-          row.base_description = patch.baseDescription;
-        if (patch.lastClientContactAt !== undefined)
-          row.last_client_contact_at = patch.lastClientContactAt;
-        if (patch.emailReminderDays !== undefined)
-          row.email_reminder_days = patch.emailReminderDays;
-        if (patch.emailReminderEnabled !== undefined)
-          row.email_reminder_enabled = patch.emailReminderEnabled;
-        if (supportsOwnershipFields && patch.leadUserId !== undefined) {
-          row.lead_user_id = patch.leadUserId ?? null;
+        if (mergedPatch.name !== undefined) row.name = mergedPatch.name;
+        if (mergedPatch.client !== undefined) row.client = mergedPatch.client;
+        if (mergedPatch.country !== undefined) row.country = mergedPatch.country;
+        if (mergedPatch.city !== undefined) row.city = mergedPatch.city;
+        if (mergedPatch.series !== undefined) row.series = mergedPatch.series;
+        if (mergedPatch.market !== undefined) row.market = mergedPatch.market;
+        if (mergedPatch.sizeKw !== undefined) row.size_kw = mergedPatch.sizeKw;
+        if (mergedPatch.stage !== undefined) row.stage = mergedPatch.stage;
+        if (mergedPatch.baseDescription !== undefined)
+          row.base_description = mergedPatch.baseDescription;
+        if (mergedPatch.lastClientContactAt !== undefined)
+          row.last_client_contact_at = mergedPatch.lastClientContactAt;
+        if (mergedPatch.emailReminderDays !== undefined)
+          row.email_reminder_days = mergedPatch.emailReminderDays;
+        if (mergedPatch.emailReminderEnabled !== undefined)
+          row.email_reminder_enabled = mergedPatch.emailReminderEnabled;
+        if (supportsOwnershipFields && mergedPatch.leadUserId !== undefined) {
+          row.lead_user_id = mergedPatch.leadUserId ?? null;
+        }
+        if (supportsMetricsFields) {
+          if (mergedPatch.coldLeadEnteredAt !== undefined)
+            row.cold_lead_entered_at = mergedPatch.coldLeadEnteredAt;
+          if (mergedPatch.lastMeaningfulActivityAt !== undefined)
+            row.last_meaningful_activity_at =
+              mergedPatch.lastMeaningfulActivityAt;
+          if (mergedPatch.nextActionText !== undefined)
+            row.next_action_text = mergedPatch.nextActionText.trim() || null;
+          if (mergedPatch.nextActionDueAt !== undefined)
+            row.next_action_due_at = mergedPatch.nextActionDueAt || null;
+          if (mergedPatch.cancellationReason !== undefined)
+            row.cancellation_reason =
+              mergedPatch.cancellationReason.trim() || null;
+          if (mergedPatch.hotLeadEnteredAt !== undefined)
+            row.hot_lead_entered_at = mergedPatch.hotLeadEnteredAt || null;
+          if (mergedPatch.underDevelopmentAt !== undefined)
+            row.under_development_at = mergedPatch.underDevelopmentAt || null;
+          if (mergedPatch.commissionedAt !== undefined)
+            row.commissioned_at = mergedPatch.commissionedAt || null;
+          if (mergedPatch.cancelledAt !== undefined)
+            row.cancelled_at = mergedPatch.cancelledAt || null;
         }
         void supabase
           .from("projects")
           .update(row)
           .eq("id", projectId)
           .then(logDbError("project update"));
+        if (
+          supportsMetricsFields &&
+          patch.stage &&
+          patch.stage !== current.stage
+        ) {
+          void supabase
+            .from("project_stage_history")
+            .insert({
+              project_id: projectId,
+              stage: patch.stage,
+              entered_at: todayDate(),
+            })
+            .then(logDbError("stage history insert"));
+        }
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, supportsOwnershipFields],
+    [requestAiSummary, supportsOwnershipFields, supportsMetricsFields],
   );
 
   const markClientContacted = useCallback(
@@ -1051,17 +1304,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
       const lastClientContactAt = todayDate();
-      const updated: Project = { ...current, lastClientContactAt };
+      const updated: Project = {
+        ...current,
+        lastClientContactAt,
+        lastMeaningfulActivityAt: lastClientContactAt,
+      };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
+        const row: Record<string, string> = {
+          last_client_contact_at: lastClientContactAt,
+        };
+        if (supportsMetricsFields) {
+          row.last_meaningful_activity_at = lastClientContactAt;
+        }
         void supabase
           .from("projects")
-          .update({ last_client_contact_at: lastClientContactAt })
+          .update(row)
           .eq("id", projectId)
           .then(logDbError("mark client contacted"));
       }
     },
-    [],
+    [supportsMetricsFields],
   );
 
   const updateComment = useCallback(
@@ -1778,6 +2041,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setShowFinancials,
         financeSettings,
         updateFinanceSettings,
+        metricsSettings,
+        updateMetricsSettings,
         financeImport,
         applyFinanceImport,
         clearFinanceImport,

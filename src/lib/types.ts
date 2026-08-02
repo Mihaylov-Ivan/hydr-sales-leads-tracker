@@ -41,6 +41,8 @@ export function normalizeStage(value: string | null | undefined): Stage {
 
 export type Series = "Z Series" | "E Series" | "Custom";
 
+export const SERIES: Series[] = ["Z Series", "E Series", "Custom"];
+
 export type Market =
   | "Cement"
   | "Power Plants"
@@ -360,12 +362,52 @@ export interface Project {
   emailReminderEnabled: boolean;
   /** Team member responsible for this project/deal */
   leadUserId?: string;
+  /**
+   * Pipeline metrics timestamps (yyyy-mm-dd). Commissioned also implies
+   * under-development was reached even if underDevelopmentAt was never set.
+   */
+  coldLeadEnteredAt: string;
+  hotLeadEnteredAt?: string;
+  underDevelopmentAt?: string;
+  commissionedAt?: string;
+  cancelledAt?: string;
+  /** Last substantive client activity (not auto-reminders). yyyy-mm-dd */
+  lastMeaningfulActivityAt: string;
+  nextActionText?: string;
+  /** yyyy-mm-dd — required with nextActionText to keep open projects healthy */
+  nextActionDueAt?: string;
+  cancellationReason?: string;
   comments: ProjectComment[];
   todos: ProjectTodo[];
   contacts: ProjectContact[];
   files: ProjectFile[];
   financials: ProjectFinancials;
   createdAt: string; // ISO
+}
+
+/** Company-level pipeline metrics thresholds (DB singleton + local fallback). */
+export interface CompanyMetricsSettings {
+  staleColdDays: number;
+  staleHotDays: number;
+  staleUnderDevelopmentDays: number;
+  maturityUnderDevelopmentMonths: number;
+  maturityCommissionedMonths: number;
+  /** 0–1 probability that healthy active projects convert (expected scenario) */
+  healthyConversionProbability: number;
+  /** 0–1 probability that stale projects recover and convert */
+  staleRecoveryProbability: number;
+}
+
+export function defaultMetricsSettings(): CompanyMetricsSettings {
+  return {
+    staleColdDays: 180,
+    staleHotDays: 120,
+    staleUnderDevelopmentDays: 90,
+    maturityUnderDevelopmentMonths: 12,
+    maturityCommissionedMonths: 30,
+    healthyConversionProbability: 0.35,
+    staleRecoveryProbability: 0.1,
+  };
 }
 
 /** Common follow-up windows */

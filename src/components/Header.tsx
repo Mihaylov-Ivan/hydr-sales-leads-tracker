@@ -28,11 +28,10 @@ export default function Header() {
     return (
       <Link
         href={href}
-        className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-          active
+        className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${active
             ? "bg-teal-soft text-teal-accent"
             : "text-muted hover:bg-surface hover:text-deep"
-        }`}
+          }`}
       >
         {label}
       </Link>
@@ -59,6 +58,7 @@ export default function Header() {
           <nav className="flex items-center gap-1">
             {navLink("/", "Board")}
             {navLink("/finance", "Finance")}
+            {navLink("/metrics", "Metrics")}
           </nav>
         </div>
 
