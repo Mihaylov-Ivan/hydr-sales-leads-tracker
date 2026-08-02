@@ -309,11 +309,10 @@ export default function FinancePage() {
     );
     for (const row of months) {
       if (row.period === "past") continue;
-      const existing = byMonth.get(row.month);
       byMonth.set(row.month, {
         month: row.month,
         amount: n,
-        status: existing?.status === "actual" ? "actual" : "projected",
+        status: "projected",
       });
     }
     updateFinanceSettings({
@@ -548,9 +547,10 @@ export default function FinancePage() {
               Monthly cashflow
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] text-muted">
-              Actual opex comes from the import (read-only). Enter projected
-              opex for current/future months, or use Fill future opex. Confirmed
-              = opening + actual + contracted. Expected = confirmed + weighted
+              Actual opex comes from the import (read-only). Enter opex for
+              current/future months, or use Fill future opex. Past months are
+              treated as actual; current/future as projected. Confirmed =
+              opening + actual + contracted. Expected = confirmed + weighted
               pipeline.
             </p>
           </div>
@@ -593,17 +593,14 @@ export default function FinancePage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse text-left text-[11px]">
+          <table className="w-full min-w-[1200px] border-collapse text-left text-[11px]">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-muted">
                 <th className="sticky left-0 z-10 bg-panel px-2 py-1.5">
                   Month
                 </th>
                 <th className="px-2 py-1.5 text-right">Open</th>
-                <th
-                  className="border-l border-line bg-muted/10 px-2 py-1.5 text-center text-muted"
-                  colSpan={2}
-                >
+                <th className="border-l border-line bg-muted/10 px-2 py-1.5 text-right text-muted">
                   Company opex
                 </th>
                 <th
@@ -643,7 +640,6 @@ export default function FinancePage() {
                 <th className="border-l border-line bg-muted/10 px-2 py-1 text-right">
                   €
                 </th>
-                <th className="bg-muted/10 px-2 py-1 text-center">Type</th>
                 <th className="border-l border-line bg-green-accent/5 px-2 py-1 text-right">
                   In
                 </th>
@@ -728,48 +724,6 @@ export default function FinancePage() {
                         onBlur={() => saveOpexAmount(row.month)}
                       />
                     </td>
-                    <td className="px-1.5 py-1 text-center">
-                      <div className="inline-flex rounded border border-line bg-surface p-0.5">
-                        {(
-                          [
-                            ["actual", "A"],
-                            ["projected", "P"],
-                          ] as const
-                        ).map(([value, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            disabled={
-                              (!entry && !opexAmountDrafts[row.month]) ||
-                              (Boolean(financeImport) && status === "actual")
-                            }
-                            title={
-                              value === "actual" ? "Actual" : "Projected"
-                            }
-                            onClick={() => {
-                              const draft = opexAmountDrafts[row.month];
-                              const amt =
-                                entry?.amount ??
-                                (draft != null ? parseNum(draft) : null);
-                              if (amt == null || amt <= 0) return;
-                              upsertOpex(row.month, {
-                                status: value,
-                                amount: amt,
-                              });
-                            }}
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold transition disabled:opacity-40 ${
-                              status === value
-                                ? value === "actual"
-                                  ? "bg-green-accent/20 text-green-accent"
-                                  : "bg-deep/15 text-deep"
-                                : "text-muted hover:text-ink"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
                     <td className="border-l border-line px-2 py-1 text-right tabular-nums text-green-accent">
                       {row.actualInflows
                         ? formatMoneyCompact(row.actualInflows)
@@ -826,10 +780,8 @@ export default function FinancePage() {
           </table>
         </div>
         <p className="mt-2 text-[10px] text-muted">
-          Company opex type: <span className="font-semibold text-green-accent">A</span>{" "}
-          = actual (spent) · <span className="font-semibold text-deep">P</span>{" "}
-          = projected (planned). Fill future opex applies to current + future
-          months.
+          Past-month opex is treated as actual; current and future as
+          projected. Fill future opex applies to current + future months.
         </p>
       </section>
 
