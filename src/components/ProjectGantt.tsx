@@ -1185,12 +1185,10 @@ function DeadlineForm({
 export default function ProjectGantt({
   projectId,
   schedule,
-  showFinancials = false,
   financials,
 }: {
   projectId: string;
   schedule: ProjectSchedule;
-  showFinancials?: boolean;
   financials?: ProjectFinancials;
 }) {
   const {
@@ -1199,12 +1197,8 @@ export default function ProjectGantt({
     deleteGanttDeadline,
   } = useProjects();
   const [showActual, setShowActual] = useState(false);
-  const [sectionOpen, setSectionOpen] = useState(showFinancials);
+  const [sectionOpen, setSectionOpen] = useState(true);
   const [editListOpen, setEditListOpen] = useState(false);
-
-  useEffect(() => {
-    if (showFinancials) setSectionOpen(true);
-  }, [showFinancials]);
   const [form, setForm] = useState<
     null | "phase" | "activity" | "deadline"
   >(null);
@@ -1249,9 +1243,7 @@ export default function ProjectGantt({
           </span>
           <span className="mt-0.5 block text-xs text-muted">
             {phases.length === 0
-              ? showFinancials
-                ? "Gantt phases, milestones, and cash schedule."
-                : "Gantt phases, activities, and milestones."
+              ? "Gantt phases, milestones, and cash schedule."
               : `${phases.length} phase${phases.length === 1 ? "" : "s"} · ${activities.length} activit${activities.length === 1 ? "y" : "ies"} · ${deadlines.length} milestone${deadlines.length === 1 ? "" : "s"}`}
           </span>
         </span>
@@ -1396,7 +1388,7 @@ export default function ProjectGantt({
             </div>
           )}
 
-          {showFinancials && financials && (
+          {financials && (
             <GanttFinancials
               projectId={projectId}
               financials={financials}

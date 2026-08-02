@@ -47,13 +47,13 @@ function loadTargetSettings(): TargetSettings {
         : fallback.count;
     const period =
       parsed.period === "month" ||
-      parsed.period === "quarter" ||
-      parsed.period === "year"
+        parsed.period === "quarter" ||
+        parsed.period === "year"
         ? parsed.period
         : fallback.period;
     const outcome =
       parsed.outcome === "under-development" ||
-      parsed.outcome === "commissioned"
+        parsed.outcome === "commissioned"
         ? parsed.outcome
         : fallback.outcome;
     return { count, period, outcome };
@@ -191,11 +191,6 @@ export default function MetricsPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-deep">
           Pipeline Metrics
         </h1>
-        <p className="max-w-3xl text-sm text-muted">
-          Conversion, stale pipeline health, and capacity coverage against your
-          commissioning target. Stage history is used so Commissioned projects
-          also count as having reached Under Development.
-        </p>
         <div className="flex flex-wrap items-center gap-3">
           <label className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-medium text-ink">
             <input

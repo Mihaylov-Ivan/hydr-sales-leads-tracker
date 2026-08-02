@@ -159,7 +159,6 @@ export default function ProjectPage() {
   const {
     teamMembers,
     currentUserId,
-    showFinancials,
     projects,
     ready,
     aiEnabled,
@@ -548,13 +547,12 @@ export default function ProjectPage() {
       {/* Client email follow-up (recurring our-action) */}
       <ClientFollowUp project={project} />
 
-      {/* Delivery Gantt: phases + deadlines (+ cash when Financials is on) */}
+      {/* Delivery Gantt: phases, milestones, and cash schedule */}
       <ProjectGantt
         projectId={project.id}
         schedule={
           project.schedule ?? { phases: [], activities: [], deadlines: [] }
         }
-        showFinancials={showFinancials}
         financials={project.financials}
       />
 

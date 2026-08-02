@@ -23,11 +23,6 @@ export default function MetricsSettingsPanel({
           <h2 className="text-xs font-bold uppercase tracking-wide text-muted">
             Metrics conditions
           </h2>
-          <p className="mt-1 text-xs text-muted">
-            Stale thresholds, maturity windows, and expected-conversion
-            assumptions. Saved to the database when migration-015 is applied
-            (otherwise localStorage).
-          </p>
         </div>
       </div>
 

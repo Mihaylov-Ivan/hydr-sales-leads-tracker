@@ -303,17 +303,21 @@ export default function FinancePage() {
 
   function applyBulkProjected() {
     const n = parseNum(bulkProjected);
-    if (n == null || n <= 0) return;
+    if (n == null || n < 0) return;
     const byMonth = new Map(
       (financeSettings.monthlyExpenses ?? []).map((e) => [e.month, e]),
     );
     for (const row of months) {
       if (row.period === "past") continue;
-      byMonth.set(row.month, {
-        month: row.month,
-        amount: n,
-        status: "projected",
-      });
+      if (n === 0) {
+        byMonth.delete(row.month);
+      } else {
+        byMonth.set(row.month, {
+          month: row.month,
+          amount: n,
+          status: "projected",
+        });
+      }
     }
     updateFinanceSettings({
       monthlyExpenses: [...byMonth.values()].sort((a, b) =>
@@ -321,6 +325,13 @@ export default function FinancePage() {
       ),
     });
     setBulkProjected("");
+    setOpexAmountDrafts((d) => {
+      const next = { ...d };
+      for (const row of months) {
+        if (row.period !== "past") delete next[row.month];
+      }
+      return next;
+    });
   }
 
   if (!ready) {
@@ -340,11 +351,6 @@ export default function FinancePage() {
           <h1 className="text-2xl font-bold tracking-tight text-deep">
             Financial plan
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Project actuals load from Excel. Future company opex starts at zero
-            — enter and apply it here. Pipeline projects keep projected
-            schedules from the app; contracted past cash comes from the file.
-          </p>
         </div>
         {currentClosing && (
           <div className="rounded-xl border border-line bg-surface px-4 py-3 text-right">
@@ -362,21 +368,13 @@ export default function FinancePage() {
         )}
       </header>
 
-      {/* Import */}
+      {/* Import / export */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-deep">
-              Actuals import
+            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+              Import / export
             </h2>
-            <p className="max-w-2xl text-[11px] text-muted">
-              Upload{" "}
-              <code className="text-ink">finance2.xlsx</code> (sheet{" "}
-              <code className="text-ink">Data</code>: Project, Date, Income,
-              Expense, Deadline). While an import is loaded, only Excel rows
-              are shown. Add futures in the app after clearing the import, or
-              put them in the file and re-upload / export.
-            </p>
             {financeImport && (
               <p className="mt-2 text-xs text-green-accent">
                 Loaded {financeImport.projectActuals.length} actual
@@ -393,13 +391,6 @@ export default function FinancePage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <a
-              href="/templates/finance-import/finance2.xlsx"
-              download
-              className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-deep hover:bg-surface"
-            >
-              Download template
-            </a>
             <input
               ref={fileInputRef}
               type="file"
@@ -510,7 +501,7 @@ export default function FinancePage() {
                   probDrafts[stage] ??
                   String(
                     financeSettings.stageProbabilities[stage] ??
-                      (stage === "cold-lead" ? 10 : 40),
+                    (stage === "cold-lead" ? 10 : 40),
                   )
                 }
                 onChange={(e) =>
@@ -521,39 +512,14 @@ export default function FinancePage() {
             </div>
           ))}
         </div>
-        <p className="mt-3 text-[11px] text-muted">
-          Cash on hand is your bank balance at the start of the as-of month.
-          Flows before that month are ignored. Import sets as-of to the earliest
-          Excel month so project actuals appear in the table. Company opex is
-          manual (not in the Excel file). The table range is only a view filter.
-          {windowFirstLabel != null && windowOpening != null && (
-            <>
-              {" "}
-              First visible month ({windowFirstLabel}) opens at{" "}
-              <span className="font-semibold text-deep">
-                {formatMoneyCompact(windowOpening)}
-              </span>
-              .
-            </>
-          )}
-        </p>
       </section>
 
       {/* Combined monthly cashflow + company opex */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-              Monthly cashflow
-            </h2>
-            <p className="mt-1 max-w-2xl text-[11px] text-muted">
-              Actual opex comes from the import (read-only). Enter opex for
-              current/future months, or use Fill future opex. Past months are
-              treated as actual; current/future as projected. Confirmed =
-              opening + actual + contracted. Expected = confirmed + weighted
-              pipeline.
-            </p>
-          </div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+            Monthly cashflow
+          </h2>
           <div className="flex flex-wrap items-end gap-2">
             <div>
               <label className={labelCls}>View from</label>
@@ -677,15 +643,14 @@ export default function FinancePage() {
                 return (
                   <tr
                     key={row.month}
-                    className={`border-b border-line/60 ${
-                      warn
-                        ? "bg-amber-accent/10"
-                        : row.period === "current"
-                          ? "bg-teal-soft/30"
-                          : row.period === "past"
-                            ? "bg-surface/50"
-                            : "hover:bg-surface"
-                    }`}
+                    className={`border-b border-line/60 ${warn
+                      ? "bg-amber-accent/10"
+                      : row.period === "current"
+                        ? "bg-teal-soft/30"
+                        : row.period === "past"
+                          ? "bg-surface/50"
+                          : "hover:bg-surface"
+                      }`}
                   >
                     <td className="sticky left-0 z-10 bg-inherit px-2 py-1 font-semibold text-deep">
                       {row.label}
@@ -779,21 +744,13 @@ export default function FinancePage() {
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-[10px] text-muted">
-          Past-month opex is treated as actual; current and future as
-          projected. Fill future opex applies to current + future months.
-        </p>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-deep">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-deep">
             Contracted projects
           </h2>
-          <p className="mb-4 text-[11px] text-muted">
-            Under development &amp; commissioned — full amounts in confirmed
-            cash.
-          </p>
           {contracted.length === 0 ? (
             <p className="text-sm text-muted">No contracted projects yet.</p>
           ) : (
@@ -882,12 +839,9 @@ export default function FinancePage() {
         </section>
 
         <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-deep">
+          <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-deep">
             Weighted pipeline
           </h2>
-          <p className="mb-4 text-[11px] text-muted">
-            Cold &amp; hot leads — never counted as contracted cash.
-          </p>
           {pipeline.length === 0 ? (
             <p className="text-sm text-muted">No pipeline projects yet.</p>
           ) : (
