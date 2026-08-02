@@ -10,8 +10,8 @@ import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
 import ContactList from "@/components/ContactList";
 import FileAttachments from "@/components/FileAttachments";
-import FinancialsPanel from "@/components/FinancialsPanel";
 import ClientFollowUp from "@/components/ClientFollowUp";
+import ProjectGantt from "@/components/ProjectGantt";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -160,13 +160,13 @@ export default function ProjectPage() {
     teamMembers,
     currentUserId,
     showFinancials,
-    setShowFinancials,
     projects,
     ready,
     aiEnabled,
     summarizing,
     addComment,
     updateProject,
+    updateFinancials,
     updateComment,
     deleteComment,
     regenerateSummary,
@@ -178,6 +178,7 @@ export default function ProjectPage() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [pipelineOpen, setPipelineOpen] = useState(false);
 
   const project = useMemo(() => projects.find((p) => p.id === id), [projects, id]);
 
@@ -261,7 +262,7 @@ export default function ProjectPage() {
       </div>
 
       {/* Key facts (click a value to edit) */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             System
@@ -336,6 +337,34 @@ export default function ProjectPage() {
 
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Contract value (€)
+          </p>
+          <div className="mt-1 text-sm font-medium text-deep">
+            <EditableText
+              type="number"
+              value={
+                project.financials.contractValue != null
+                  ? String(project.financials.contractValue)
+                  : ""
+              }
+              placeholder="Optional"
+              onSave={(v) => {
+                const t = v.trim().replace(/,/g, "");
+                if (!t) {
+                  updateFinancials(project.id, { contractValue: null });
+                  return;
+                }
+                const n = Number(t);
+                if (Number.isFinite(n) && n >= 0) {
+                  updateFinancials(project.id, { contractValue: n });
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Created
           </p>
           <p className="mt-1 text-sm font-medium text-deep">
@@ -364,6 +393,125 @@ export default function ProjectPage() {
           </select>
         </div>
       </div>
+
+      {/* Pipeline metrics fields */}
+      <section className="rounded-xl border border-line bg-panel p-4 shadow-sm sm:p-5">
+        <button
+          type="button"
+          aria-expanded={pipelineOpen}
+          onClick={() => setPipelineOpen((v) => !v)}
+          className="flex w-full items-start justify-between gap-3 text-left"
+        >
+          <span>
+            <span className="block text-sm font-bold uppercase tracking-wide text-deep">
+              Pipeline activity
+            </span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Stage entered dates for conversion metrics.
+            </span>
+          </span>
+          <span className="shrink-0 text-sm font-semibold text-muted" aria-hidden>
+            {pipelineOpen ? "▴" : "▾"}
+          </span>
+        </button>
+        {pipelineOpen && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Cold lead entered
+              </span>
+              <input
+                type="date"
+                value={project.coldLeadEnteredAt}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    coldLeadEnteredAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Hot lead entered
+              </span>
+              <input
+                type="date"
+                value={project.hotLeadEnteredAt ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    hotLeadEnteredAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Under development entered
+              </span>
+              <input
+                type="date"
+                value={project.underDevelopmentAt ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    underDevelopmentAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Commissioned at
+              </span>
+              <input
+                type="date"
+                value={project.commissionedAt ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    commissionedAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Cancelled at
+              </span>
+              <input
+                type="date"
+                value={project.cancelledAt ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    cancelledAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            {(project.stage === "cancelled" || project.cancellationReason) && (
+              <label className="block sm:col-span-2 lg:col-span-3">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Cancellation reason
+                </span>
+                <input
+                  type="text"
+                  value={project.cancellationReason ?? ""}
+                  onChange={(e) =>
+                    updateProject(project.id, {
+                      cancellationReason: e.target.value,
+                    })
+                  }
+                  placeholder="Why was this project cancelled?"
+                  className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+                />
+              </label>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Living summary */}
       <section className="rounded-xl border border-teal-accent/30 bg-teal-soft/50 p-5">
@@ -399,6 +547,16 @@ export default function ProjectPage() {
 
       {/* Client email follow-up (recurring our-action) */}
       <ClientFollowUp project={project} />
+
+      {/* Delivery Gantt: phases + deadlines (+ cash when Financials is on) */}
+      <ProjectGantt
+        projectId={project.id}
+        schedule={
+          project.schedule ?? { phases: [], activities: [], deadlines: [] }
+        }
+        showFinancials={showFinancials}
+        financials={project.financials}
+      />
 
       {/* Questions and action items */}
       <TodoList
@@ -582,39 +740,6 @@ export default function ProjectPage() {
 
       {/* Offers, models, and other attachments */}
       <FileAttachments projectId={project.id} files={project.files ?? []} />
-
-      {/* Financials & timeline */}
-      <section className="rounded-xl border border-line bg-panel p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-              Financials
-            </h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Contract value, payments, expenses, and milestones.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showFinancials}
-            onClick={() => setShowFinancials(!showFinancials)}
-            className={`rounded-lg border px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition ${
-              showFinancials
-                ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
-                : "border-line bg-surface text-deep hover:border-teal-accent/40"
-            }`}
-          >
-            {showFinancials ? "Hide" : "Show"}
-          </button>
-        </div>
-      </section>
-      {showFinancials && (
-        <FinancialsPanel
-          projectId={project.id}
-          financials={project.financials}
-        />
-      )}
 
       {/* Danger zone */}
       <div className="flex justify-end border-t border-line pt-4">

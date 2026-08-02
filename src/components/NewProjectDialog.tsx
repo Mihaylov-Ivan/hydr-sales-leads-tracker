@@ -3,11 +3,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Market, MARKETS, Series, Stage, STAGE_LABELS, BOARD_STAGES } from "@/lib/types";
+import {
+  Market,
+  MARKETS,
+  Series,
+  Stage,
+  STAGE_LABELS,
+  BOARD_STAGES,
+} from "@/lib/types";
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent";
-const labelCls = "mb-1 block text-xs font-semibold uppercase tracking-wide text-muted";
+const labelCls =
+  "mb-1 block text-xs font-semibold uppercase tracking-wide text-muted";
 
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const { addProject, teamMembers } = useProjects();

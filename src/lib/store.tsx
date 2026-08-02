@@ -17,19 +17,29 @@ import {
   ProjectFile,
   ProjectFileKind,
   ProjectFinancials,
+  ProjectGanttActivity,
+  ProjectGanttDeadline,
+  ProjectGanttPhase,
   ProjectMilestone,
   ProjectPayment,
+  ProjectSchedule,
   ProjectTodo,
   Stage,
   TeamMember,
   TodoKind,
   CompanyFinanceSettings,
+  CompanyMetricsSettings,
   TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
+  GANTT_PHASE_COLORS,
   emptyFinancials,
+  emptySchedule,
   defaultFinanceSettings,
+  defaultMetricsSettings,
   normalizeStage,
   todayDate,
+  addDays,
+  phaseEndDate,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
@@ -37,6 +47,11 @@ import {
   commentFromRow,
   contactFromRow,
   fileFromRow,
+  ganttActivityFromRow,
+  ganttDeadlineFromRow,
+  ganttPhaseFromRow,
+  metricsSettingsFromRow,
+  metricsSettingsToRow,
   projectFromRow,
   teamMemberFromRow,
   teamMemberToRow,
@@ -46,6 +61,10 @@ import type {
   CommentRow,
   ContactRow,
   FileRow,
+  GanttActivityRow,
+  GanttDeadlineRow,
+  GanttPhaseRow,
+  MetricsSettingsRow,
   ProjectRow,
   TeamMemberRow,
   TodoRow,
@@ -55,6 +74,19 @@ import {
   sanitizeAppFinancials,
   settingsAfterImport,
 } from "./finance-import";
+import { METRICS_SETTINGS_STORAGE_KEY } from "./metrics/config";
+import {
+  ensureProjectMetricsDefaults,
+  initialMetricsFields,
+  stageChangeTimestampPatch,
+} from "./metrics/project-bridge";
+import {
+  ensureScheduleShape,
+  isMunichBusFleetProject,
+  isScheduleEmpty,
+  munichBusFleetSchedule,
+} from "./gantt-munich";
+import { resolveLinkedDeadlineDate } from "./gantt-finance";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -64,8 +96,56 @@ const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
 const FINANCE_SETTINGS_STORAGE_KEY = "hydrogenera-finance-settings-v1";
 const FINANCE_IMPORT_STORAGE_KEY = "hydrogenera-finance-import-v1";
 const PROJECT_FINANCIALS_STORAGE_KEY = "hydrogenera-project-financials-v1";
+const PROJECT_SCHEDULE_STORAGE_KEY = "hydrogenera-project-schedule-v2";
+const PROJECT_SCHEDULE_STORAGE_KEY_LEGACY = "hydrogenera-project-schedule-v1";
 const FILE_STORAGE_BUCKET = "project-files";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
+  try {
+    // Drop the pre-demo schedule blob (manual test entries).
+    window.localStorage.removeItem(PROJECT_SCHEDULE_STORAGE_KEY_LEGACY);
+    const raw = window.localStorage.getItem(PROJECT_SCHEDULE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, ProjectSchedule>;
+    if (!parsed || typeof parsed !== "object") return {};
+    const cleaned: Record<string, ProjectSchedule> = {};
+    for (const [id, s] of Object.entries(parsed)) {
+      cleaned[id] = ensureScheduleShape(s);
+    }
+    return cleaned;
+  } catch {
+    return {};
+  }
+}
+
+function withLocalSchedule(projects: Project[]): Project[] {
+  const local = loadLocalProjectSchedules();
+  return projects.map((p) => {
+    // Munich demo: after clearing the old schedule blob, prefer a saved v2
+    // schedule; otherwise install the full Initiation → Engineering → Procurement chart.
+    if (isMunichBusFleetProject(p)) {
+      const saved = local[p.id];
+      return {
+        ...p,
+        schedule: !isScheduleEmpty(saved)
+          ? ensureScheduleShape(saved)
+          : munichBusFleetSchedule(),
+      };
+    }
+
+    const remote = ensureScheduleShape(p.schedule);
+    const hasRemote =
+      remote.phases.length > 0 ||
+      remote.activities.length > 0 ||
+      remote.deadlines.length > 0;
+    const schedule = hasRemote
+      ? remote
+      : ensureScheduleShape(local[p.id] ?? remote);
+
+    return { ...p, schedule };
+  });
+}
 
 function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
   try {
@@ -85,12 +165,69 @@ function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
 
 function withLocalFinancials(projects: Project[]): Project[] {
   const local = loadLocalProjectFinancials();
-  return projects.map((p) => ({
-    ...p,
-    financials: sanitizeAppFinancials(
-      local[p.id] ?? p.financials ?? emptyFinancials(),
-    ),
-  }));
+  return projects.map((p) =>
+    ensureProjectMetricsDefaults({
+      ...p,
+      financials: sanitizeAppFinancials(
+        local[p.id] ?? p.financials ?? emptyFinancials(),
+      ),
+    }),
+  );
+}
+
+function loadLocalMetricsSettings(): CompanyMetricsSettings {
+  try {
+    const raw = window.localStorage.getItem(METRICS_SETTINGS_STORAGE_KEY);
+    if (!raw) return defaultMetricsSettings();
+    const parsed = JSON.parse(raw) as Partial<CompanyMetricsSettings>;
+    const base = defaultMetricsSettings();
+    return {
+      staleColdDays:
+        typeof parsed.staleColdDays === "number" && parsed.staleColdDays > 0
+          ? parsed.staleColdDays
+          : base.staleColdDays,
+      staleHotDays:
+        typeof parsed.staleHotDays === "number" && parsed.staleHotDays > 0
+          ? parsed.staleHotDays
+          : base.staleHotDays,
+      staleUnderDevelopmentDays:
+        typeof parsed.staleUnderDevelopmentDays === "number" &&
+        parsed.staleUnderDevelopmentDays > 0
+          ? parsed.staleUnderDevelopmentDays
+          : base.staleUnderDevelopmentDays,
+      maturityUnderDevelopmentMonths:
+        typeof parsed.maturityUnderDevelopmentMonths === "number" &&
+        parsed.maturityUnderDevelopmentMonths > 0
+          ? parsed.maturityUnderDevelopmentMonths
+          : base.maturityUnderDevelopmentMonths,
+      maturityCommissionedMonths:
+        typeof parsed.maturityCommissionedMonths === "number" &&
+        parsed.maturityCommissionedMonths > 0
+          ? parsed.maturityCommissionedMonths
+          : base.maturityCommissionedMonths,
+      healthyConversionProbability:
+        typeof parsed.healthyConversionProbability === "number"
+          ? Math.min(1, Math.max(0, parsed.healthyConversionProbability))
+          : base.healthyConversionProbability,
+      staleRecoveryProbability:
+        typeof parsed.staleRecoveryProbability === "number"
+          ? Math.min(1, Math.max(0, parsed.staleRecoveryProbability))
+          : base.staleRecoveryProbability,
+    };
+  } catch {
+    return defaultMetricsSettings();
+  }
+}
+
+async function loadRemoteMetricsSettings(): Promise<CompanyMetricsSettings> {
+  if (!supabase) return loadLocalMetricsSettings();
+  const { data, error } = await supabase
+    .from("company_metrics_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error || !data) return loadLocalMetricsSettings();
+  return metricsSettingsFromRow(data as MetricsSettingsRow);
 }
 
 export interface NewProjectInput {
@@ -104,6 +241,9 @@ export interface NewProjectInput {
   stage: Stage;
   baseDescription: string;
   leadUserId?: string;
+  lastMeaningfulActivityAt?: string;
+  nextActionText?: string;
+  nextActionDueAt?: string;
 }
 
 export type ProjectPatch = Partial<
@@ -122,8 +262,19 @@ export type ProjectPatch = Partial<
     | "emailReminderDays"
     | "emailReminderEnabled"
     | "leadUserId"
+    | "coldLeadEnteredAt"
+    | "hotLeadEnteredAt"
+    | "underDevelopmentAt"
+    | "commissionedAt"
+    | "cancelledAt"
+    | "lastMeaningfulActivityAt"
+    | "nextActionText"
+    | "nextActionDueAt"
+    | "cancellationReason"
   >
 >;
+
+export type MetricsSettingsPatch = Partial<CompanyMetricsSettings>;
 
 /** `null` clears the field, `undefined` leaves it unchanged. */
 export interface TodoPatch {
@@ -178,6 +329,42 @@ export interface MilestoneInput {
   note?: string;
 }
 
+export interface GanttPhaseInput {
+  name: string;
+  startDate: string;
+  durationDays: number;
+  actualStartDate?: string | null;
+  actualDurationDays?: number | null;
+  color?: string;
+  wbs?: string;
+  owner?: string;
+  sortOrder?: number;
+}
+
+export interface GanttActivityInput {
+  phaseId: string;
+  name: string;
+  startDate: string;
+  durationDays: number;
+  actualStartDate?: string | null;
+  actualDurationDays?: number | null;
+  wbs?: string;
+  owner?: string;
+  color?: string;
+  status?: string;
+  sortOrder?: number;
+}
+
+export interface GanttDeadlineInput {
+  phaseId: string;
+  name: string;
+  date: string;
+  actualDate?: string | null;
+  wbs?: string;
+  owner?: string;
+  note?: string;
+}
+
 interface ProjectsApi {
   teamMembers: TeamMember[];
   addTeamMember: (input: { name: string; email?: string }) => void;
@@ -194,6 +381,9 @@ interface ProjectsApi {
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
+  /** Pipeline metrics thresholds (DB when available, else localStorage) */
+  metricsSettings: CompanyMetricsSettings;
+  updateMetricsSettings: (patch: MetricsSettingsPatch) => void;
   /** CSV/Excel actuals import — source of past company + project cash */
   financeImport: FinanceImportData | null;
   applyFinanceImport: (data: FinanceImportData) => void;
@@ -253,6 +443,27 @@ interface ProjectsApi {
     patch: MilestoneInput,
   ) => void;
   deleteMilestone: (projectId: string, milestoneId: string) => void;
+  addGanttPhase: (projectId: string, input: GanttPhaseInput) => void;
+  updateGanttPhase: (
+    projectId: string,
+    phaseId: string,
+    patch: GanttPhaseInput,
+  ) => void;
+  deleteGanttPhase: (projectId: string, phaseId: string) => void;
+  addGanttActivity: (projectId: string, input: GanttActivityInput) => void;
+  updateGanttActivity: (
+    projectId: string,
+    activityId: string,
+    patch: GanttActivityInput,
+  ) => void;
+  deleteGanttActivity: (projectId: string, activityId: string) => void;
+  addGanttDeadline: (projectId: string, input: GanttDeadlineInput) => void;
+  updateGanttDeadline: (
+    projectId: string,
+    deadlineId: string,
+    patch: GanttDeadlineInput,
+  ) => void;
+  deleteGanttDeadline: (projectId: string, deadlineId: string) => void;
 }
 
 const ProjectsContext = createContext<ProjectsApi | null>(null);
@@ -293,6 +504,7 @@ function loadLocal(): Project[] {
           expenseSchedule: p.financials?.expenseSchedule ?? [],
           milestones: p.financials?.milestones ?? [],
         },
+        schedule: ensureScheduleShape(p.schedule),
       }));
     }
   } catch {
@@ -481,6 +693,9 @@ async function loadRemote(): Promise<Project[]> {
     todosRes,
     contactsRes,
     filesRes,
+    phasesRes,
+    activitiesRes,
+    deadlinesRes,
   ] = await Promise.all([
     supabase!
       .from("projects")
@@ -502,6 +717,18 @@ async function loadRemote(): Promise<Project[]> {
       .from("project_files")
       .select("*")
       .order("created_at", { ascending: false }),
+    supabase!
+      .from("project_gantt_phases")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase!
+      .from("project_gantt_activities")
+      .select("*")
+      .order("sort_order", { ascending: true }),
+    supabase!
+      .from("project_gantt_deadlines")
+      .select("*")
+      .order("date", { ascending: true }),
   ]);
   if (projectsRes.error) throw projectsRes.error;
   if (commentsRes.error) throw commentsRes.error;
@@ -511,6 +738,21 @@ async function loadRemote(): Promise<Project[]> {
   }
   if (filesRes.error) {
     console.error("Supabase files load failed:", filesRes.error.message);
+  }
+  if (phasesRes.error) {
+    console.error("Supabase gantt phases load failed:", phasesRes.error.message);
+  }
+  if (activitiesRes.error) {
+    console.error(
+      "Supabase gantt activities load failed:",
+      activitiesRes.error.message,
+    );
+  }
+  if (deadlinesRes.error) {
+    console.error(
+      "Supabase gantt deadlines load failed:",
+      deadlinesRes.error.message,
+    );
   }
 
   const commentsByProject = new Map<string, ProjectComment[]>();
@@ -537,6 +779,24 @@ async function loadRemote(): Promise<Project[]> {
     list.push(fileFromRow(row));
     filesByProject.set(row.project_id, list);
   }
+  const phasesByProject = new Map<string, ProjectGanttPhase[]>();
+  for (const row of (phasesRes.data ?? []) as GanttPhaseRow[]) {
+    const list = phasesByProject.get(row.project_id) ?? [];
+    list.push(ganttPhaseFromRow(row));
+    phasesByProject.set(row.project_id, list);
+  }
+  const activitiesByProject = new Map<string, ProjectGanttActivity[]>();
+  for (const row of (activitiesRes.data ?? []) as GanttActivityRow[]) {
+    const list = activitiesByProject.get(row.project_id) ?? [];
+    list.push(ganttActivityFromRow(row));
+    activitiesByProject.set(row.project_id, list);
+  }
+  const deadlinesByProject = new Map<string, ProjectGanttDeadline[]>();
+  for (const row of (deadlinesRes.data ?? []) as GanttDeadlineRow[]) {
+    const list = deadlinesByProject.get(row.project_id) ?? [];
+    list.push(ganttDeadlineFromRow(row));
+    deadlinesByProject.set(row.project_id, list);
+  }
   // Financial schedules are local / Excel only — never loaded from DB.
   return ((projectsRes.data ?? []) as ProjectRow[]).map((row) =>
     projectFromRow(
@@ -546,6 +806,11 @@ async function loadRemote(): Promise<Project[]> {
       contactsByProject.get(row.id) ?? [],
       emptyFinancials(),
       filesByProject.get(row.id) ?? [],
+      {
+        phases: phasesByProject.get(row.id) ?? [],
+        activities: activitiesByProject.get(row.id) ?? [],
+        deadlines: deadlinesByProject.get(row.id) ?? [],
+      },
     ),
   );
 }
@@ -564,6 +829,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
+  const [metricsSettings, setMetricsSettings] = useState<CompanyMetricsSettings>(
+    defaultMetricsSettings,
+  );
   const [financeImport, setFinanceImport] = useState<FinanceImportData | null>(
     null,
   );
@@ -571,6 +839,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
   const [supportsCommentAuthorId, setSupportsCommentAuthorId] = useState(false);
+  const [supportsMetricsFields, setSupportsMetricsFields] = useState(false);
+  const [supportsMetricsSettingsTable, setSupportsMetricsSettingsTable] =
+    useState(false);
+  const [supportsGanttTables, setSupportsGanttTables] = useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
   projectsRef.current = projects;
@@ -584,7 +856,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
     async function boot() {
       if (supabase) {
-        const [members, remoteProjects] = await Promise.all([
+        const [members, remoteProjects, remoteMetrics] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
             console.error("Failed to load team members from Supabase:", e);
             return loadLocalTeamMembers();
@@ -593,19 +865,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             console.error("Failed to load projects from Supabase:", e);
             return [] as Project[];
           }),
+          loadRemoteMetricsSettings().catch(() => loadLocalMetricsSettings()),
         ]);
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(withLocalFinancials(remoteProjects));
+        setProjects(withLocalSchedule(withLocalFinancials(remoteProjects)));
         setFinanceSettings(loadLocalFinanceSettings());
+        setMetricsSettings(remoteMetrics);
         setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(withLocalFinancials(loadLocal()));
+        setProjects(withLocalSchedule(withLocalFinancials(loadLocal())));
         setFinanceSettings(loadLocalFinanceSettings());
+        setMetricsSettings(loadLocalMetricsSettings());
         setFinanceImport(loadLocalFinanceImport());
         setReady(true);
       }
@@ -622,16 +897,34 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("lead_user_id").limit(1),
         supabase.from("project_todos").select("owner_user_id").limit(1),
         supabase.from("project_comments").select("author_user_id").limit(1),
+        supabase.from("projects").select("next_action_text").limit(1),
+        supabase.from("company_metrics_settings").select("id").limit(1),
+        supabase.from("project_gantt_phases").select("id").limit(1),
       ])
-        .then(([projectsCols, todosCols, commentsCols]) => {
-          setSupportsOwnershipFields(
-            !projectsCols.error && !todosCols.error,
-          );
-          setSupportsCommentAuthorId(!commentsCols.error);
-        })
+        .then(
+          ([
+            projectsCols,
+            todosCols,
+            commentsCols,
+            metricsCols,
+            settingsTable,
+            ganttTable,
+          ]) => {
+            setSupportsOwnershipFields(
+              !projectsCols.error && !todosCols.error,
+            );
+            setSupportsCommentAuthorId(!commentsCols.error);
+            setSupportsMetricsFields(!metricsCols.error);
+            setSupportsMetricsSettingsTable(!settingsTable.error);
+            setSupportsGanttTables(!ganttTable.error);
+          },
+        )
         .catch(() => {
           setSupportsOwnershipFields(false);
           setSupportsCommentAuthorId(false);
+          setSupportsMetricsFields(false);
+          setSupportsMetricsSettingsTable(false);
+          setSupportsGanttTables(false);
         });
     }
   }, []);
@@ -667,6 +960,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
     window.localStorage.setItem(
       PROJECT_FINANCIALS_STORAGE_KEY,
+      JSON.stringify(map),
+    );
+  }, [projects, ready]);
+
+  // Gantt schedules — always mirrored locally (and synced to DB when available).
+  useEffect(() => {
+    if (!ready) return;
+    const map: Record<string, ProjectSchedule> = {};
+    for (const p of projects) {
+      map[p.id] = p.schedule ?? emptySchedule();
+    }
+    window.localStorage.setItem(
+      PROJECT_SCHEDULE_STORAGE_KEY,
       JSON.stringify(map),
     );
   }, [projects, ready]);
@@ -750,6 +1056,36 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  const updateMetricsSettings = useCallback(
+    (patch: MetricsSettingsPatch) => {
+      setMetricsSettings((prev) => {
+        const next: CompanyMetricsSettings = {
+          ...prev,
+          ...patch,
+        };
+        try {
+          window.localStorage.setItem(
+            METRICS_SETTINGS_STORAGE_KEY,
+            JSON.stringify(next),
+          );
+        } catch {
+          /* ignore */
+        }
+        if (supabase && supportsMetricsSettingsTable) {
+          void supabase
+            .from("company_metrics_settings")
+            .upsert({
+              ...metricsSettingsToRow(next),
+              updated_at: new Date().toISOString(),
+            })
+            .then(logDbError("metrics settings upsert"));
+        }
+        return next;
+      });
+    },
+    [supportsMetricsSettingsTable],
+  );
 
   const applyFinanceImport = useCallback((data: FinanceImportData) => {
     setFinanceImport(data);
@@ -905,11 +1241,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: true,
       ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
+      ...initialMetricsFields({
+        stage: input.stage,
+        createdDate: createdAt.slice(0, 10),
+        lastMeaningfulActivityAt: input.lastMeaningfulActivityAt,
+        nextActionText: input.nextActionText,
+        nextActionDueAt: input.nextActionDueAt,
+      }),
       comments: initialComment ? [initialComment] : [],
       todos: [],
       contacts: [],
       files: [],
       financials: emptyFinancials(),
+      schedule: emptySchedule(),
       createdAt,
     };
     setProjects((prev) => [project, ...prev]);
@@ -936,6 +1280,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             ? { lead_user_id: project.leadUserId ?? null }
             : {}),
           created_at: project.createdAt,
+          ...(supportsMetricsFields
+            ? {
+                cold_lead_entered_at: project.coldLeadEnteredAt,
+                hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
+                under_development_at: project.underDevelopmentAt ?? null,
+                commissioned_at: project.commissionedAt ?? null,
+                cancelled_at: project.cancelledAt ?? null,
+                last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+                next_action_text: project.nextActionText ?? null,
+                next_action_due_at: project.nextActionDueAt ?? null,
+              }
+            : {}),
         })
         .then((res) => {
           logDbError("project insert")(res);
@@ -954,10 +1310,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               created_at: initialComment.createdAt,
             })
             .then(logDbError("initial comment insert"));
+          if (!res.error && supportsMetricsFields) {
+            void supabase!
+              .from("project_stage_history")
+              .insert({
+                project_id: id,
+                stage: project.stage,
+                entered_at: project.coldLeadEnteredAt,
+              })
+              .then(logDbError("stage history insert"));
+          }
         });
     }
     return id;
-  }, [supportsOwnershipFields, supportsCommentAuthorId, resolveAuthor]);
+  }, [
+    supportsOwnershipFields,
+    supportsCommentAuthorId,
+    supportsMetricsFields,
+    resolveAuthor,
+  ]);
 
   const addComment = useCallback(
     (projectId: string, text: string, stageChange?: Stage) => {
@@ -974,8 +1345,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
         ...(stageChange ? { stageChange } : {}),
       };
+      const stagePatch = stageChange
+        ? stageChangeTimestampPatch(current, stageChange)
+        : {};
       const updated: Project = {
         ...current,
+        ...stagePatch,
         stage: stageChange ?? current.stage,
         comments: [...current.comments, comment],
       };
@@ -996,54 +1371,131 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           })
           .then(logDbError("comment insert"));
         if (stageChange) {
+          const row: Record<string, string | null> = { stage: stageChange };
+          if (supportsMetricsFields) {
+            if (stagePatch.hotLeadEnteredAt)
+              row.hot_lead_entered_at = stagePatch.hotLeadEnteredAt;
+            if (stagePatch.underDevelopmentAt)
+              row.under_development_at = stagePatch.underDevelopmentAt;
+            if (stagePatch.commissionedAt)
+              row.commissioned_at = stagePatch.commissionedAt;
+            if (stagePatch.cancelledAt)
+              row.cancelled_at = stagePatch.cancelledAt;
+          }
           void supabase
             .from("projects")
-            .update({ stage: stageChange })
+            .update(row)
             .eq("id", projectId)
             .then(logDbError("stage update"));
+          if (supportsMetricsFields) {
+            void supabase
+              .from("project_stage_history")
+              .insert({
+                project_id: projectId,
+                stage: stageChange,
+                entered_at: todayDate(),
+              })
+              .then(logDbError("stage history insert"));
+          }
         }
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, resolveAuthor, supportsCommentAuthorId],
+    [
+      requestAiSummary,
+      resolveAuthor,
+      supportsCommentAuthorId,
+      supportsMetricsFields,
+    ],
   );
 
   const updateProject = useCallback(
     (projectId: string, patch: ProjectPatch) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
-      const updated: Project = { ...current, ...patch };
+      const stageExtras =
+        patch.stage && patch.stage !== current.stage
+          ? stageChangeTimestampPatch(current, patch.stage)
+          : {};
+      const mergedPatch = { ...stageExtras, ...patch };
+      const updated: Project = { ...current, ...mergedPatch };
+      // Empty strings clear optional text/date fields
+      if (mergedPatch.nextActionText === "") delete updated.nextActionText;
+      if (mergedPatch.nextActionDueAt === "") delete updated.nextActionDueAt;
+      if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
+      if (mergedPatch.underDevelopmentAt === "")
+        delete updated.underDevelopmentAt;
+      if (mergedPatch.commissionedAt === "") delete updated.commissionedAt;
+      if (mergedPatch.cancelledAt === "") delete updated.cancelledAt;
+      if (mergedPatch.cancellationReason === "")
+        delete updated.cancellationReason;
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
         const row: Record<string, string | number | boolean | null> = {};
-        if (patch.name !== undefined) row.name = patch.name;
-        if (patch.client !== undefined) row.client = patch.client;
-        if (patch.country !== undefined) row.country = patch.country;
-        if (patch.city !== undefined) row.city = patch.city;
-        if (patch.series !== undefined) row.series = patch.series;
-        if (patch.market !== undefined) row.market = patch.market;
-        if (patch.sizeKw !== undefined) row.size_kw = patch.sizeKw;
-        if (patch.stage !== undefined) row.stage = patch.stage;
-        if (patch.baseDescription !== undefined)
-          row.base_description = patch.baseDescription;
-        if (patch.lastClientContactAt !== undefined)
-          row.last_client_contact_at = patch.lastClientContactAt;
-        if (patch.emailReminderDays !== undefined)
-          row.email_reminder_days = patch.emailReminderDays;
-        if (patch.emailReminderEnabled !== undefined)
-          row.email_reminder_enabled = patch.emailReminderEnabled;
-        if (supportsOwnershipFields && patch.leadUserId !== undefined) {
-          row.lead_user_id = patch.leadUserId ?? null;
+        if (mergedPatch.name !== undefined) row.name = mergedPatch.name;
+        if (mergedPatch.client !== undefined) row.client = mergedPatch.client;
+        if (mergedPatch.country !== undefined) row.country = mergedPatch.country;
+        if (mergedPatch.city !== undefined) row.city = mergedPatch.city;
+        if (mergedPatch.series !== undefined) row.series = mergedPatch.series;
+        if (mergedPatch.market !== undefined) row.market = mergedPatch.market;
+        if (mergedPatch.sizeKw !== undefined) row.size_kw = mergedPatch.sizeKw;
+        if (mergedPatch.stage !== undefined) row.stage = mergedPatch.stage;
+        if (mergedPatch.baseDescription !== undefined)
+          row.base_description = mergedPatch.baseDescription;
+        if (mergedPatch.lastClientContactAt !== undefined)
+          row.last_client_contact_at = mergedPatch.lastClientContactAt;
+        if (mergedPatch.emailReminderDays !== undefined)
+          row.email_reminder_days = mergedPatch.emailReminderDays;
+        if (mergedPatch.emailReminderEnabled !== undefined)
+          row.email_reminder_enabled = mergedPatch.emailReminderEnabled;
+        if (supportsOwnershipFields && mergedPatch.leadUserId !== undefined) {
+          row.lead_user_id = mergedPatch.leadUserId ?? null;
+        }
+        if (supportsMetricsFields) {
+          if (mergedPatch.coldLeadEnteredAt !== undefined)
+            row.cold_lead_entered_at = mergedPatch.coldLeadEnteredAt;
+          if (mergedPatch.lastMeaningfulActivityAt !== undefined)
+            row.last_meaningful_activity_at =
+              mergedPatch.lastMeaningfulActivityAt;
+          if (mergedPatch.nextActionText !== undefined)
+            row.next_action_text = mergedPatch.nextActionText.trim() || null;
+          if (mergedPatch.nextActionDueAt !== undefined)
+            row.next_action_due_at = mergedPatch.nextActionDueAt || null;
+          if (mergedPatch.cancellationReason !== undefined)
+            row.cancellation_reason =
+              mergedPatch.cancellationReason.trim() || null;
+          if (mergedPatch.hotLeadEnteredAt !== undefined)
+            row.hot_lead_entered_at = mergedPatch.hotLeadEnteredAt || null;
+          if (mergedPatch.underDevelopmentAt !== undefined)
+            row.under_development_at = mergedPatch.underDevelopmentAt || null;
+          if (mergedPatch.commissionedAt !== undefined)
+            row.commissioned_at = mergedPatch.commissionedAt || null;
+          if (mergedPatch.cancelledAt !== undefined)
+            row.cancelled_at = mergedPatch.cancelledAt || null;
         }
         void supabase
           .from("projects")
           .update(row)
           .eq("id", projectId)
           .then(logDbError("project update"));
+        if (
+          supportsMetricsFields &&
+          patch.stage &&
+          patch.stage !== current.stage
+        ) {
+          void supabase
+            .from("project_stage_history")
+            .insert({
+              project_id: projectId,
+              stage: patch.stage,
+              entered_at: todayDate(),
+            })
+            .then(logDbError("stage history insert"));
+        }
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, supportsOwnershipFields],
+    [requestAiSummary, supportsOwnershipFields, supportsMetricsFields],
   );
 
   const markClientContacted = useCallback(
@@ -1051,17 +1503,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
       const lastClientContactAt = todayDate();
-      const updated: Project = { ...current, lastClientContactAt };
+      const updated: Project = {
+        ...current,
+        lastClientContactAt,
+        lastMeaningfulActivityAt: lastClientContactAt,
+      };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
+        const row: Record<string, string> = {
+          last_client_contact_at: lastClientContactAt,
+        };
+        if (supportsMetricsFields) {
+          row.last_meaningful_activity_at = lastClientContactAt;
+        }
         void supabase
           .from("projects")
-          .update({ last_client_contact_at: lastClientContactAt })
+          .update(row)
           .eq("id", projectId)
           .then(logDbError("mark client contacted"));
       }
     },
-    [],
+    [supportsMetricsFields],
   );
 
   const updateComment = useCallback(
@@ -1555,10 +2017,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const addPayment = useCallback(
     (projectId: string, input: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = input.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? input.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
+      const dueDate = linkedDate ?? input.dueDate;
       const payment: ProjectPayment = {
         id: crypto.randomUUID(),
         amount: input.amount,
@@ -1566,12 +2026,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(input.milestoneId && linkedDate
+          ? { milestoneId: input.milestoneId }
+          : {}),
         createdAt: new Date().toISOString(),
       };
       mutateFinancials(projectId, (f) => ({
         ...f,
-        payments: [...f.payments, payment],
+        payments: [...(f.payments ?? []), payment],
       }));
     },
     [mutateFinancials],
@@ -1580,10 +2042,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = patch.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? patch.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
+      const dueDate = linkedDate ?? patch.dueDate;
       mutateFinancials(projectId, (f) => ({
         ...f,
         payments: f.payments.map((p) => {
@@ -1596,7 +2056,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           };
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
-          if (linked) next.milestoneId = linked.id;
+          if (patch.milestoneId && linkedDate) {
+            next.milestoneId = patch.milestoneId;
+          }
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (p.actualDate) {
@@ -1622,10 +2084,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const addExpense = useCallback(
     (projectId: string, input: ExpenseInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = input.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? input.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
+      const dueDate = linkedDate ?? input.dueDate;
       const expense: ProjectExpenseItem = {
         id: crypto.randomUUID(),
         amount: input.amount,
@@ -1633,7 +2093,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(input.milestoneId && linkedDate
+          ? { milestoneId: input.milestoneId }
+          : {}),
         createdAt: new Date().toISOString(),
       };
       mutateFinancials(projectId, (f) => ({
@@ -1647,10 +2109,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updateExpense = useCallback(
     (projectId: string, expenseId: string, patch: ExpenseInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = patch.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? patch.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
+      const dueDate = linkedDate ?? patch.dueDate;
       mutateFinancials(projectId, (f) => ({
         ...f,
         expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
@@ -1663,7 +2123,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           };
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
-          if (linked) next.milestoneId = linked.id;
+          if (patch.milestoneId && linkedDate) {
+            next.milestoneId = patch.milestoneId;
+          }
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (e.actualDate) {
@@ -1754,6 +2216,547 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateFinancials],
   );
 
+  const mutateSchedule = useCallback(
+    (projectId: string, fn: (s: ProjectSchedule) => ProjectSchedule) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, schedule: fn(p.schedule ?? emptySchedule()) }
+            : p,
+        ),
+      );
+    },
+    [],
+  );
+
+  const addGanttPhase = useCallback(
+    (projectId: string, input: GanttPhaseInput) => {
+      const name = input.name.trim();
+      if (!name || !input.startDate) return;
+      const durationDays = Math.max(1, Math.round(input.durationDays) || 1);
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const existing = project?.schedule?.phases ?? [];
+      const color =
+        input.color ??
+        GANTT_PHASE_COLORS[existing.length % GANTT_PHASE_COLORS.length];
+      const phase: ProjectGanttPhase = {
+        id: crypto.randomUUID(),
+        name,
+        startDate: input.startDate,
+        durationDays,
+        color,
+        ...(input.wbs?.trim() ? { wbs: input.wbs.trim() } : {}),
+        ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
+        ...(input.actualStartDate
+          ? { actualStartDate: input.actualStartDate }
+          : {}),
+        ...(input.actualDurationDays != null && input.actualDurationDays >= 1
+          ? {
+              actualDurationDays: Math.max(
+                1,
+                Math.round(input.actualDurationDays),
+              ),
+            }
+          : {}),
+        sortOrder:
+          input.sortOrder ??
+          (existing.length > 0
+            ? Math.max(...existing.map((p) => p.sortOrder)) + 1
+            : 0),
+        createdAt: new Date().toISOString(),
+      };
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        phases: [...s.phases, phase],
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_phases")
+          .insert({
+            id: phase.id,
+            project_id: projectId,
+            name: phase.name,
+            start_date: phase.startDate,
+            duration_days: phase.durationDays,
+            actual_start_date: phase.actualStartDate ?? null,
+            actual_duration_days: phase.actualDurationDays ?? null,
+            color: phase.color ?? null,
+            wbs: phase.wbs ?? null,
+            owner: phase.owner ?? null,
+            sort_order: phase.sortOrder,
+            created_at: phase.createdAt,
+          })
+          .then(logDbError("gantt phase insert"));
+      }
+    },
+    [mutateSchedule, supportsGanttTables],
+  );
+
+  const updateGanttPhase = useCallback(
+    (projectId: string, phaseId: string, patch: GanttPhaseInput) => {
+      let nextEndDate: string | null = null;
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        phases: s.phases.map((p) => {
+          if (p.id !== phaseId) return p;
+          const next: ProjectGanttPhase = {
+            ...p,
+            name: patch.name.trim() || p.name,
+            startDate: patch.startDate || p.startDate,
+            durationDays: Math.max(
+              1,
+              Math.round(patch.durationDays) || p.durationDays,
+            ),
+          };
+          if (patch.color !== undefined) {
+            if (patch.color) next.color = patch.color;
+            else delete next.color;
+          }
+          if (patch.wbs !== undefined) {
+            if (patch.wbs.trim()) next.wbs = patch.wbs.trim();
+            else delete next.wbs;
+          }
+          if (patch.owner !== undefined) {
+            if (patch.owner.trim()) next.owner = patch.owner.trim();
+            else delete next.owner;
+          }
+          if (patch.actualStartDate !== undefined) {
+            if (patch.actualStartDate) next.actualStartDate = patch.actualStartDate;
+            else delete next.actualStartDate;
+          }
+          if (patch.actualDurationDays !== undefined) {
+            if (patch.actualDurationDays != null && patch.actualDurationDays >= 1) {
+              next.actualDurationDays = Math.max(
+                1,
+                Math.round(patch.actualDurationDays),
+              );
+            } else delete next.actualDurationDays;
+          }
+          if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
+          if (patch.startDate || patch.durationDays !== undefined) {
+            nextEndDate = phaseEndDate(next);
+          }
+          return next;
+        }),
+      }));
+      if (nextEndDate) {
+        const due = nextEndDate;
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === phaseId ? { ...p, dueDate: due } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === phaseId ? { ...e, dueDate: due } : e,
+          ),
+        }));
+      }
+      if (supabase && supportsGanttTables) {
+        const row: Record<string, string | number | null> = {};
+        if (patch.name !== undefined) row.name = patch.name.trim();
+        if (patch.startDate) row.start_date = patch.startDate;
+        if (patch.durationDays !== undefined) {
+          row.duration_days = Math.max(1, Math.round(patch.durationDays) || 1);
+        }
+        if (patch.actualStartDate !== undefined) {
+          row.actual_start_date = patch.actualStartDate || null;
+        }
+        if (patch.actualDurationDays !== undefined) {
+          row.actual_duration_days =
+            patch.actualDurationDays != null && patch.actualDurationDays >= 1
+              ? Math.max(1, Math.round(patch.actualDurationDays))
+              : null;
+        }
+        if (patch.color !== undefined) row.color = patch.color || null;
+        if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
+        if (patch.owner !== undefined) row.owner = patch.owner.trim() || null;
+        if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
+        void supabase
+          .from("project_gantt_phases")
+          .update(row)
+          .eq("id", phaseId)
+          .then(logDbError("gantt phase update"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
+  const deleteGanttPhase = useCallback(
+    (projectId: string, phaseId: string) => {
+      const schedule = projectsRef.current.find((p) => p.id === projectId)
+        ?.schedule;
+      const removedIds = new Set<string>([phaseId]);
+      for (const a of schedule?.activities ?? []) {
+        if (a.phaseId === phaseId) removedIds.add(a.id);
+      }
+      for (const d of schedule?.deadlines ?? []) {
+        if (d.phaseId === phaseId) removedIds.add(d.id);
+      }
+      mutateSchedule(projectId, (s) => ({
+        phases: s.phases.filter((p) => p.id !== phaseId),
+        activities: (s.activities ?? []).filter((a) => a.phaseId !== phaseId),
+        deadlines: s.deadlines.filter((d) => d.phaseId !== phaseId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (!p.milestoneId || !removedIds.has(p.milestoneId)) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (!e.milestoneId || !removedIds.has(e.milestoneId)) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_phases")
+          .delete()
+          .eq("id", phaseId)
+          .then(logDbError("gantt phase delete"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
+  const addGanttActivity = useCallback(
+    (projectId: string, input: GanttActivityInput) => {
+      const name = input.name.trim();
+      if (!name || !input.phaseId || !input.startDate) return;
+      const durationDays = Math.max(1, Math.round(input.durationDays) || 1);
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const existing = (project?.schedule?.activities ?? []).filter(
+        (a) => a.phaseId === input.phaseId,
+      );
+      const activity: ProjectGanttActivity = {
+        id: crypto.randomUUID(),
+        phaseId: input.phaseId,
+        name,
+        startDate: input.startDate,
+        durationDays,
+        ...(input.wbs?.trim() ? { wbs: input.wbs.trim() } : {}),
+        ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
+        ...(input.color ? { color: input.color } : {}),
+        ...(input.status?.trim() ? { status: input.status.trim() } : {}),
+        ...(input.actualStartDate
+          ? { actualStartDate: input.actualStartDate }
+          : {}),
+        ...(input.actualDurationDays != null && input.actualDurationDays >= 1
+          ? {
+              actualDurationDays: Math.max(
+                1,
+                Math.round(input.actualDurationDays),
+              ),
+            }
+          : {}),
+        sortOrder:
+          input.sortOrder ??
+          (existing.length > 0
+            ? Math.max(...existing.map((a) => a.sortOrder)) + 1
+            : 0),
+        createdAt: new Date().toISOString(),
+      };
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        activities: [...(s.activities ?? []), activity],
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_activities")
+          .insert({
+            id: activity.id,
+            project_id: projectId,
+            phase_id: activity.phaseId,
+            name: activity.name,
+            start_date: activity.startDate,
+            duration_days: activity.durationDays,
+            actual_start_date: activity.actualStartDate ?? null,
+            actual_duration_days: activity.actualDurationDays ?? null,
+            wbs: activity.wbs ?? null,
+            owner: activity.owner ?? null,
+            color: activity.color ?? null,
+            status: activity.status ?? null,
+            sort_order: activity.sortOrder,
+            created_at: activity.createdAt,
+          })
+          .then(logDbError("gantt activity insert"));
+      }
+    },
+    [mutateSchedule, supportsGanttTables],
+  );
+
+  const updateGanttActivity = useCallback(
+    (projectId: string, activityId: string, patch: GanttActivityInput) => {
+      let nextEndDate: string | null = null;
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        activities: (s.activities ?? []).map((a) => {
+          if (a.id !== activityId) return a;
+          const next: ProjectGanttActivity = {
+            ...a,
+            phaseId: patch.phaseId || a.phaseId,
+            name: patch.name.trim() || a.name,
+            startDate: patch.startDate || a.startDate,
+            durationDays: Math.max(
+              1,
+              Math.round(patch.durationDays) || a.durationDays,
+            ),
+          };
+          if (patch.wbs !== undefined) {
+            if (patch.wbs.trim()) next.wbs = patch.wbs.trim();
+            else delete next.wbs;
+          }
+          if (patch.owner !== undefined) {
+            if (patch.owner.trim()) next.owner = patch.owner.trim();
+            else delete next.owner;
+          }
+          if (patch.color !== undefined) {
+            if (patch.color) next.color = patch.color;
+            else delete next.color;
+          }
+          if (patch.status !== undefined) {
+            if (patch.status.trim()) next.status = patch.status.trim();
+            else delete next.status;
+          }
+          if (patch.actualStartDate !== undefined) {
+            if (patch.actualStartDate) next.actualStartDate = patch.actualStartDate;
+            else delete next.actualStartDate;
+          }
+          if (patch.actualDurationDays !== undefined) {
+            if (patch.actualDurationDays != null && patch.actualDurationDays >= 1) {
+              next.actualDurationDays = Math.max(
+                1,
+                Math.round(patch.actualDurationDays),
+              );
+            } else delete next.actualDurationDays;
+          }
+          if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
+          if (patch.startDate || patch.durationDays !== undefined) {
+            nextEndDate = addDays(
+              next.startDate,
+              Math.max(1, next.durationDays) - 1,
+            );
+          }
+          return next;
+        }),
+      }));
+      if (nextEndDate) {
+        const due = nextEndDate;
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === activityId ? { ...p, dueDate: due } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === activityId ? { ...e, dueDate: due } : e,
+          ),
+        }));
+      }
+      if (supabase && supportsGanttTables) {
+        const row: Record<string, string | number | null> = {};
+        if (patch.phaseId) row.phase_id = patch.phaseId;
+        if (patch.name !== undefined) row.name = patch.name.trim();
+        if (patch.startDate) row.start_date = patch.startDate;
+        if (patch.durationDays !== undefined) {
+          row.duration_days = Math.max(1, Math.round(patch.durationDays) || 1);
+        }
+        if (patch.actualStartDate !== undefined) {
+          row.actual_start_date = patch.actualStartDate || null;
+        }
+        if (patch.actualDurationDays !== undefined) {
+          row.actual_duration_days =
+            patch.actualDurationDays != null && patch.actualDurationDays >= 1
+              ? Math.max(1, Math.round(patch.actualDurationDays))
+              : null;
+        }
+        if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
+        if (patch.owner !== undefined) row.owner = patch.owner.trim() || null;
+        if (patch.color !== undefined) row.color = patch.color || null;
+        if (patch.status !== undefined) row.status = patch.status.trim() || null;
+        if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
+        void supabase
+          .from("project_gantt_activities")
+          .update(row)
+          .eq("id", activityId)
+          .then(logDbError("gantt activity update"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
+  const deleteGanttActivity = useCallback(
+    (projectId: string, activityId: string) => {
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        activities: (s.activities ?? []).filter((a) => a.id !== activityId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (p.milestoneId !== activityId) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.milestoneId !== activityId) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_activities")
+          .delete()
+          .eq("id", activityId)
+          .then(logDbError("gantt activity delete"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
+  const addGanttDeadline = useCallback(
+    (projectId: string, input: GanttDeadlineInput) => {
+      const name = input.name.trim();
+      if (!name || !input.phaseId || !input.date) return;
+      const deadline: ProjectGanttDeadline = {
+        id: crypto.randomUUID(),
+        phaseId: input.phaseId,
+        name,
+        date: input.date,
+        ...(input.wbs?.trim() ? { wbs: input.wbs.trim() } : {}),
+        ...(input.owner?.trim() ? { owner: input.owner.trim() } : {}),
+        ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        ...(input.actualDate ? { actualDate: input.actualDate } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        deadlines: [...s.deadlines, deadline],
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_deadlines")
+          .insert({
+            id: deadline.id,
+            project_id: projectId,
+            phase_id: deadline.phaseId,
+            name: deadline.name,
+            date: deadline.date,
+            actual_date: deadline.actualDate ?? null,
+            wbs: deadline.wbs ?? null,
+            owner: deadline.owner ?? null,
+            note: deadline.note ?? null,
+            created_at: deadline.createdAt,
+          })
+          .then(logDbError("gantt deadline insert"));
+      }
+    },
+    [mutateSchedule, supportsGanttTables],
+  );
+
+  const updateGanttDeadline = useCallback(
+    (projectId: string, deadlineId: string, patch: GanttDeadlineInput) => {
+      const nextDate = patch.date;
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        deadlines: s.deadlines.map((d) => {
+          if (d.id !== deadlineId) return d;
+          const next: ProjectGanttDeadline = {
+            ...d,
+            phaseId: patch.phaseId || d.phaseId,
+            name: patch.name.trim() || d.name,
+            date: patch.date || d.date,
+          };
+          if (patch.wbs !== undefined) {
+            if (patch.wbs.trim()) next.wbs = patch.wbs.trim();
+            else delete next.wbs;
+          }
+          if (patch.owner !== undefined) {
+            if (patch.owner.trim()) next.owner = patch.owner.trim();
+            else delete next.owner;
+          }
+          if (patch.note !== undefined) {
+            if (patch.note.trim()) next.note = patch.note.trim();
+            else delete next.note;
+          }
+          if (patch.actualDate !== undefined) {
+            if (patch.actualDate) next.actualDate = patch.actualDate;
+            else delete next.actualDate;
+          }
+          return next;
+        }),
+      }));
+      // Keep linked income/expense expected dates in sync with the Gantt deadline.
+      if (nextDate) {
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === deadlineId ? { ...p, dueDate: nextDate } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === deadlineId ? { ...e, dueDate: nextDate } : e,
+          ),
+        }));
+      }
+      if (supabase && supportsGanttTables) {
+        const row: Record<string, string | null> = {};
+        if (patch.phaseId) row.phase_id = patch.phaseId;
+        if (patch.name !== undefined) row.name = patch.name.trim();
+        if (patch.date) row.date = patch.date;
+        if (patch.actualDate !== undefined) {
+          row.actual_date = patch.actualDate || null;
+        }
+        if (patch.wbs !== undefined) row.wbs = patch.wbs.trim() || null;
+        if (patch.owner !== undefined) row.owner = patch.owner.trim() || null;
+        if (patch.note !== undefined) row.note = patch.note.trim() || null;
+        void supabase
+          .from("project_gantt_deadlines")
+          .update(row)
+          .eq("id", deadlineId)
+          .then(logDbError("gantt deadline update"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
+  const deleteGanttDeadline = useCallback(
+    (projectId: string, deadlineId: string) => {
+      mutateSchedule(projectId, (s) => ({
+        ...s,
+        deadlines: s.deadlines.filter((d) => d.id !== deadlineId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (p.milestoneId !== deadlineId) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.milestoneId !== deadlineId) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
+      }));
+      if (supabase && supportsGanttTables) {
+        void supabase
+          .from("project_gantt_deadlines")
+          .delete()
+          .eq("id", deadlineId)
+          .then(logDbError("gantt deadline delete"));
+      }
+    },
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
+  );
+
   const deleteProject = useCallback((projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (supabase) {
@@ -1778,6 +2781,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setShowFinancials,
         financeSettings,
         updateFinanceSettings,
+        metricsSettings,
+        updateMetricsSettings,
         financeImport,
         applyFinanceImport,
         clearFinanceImport,
@@ -1814,6 +2819,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addMilestone,
         updateMilestone,
         deleteMilestone,
+        addGanttPhase,
+        updateGanttPhase,
+        deleteGanttPhase,
+        addGanttActivity,
+        updateGanttActivity,
+        deleteGanttActivity,
+        addGanttDeadline,
+        updateGanttDeadline,
+        deleteGanttDeadline,
       }}
     >
       {children}

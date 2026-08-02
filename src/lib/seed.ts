@@ -2,7 +2,10 @@ import {
   Project,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  emptySchedule,
 } from "./types";
+import { ensureProjectMetricsDefaults } from "./metrics/project-bridge";
+import { munichBusFleetSchedule } from "./gantt-munich";
 
 function daysAgo(n: number, hour = 10): string {
   const d = new Date();
@@ -15,7 +18,7 @@ function dateAgo(n: number): string {
   return daysAgo(n).slice(0, 10);
 }
 
-export const SEED_PROJECTS: Project[] = [
+const RAW_SEED: Project[] = [
   {
     id: "p-sofia-district",
     name: "Sofia District Heating H2 Blend",
@@ -32,6 +35,12 @@ export const SEED_PROJECTS: Project[] = [
     lastClientContactAt: dateAgo(4),
     emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: true,
+    coldLeadEnteredAt: dateAgo(120),
+    hotLeadEnteredAt: dateAgo(90),
+    underDevelopmentAt: dateAgo(35),
+    lastMeaningfulActivityAt: dateAgo(4),
+    nextActionText: "Send revised drying skid drawings",
+    nextActionDueAt: dateAgo(-7),
     todos: [],
     contacts: [
       {
@@ -45,6 +54,7 @@ export const SEED_PROJECTS: Project[] = [
     ],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -83,10 +93,15 @@ export const SEED_PROJECTS: Project[] = [
     lastClientContactAt: dateAgo(12),
     emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: true,
+    coldLeadEnteredAt: dateAgo(14),
+    lastMeaningfulActivityAt: dateAgo(12),
+    nextActionText: "Send feasibility estimate",
+    nextActionDueAt: dateAgo(-3),
     todos: [],
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -112,10 +127,16 @@ export const SEED_PROJECTS: Project[] = [
     lastClientContactAt: dateAgo(6),
     emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: true,
+    coldLeadEnteredAt: dateAgo(21),
+    hotLeadEnteredAt: dateAgo(18),
+    lastMeaningfulActivityAt: dateAgo(6),
+    nextActionText: "Follow up on preliminary sizing feedback",
+    nextActionDueAt: dateAgo(-2),
     todos: [],
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: munichBusFleetSchedule(),
     comments: [
       {
         id: "c1",
@@ -147,10 +168,16 @@ export const SEED_PROJECTS: Project[] = [
     lastClientContactAt: dateAgo(10),
     emailReminderDays: 14,
     emailReminderEnabled: true,
+    coldLeadEnteredAt: dateAgo(300),
+    hotLeadEnteredAt: dateAgo(240),
+    underDevelopmentAt: dateAgo(180),
+    commissionedAt: dateAgo(45),
+    lastMeaningfulActivityAt: dateAgo(10),
     todos: [],
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -189,10 +216,17 @@ export const SEED_PROJECTS: Project[] = [
     lastClientContactAt: dateAgo(7),
     emailReminderDays: 3,
     emailReminderEnabled: true,
+    coldLeadEnteredAt: dateAgo(7),
+    lastMeaningfulActivityAt: dateAgo(7),
+    nextActionText: "Qualify site constraints",
+    nextActionDueAt: dateAgo(-5),
     todos: [],
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [],
   },
 ];
+
+export const SEED_PROJECTS: Project[] = RAW_SEED.map(ensureProjectMetricsDefaults);

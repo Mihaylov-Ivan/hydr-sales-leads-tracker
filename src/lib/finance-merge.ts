@@ -1,9 +1,8 @@
 /**
  * Merge Excel actuals/expected with project summary fields.
  *
- * When an import is loaded, schedule lines come only from the file
- * (actuals + expected). App-entered payment/expense schedules are hidden
- * so they cannot appear alongside Excel rows.
+ * When an import is loaded: Excel rows plus any app-entered schedules
+ * (e.g. from the project Gantt) so both appear on portfolio charts.
  */
 
 import {
@@ -41,7 +40,7 @@ function appOwnedMilestones(
 
 /**
  * Effective financials for display / planning.
- * - With import: Excel actuals + Excel expected only (local schedules ignored)
+ * - With import: Excel actuals + Excel expected + app-entered Gantt schedules
  * - Without import: app-entered schedules only
  */
 export function mergeProjectFinancials(
@@ -80,10 +79,29 @@ export function mergeProjectFinancials(
     project.name,
   );
 
+  const importPayIds = new Set([
+    ...importedPay.map((p) => p.id),
+    ...fileExpected.payments.map((p) => p.id),
+  ]);
+  const importExpIds = new Set([
+    ...importedExp.map((e) => e.id),
+    ...fileExpected.expenses.map((e) => e.id),
+  ]);
+
   return {
     ...f,
-    payments: [...importedPay, ...fileExpected.payments],
-    expenseSchedule: [...importedExp, ...fileExpected.expenses],
+    payments: [
+      ...importedPay,
+      ...fileExpected.payments,
+      ...appOwnedPayments(f.payments ?? []).filter((p) => !importPayIds.has(p.id)),
+    ],
+    expenseSchedule: [
+      ...importedExp,
+      ...fileExpected.expenses,
+      ...appOwnedExpenses(f.expenseSchedule ?? []).filter(
+        (e) => !importExpIds.has(e.id),
+      ),
+    ],
     milestones:
       importedMs.length > 0
         ? importedMs

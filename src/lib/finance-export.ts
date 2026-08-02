@@ -6,7 +6,11 @@
 import * as XLSX from "xlsx";
 import { FinanceImportData } from "./finance-import";
 import { projectsWithMergedFinancials } from "./finance-merge";
-import { MILESTONE_LABELS, Project, todayDate } from "./types";
+import {
+  findLinkableDeadline,
+  projectLinkableDeadlines,
+} from "./gantt-finance";
+import { Project, todayDate } from "./types";
 
 export type FinanceExportRow = {
   project: string;
@@ -51,26 +55,19 @@ export function buildFinanceExportRows(
 
   for (const p of merged) {
     const f = p.financials;
+    const deadlines = projectLinkableDeadlines(p);
     for (const pay of f.payments ?? []) {
-      const linked = pay.milestoneId
-        ? f.milestones.find((m) => m.id === pay.milestoneId)
-        : undefined;
+      const linked = findLinkableDeadline(pay.milestoneId, deadlines);
       const date = pay.actualDate ?? linked?.date ?? pay.dueDate;
       const deadline =
-        pay.label?.trim() ||
-        (linked ? MILESTONE_LABELS[linked.kind] : "") ||
-        "";
+        pay.label?.trim() || linked?.label || "";
       bump(p.name, date, deadline, "income", pay.amount);
     }
     for (const exp of f.expenseSchedule ?? []) {
-      const linked = exp.milestoneId
-        ? f.milestones.find((m) => m.id === exp.milestoneId)
-        : undefined;
+      const linked = findLinkableDeadline(exp.milestoneId, deadlines);
       const date = exp.actualDate ?? linked?.date ?? exp.dueDate;
       const deadline =
-        exp.label?.trim() ||
-        (linked ? MILESTONE_LABELS[linked.kind] : "") ||
-        "";
+        exp.label?.trim() || linked?.label || "";
       bump(p.name, date, deadline, "expense", exp.amount);
     }
   }
