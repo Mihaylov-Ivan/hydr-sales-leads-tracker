@@ -12,6 +12,7 @@ import ContactList from "@/components/ContactList";
 import FileAttachments from "@/components/FileAttachments";
 import FinancialsPanel from "@/components/FinancialsPanel";
 import ClientFollowUp from "@/components/ClientFollowUp";
+import ProjectGantt from "@/components/ProjectGantt";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -552,6 +553,14 @@ export default function ProjectPage() {
 
       {/* Client email follow-up (recurring our-action) */}
       <ClientFollowUp project={project} />
+
+      {/* Delivery Gantt: phases + deadlines */}
+      <ProjectGantt
+        projectId={project.id}
+        schedule={
+          project.schedule ?? { phases: [], activities: [], deadlines: [] }
+        }
+      />
 
       {/* Questions and action items */}
       <TodoList

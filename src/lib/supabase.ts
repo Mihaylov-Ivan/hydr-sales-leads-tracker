@@ -8,6 +8,9 @@ import {
   ProjectFile,
   ProjectFileKind,
   ProjectFinancials,
+  ProjectGanttActivity,
+  ProjectGanttDeadline,
+  ProjectGanttPhase,
   ProjectTodo,
   Series,
   Stage,
@@ -16,6 +19,7 @@ import {
   DEFAULT_EMAIL_REMINDER_DAYS,
   defaultMetricsSettings,
   emptyFinancials,
+  emptySchedule,
   normalizeStage,
 } from "./types";
 
@@ -166,6 +170,92 @@ export function fileFromRow(row: FileRow): ProjectFile {
   };
 }
 
+/** Shape of a row in public.project_gantt_phases */
+export interface GanttPhaseRow {
+  id: string;
+  project_id: string;
+  name: string;
+  start_date: string;
+  duration_days: number;
+  color: string | null;
+  wbs: string | null;
+  owner: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export function ganttPhaseFromRow(row: GanttPhaseRow): ProjectGanttPhase {
+  return {
+    id: row.id,
+    name: row.name,
+    startDate: row.start_date.slice(0, 10),
+    durationDays: Math.max(1, row.duration_days),
+    ...(row.color ? { color: row.color } : {}),
+    ...(row.wbs ? { wbs: row.wbs } : {}),
+    ...(row.owner ? { owner: row.owner } : {}),
+    sortOrder: row.sort_order ?? 0,
+    createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.project_gantt_activities */
+export interface GanttActivityRow {
+  id: string;
+  project_id: string;
+  phase_id: string;
+  name: string;
+  start_date: string;
+  duration_days: number;
+  wbs: string | null;
+  owner: string | null;
+  color: string | null;
+  status: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export function ganttActivityFromRow(row: GanttActivityRow): ProjectGanttActivity {
+  return {
+    id: row.id,
+    phaseId: row.phase_id,
+    name: row.name,
+    startDate: row.start_date.slice(0, 10),
+    durationDays: Math.max(1, row.duration_days),
+    ...(row.wbs ? { wbs: row.wbs } : {}),
+    ...(row.owner ? { owner: row.owner } : {}),
+    ...(row.color ? { color: row.color } : {}),
+    ...(row.status ? { status: row.status } : {}),
+    sortOrder: row.sort_order ?? 0,
+    createdAt: row.created_at,
+  };
+}
+
+/** Shape of a row in public.project_gantt_deadlines */
+export interface GanttDeadlineRow {
+  id: string;
+  project_id: string;
+  phase_id: string;
+  name: string;
+  date: string;
+  wbs: string | null;
+  owner: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export function ganttDeadlineFromRow(row: GanttDeadlineRow): ProjectGanttDeadline {
+  return {
+    id: row.id,
+    phaseId: row.phase_id,
+    name: row.name,
+    date: row.date.slice(0, 10),
+    ...(row.wbs ? { wbs: row.wbs } : {}),
+    ...(row.owner ? { owner: row.owner } : {}),
+    ...(row.note ? { note: row.note } : {}),
+    createdAt: row.created_at,
+  };
+}
+
 /** Shape of a row in public.team_members */
 export interface TeamMemberRow {
   id: string;
@@ -222,6 +312,7 @@ export function projectFromRow(
   contacts: ProjectContact[],
   financials: ProjectFinancials = emptyFinancials(),
   files: ProjectFile[] = [],
+  schedule = emptySchedule(),
 ): Project {
   const createdAt = row.created_at;
   const createdDate = createdAt.slice(0, 10);
@@ -274,6 +365,7 @@ export function projectFromRow(
     contacts,
     files,
     financials,
+    schedule,
     createdAt,
   };
 }

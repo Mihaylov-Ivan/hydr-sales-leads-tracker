@@ -2,8 +2,10 @@ import {
   Project,
   DEFAULT_EMAIL_REMINDER_DAYS,
   emptyFinancials,
+  emptySchedule,
 } from "./types";
 import { ensureProjectMetricsDefaults } from "./metrics/project-bridge";
+import { munichBusFleetSchedule } from "./gantt-munich";
 
 function daysAgo(n: number, hour = 10): string {
   const d = new Date();
@@ -52,6 +54,7 @@ const RAW_SEED: Project[] = [
     ],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -98,6 +101,7 @@ const RAW_SEED: Project[] = [
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -132,6 +136,7 @@ const RAW_SEED: Project[] = [
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: munichBusFleetSchedule(),
     comments: [
       {
         id: "c1",
@@ -172,6 +177,7 @@ const RAW_SEED: Project[] = [
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [
       {
         id: "c1",
@@ -218,6 +224,7 @@ const RAW_SEED: Project[] = [
     contacts: [],
     files: [],
     financials: emptyFinancials(),
+    schedule: emptySchedule(),
     comments: [],
   },
 ];
