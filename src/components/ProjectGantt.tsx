@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/lib/store";
 import {
   GANTT_PHASE_COLORS,
+  ProjectFinancials,
   ProjectGanttActivity,
   ProjectGanttDeadline,
   ProjectGanttPhase,
@@ -13,6 +14,7 @@ import {
   phaseEndDate,
   todayDate,
 } from "@/lib/types";
+import GanttFinancials from "@/components/GanttFinancials";
 
 const BAR_BLUE = "#5B9BD5";
 const MILESTONE_YELLOW = "#E8B923";
@@ -1183,9 +1185,13 @@ function DeadlineForm({
 export default function ProjectGantt({
   projectId,
   schedule,
+  showFinancials = false,
+  financials,
 }: {
   projectId: string;
   schedule: ProjectSchedule;
+  showFinancials?: boolean;
+  financials?: ProjectFinancials;
 }) {
   const {
     deleteGanttPhase,
@@ -1193,6 +1199,12 @@ export default function ProjectGantt({
     deleteGanttDeadline,
   } = useProjects();
   const [showActual, setShowActual] = useState(false);
+  const [sectionOpen, setSectionOpen] = useState(showFinancials);
+  const [editListOpen, setEditListOpen] = useState(false);
+
+  useEffect(() => {
+    if (showFinancials) setSectionOpen(true);
+  }, [showFinancials]);
   const [form, setForm] = useState<
     null | "phase" | "activity" | "deadline"
   >(null);
@@ -1225,298 +1237,360 @@ export default function ProjectGantt({
 
   return (
     <section className="rounded-xl border border-line bg-panel p-4 shadow-sm sm:p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+      <button
+        type="button"
+        aria-expanded={sectionOpen}
+        onClick={() => setSectionOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <span>
+          <span className="block text-sm font-bold uppercase tracking-wide text-deep">
             Project schedule
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">
-            {showActual
-              ? "Planned (faded) and actual (solid) shown on each row."
-              : "Phases, timed activities, and milestones on one Gantt timeline."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={showActual}
-            onClick={() => setShowActual((v) => !v)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition ${
-              showActual
-                ? "border-transparent text-white"
-                : "border-line bg-surface text-deep hover:border-teal-accent/40"
-            }`}
-            style={showActual ? { backgroundColor: ACTUAL_BAR } : undefined}
-          >
-            {showActual ? "Actuals on" : "Track actuals"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              closeForms();
-              setForm("phase");
-            }}
-            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40"
-          >
-            + Phase
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              closeForms();
-              setForm("activity");
-            }}
-            disabled={phases.length === 0}
-            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
-          >
-            + Activity
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              closeForms();
-              setForm("deadline");
-            }}
-            disabled={phases.length === 0}
-            className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
-          >
-            + Milestone
-          </button>
-        </div>
-      </div>
-
-      <GanttChart
-        phases={phases}
-        activities={activities}
-        deadlines={deadlines}
-        showActual={showActual}
-      />
-
-      <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-4 rounded-sm" style={{ background: BAR_BLUE }} />
-          Planned
-        </span>
-        {showActual && (
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              className="h-2 w-4 rounded-sm"
-              style={{ background: ACTUAL_BAR }}
-            />
-            Actual
           </span>
-        )}
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-4 rounded-sm" style={{ background: "#70AD47" }} />
-          Review
+          <span className="mt-0.5 block text-xs text-muted">
+            {phases.length === 0
+              ? showFinancials
+                ? "Gantt phases, milestones, and cash schedule."
+                : "Gantt phases, activities, and milestones."
+              : `${phases.length} phase${phases.length === 1 ? "" : "s"} · ${activities.length} activit${activities.length === 1 ? "y" : "ies"} · ${deadlines.length} milestone${deadlines.length === 1 ? "" : "s"}`}
+          </span>
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span
-            className="inline-block h-2.5 w-2.5 rotate-45"
-            style={{ background: MILESTONE_YELLOW }}
-          />
-          Milestone
+        <span className="shrink-0 text-sm font-semibold text-muted" aria-hidden>
+          {sectionOpen ? "▴" : "▾"}
         </span>
-      </div>
+      </button>
 
-      {(form === "phase" || editingPhaseId) && (
-        <div className="mt-4">
-          <PhaseForm
-            projectId={projectId}
-            showActual={showActual}
-            initial={
-              editingPhaseId
-                ? phases.find((p) => p.id === editingPhaseId)
-                : undefined
-            }
-            onDone={closeForms}
-          />
-        </div>
-      )}
-      {(form === "activity" || editingActivityId) && (
-        <div className="mt-4">
-          <ActivityForm
-            projectId={projectId}
-            phases={phases}
-            showActual={showActual}
-            initial={
-              editingActivityId
-                ? activities.find((a) => a.id === editingActivityId)
-                : undefined
-            }
-            onDone={closeForms}
-          />
-        </div>
-      )}
-      {(form === "deadline" || editingDeadlineId) && (
-        <div className="mt-4">
-          <DeadlineForm
-            projectId={projectId}
-            phases={phases}
-            showActual={showActual}
-            initial={
-              editingDeadlineId
-                ? deadlines.find((d) => d.id === editingDeadlineId)
-                : undefined
-            }
-            onDone={closeForms}
-          />
-        </div>
-      )}
+      {sectionOpen && (
+        <>
+          <div className="mb-4 mt-4 flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showActual}
+              onClick={() => setShowActual((v) => !v)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition ${
+                showActual
+                  ? "border-transparent text-white"
+                  : "border-line bg-surface text-deep hover:border-teal-accent/40"
+              }`}
+              style={showActual ? { backgroundColor: ACTUAL_BAR } : undefined}
+            >
+              {showActual ? "Actuals on" : "Track actuals"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
+                setForm("phase");
+              }}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40"
+            >
+              + Phase
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
+                setForm("activity");
+              }}
+              disabled={phases.length === 0}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
+            >
+              + Activity
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
+                setForm("deadline");
+              }}
+              disabled={phases.length === 0}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
+            >
+              + Milestone
+            </button>
+          </div>
 
-      {phases.length > 0 && (
-        <div className="mt-5 space-y-3">
-          {phases.map((phase, i) => {
-            const color = phaseColor(phase, i);
-            const phaseActs = activities
-              .filter((a) => a.phaseId === phase.id)
-              .sort(
-                (a, b) =>
-                  (a.wbs ?? "").localeCompare(b.wbs ?? "", undefined, {
-                    numeric: true,
-                  }) || a.startDate.localeCompare(b.startDate),
-              );
-            const phaseDls = deadlines
-              .filter((d) => d.phaseId === phase.id)
-              .sort((a, b) => a.date.localeCompare(b.date));
-            return (
-              <div
-                key={phase.id}
-                className="rounded-lg border border-line bg-surface/60 px-3 py-3"
+          <GanttChart
+            phases={phases}
+            activities={activities}
+            deadlines={deadlines}
+            showActual={showActual}
+          />
+
+          <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-4 rounded-sm"
+                style={{ background: BAR_BLUE }}
+              />
+              Planned
+            </span>
+            {showActual && (
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-2 w-4 rounded-sm"
+                  style={{ background: ACTUAL_BAR }}
+                />
+                Actual
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2 w-4 rounded-sm"
+                style={{ background: "#70AD47" }}
+              />
+              Review
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="inline-block h-2.5 w-2.5 rotate-45"
+                style={{ background: MILESTONE_YELLOW }}
+              />
+              Milestone
+            </span>
+          </div>
+
+          {(form === "phase" || editingPhaseId) && (
+            <div className="mt-4">
+              <PhaseForm
+                projectId={projectId}
+                showActual={showActual}
+                initial={
+                  editingPhaseId
+                    ? phases.find((p) => p.id === editingPhaseId)
+                    : undefined
+                }
+                onDone={closeForms}
+              />
+            </div>
+          )}
+          {(form === "activity" || editingActivityId) && (
+            <div className="mt-4">
+              <ActivityForm
+                projectId={projectId}
+                phases={phases}
+                showActual={showActual}
+                initial={
+                  editingActivityId
+                    ? activities.find((a) => a.id === editingActivityId)
+                    : undefined
+                }
+                onDone={closeForms}
+              />
+            </div>
+          )}
+          {(form === "deadline" || editingDeadlineId) && (
+            <div className="mt-4">
+              <DeadlineForm
+                projectId={projectId}
+                phases={phases}
+                showActual={showActual}
+                initial={
+                  editingDeadlineId
+                    ? deadlines.find((d) => d.id === editingDeadlineId)
+                    : undefined
+                }
+                onDone={closeForms}
+              />
+            </div>
+          )}
+
+          {showFinancials && financials && (
+            <GanttFinancials
+              projectId={projectId}
+              financials={financials}
+            />
+          )}
+
+          {phases.length > 0 && (
+            <div className="mt-5">
+              <button
+                type="button"
+                aria-expanded={editListOpen}
+                onClick={() => setEditListOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2.5 text-left transition hover:border-teal-accent/40"
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: color }}
-                  />
-                  <p className="text-sm font-semibold text-ink">
-                    {phase.wbs ? `${phase.wbs} ` : ""}
-                    {phase.name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {formatDate(phase.startDate)} –{" "}
-                    {formatDate(phaseEndDate(phase))} · {phase.durationDays}d
-                    {phase.owner ? ` · ${phase.owner}` : ""}
-                  </p>
-                  <div className="ml-auto flex gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        closeForms();
-                        setEditingPhaseId(phase.id);
-                      }}
-                      className="font-semibold text-teal-accent hover:underline"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteGanttPhase(projectId, phase.id)}
-                      className="text-muted hover:text-red-500"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                <ul className="mt-2 space-y-1.5 pl-5">
-                  {[
-                    ...phaseActs.map((a) => ({
-                      key: a.id,
-                      wbs: a.wbs,
-                      date: a.startDate,
-                      sort: a.wbs ?? a.startDate,
-                      node: (
-                        <>
-                          <span className="text-xs text-muted">
-                            {formatDate(a.startDate)} –{" "}
-                            {formatDate(activityEndDate(a))}
-                          </span>
-                          <span className="font-medium text-ink">
-                            {a.wbs ? `${a.wbs} ` : ""}
-                            {a.name}
-                          </span>
-                          <span className="ml-auto flex gap-2 text-xs">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                closeForms();
-                                setEditingActivityId(a.id);
-                              }}
-                              className="font-semibold text-teal-accent hover:underline"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                deleteGanttActivity(projectId, a.id)
-                              }
-                              className="text-muted hover:text-red-500"
-                            >
-                              Delete
-                            </button>
-                          </span>
-                        </>
-                      ),
-                    })),
-                    ...phaseDls.map((d) => ({
-                      key: d.id,
-                      wbs: d.wbs,
-                      date: d.date,
-                      sort: d.wbs ?? d.date,
-                      node: (
-                        <>
-                          <span className="text-xs font-semibold text-amber-accent">
-                            ◆ {formatDate(d.date)}
-                          </span>
-                          <span className="font-medium text-ink">
-                            {d.wbs ? `${d.wbs} ` : ""}
-                            {d.name}
-                          </span>
-                          <span className="ml-auto flex gap-2 text-xs">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                closeForms();
-                                setEditingDeadlineId(d.id);
-                              }}
-                              className="font-semibold text-teal-accent hover:underline"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                deleteGanttDeadline(projectId, d.id)
-                              }
-                              className="text-muted hover:text-red-500"
-                            >
-                              Delete
-                            </button>
-                          </span>
-                        </>
-                      ),
-                    })),
-                  ]
-                    .sort((a, b) =>
-                      (a.wbs ?? a.date).localeCompare(b.wbs ?? b.date, undefined, {
-                        numeric: true,
-                      }),
-                    )
-                    .map((item) => (
-                      <li
-                        key={item.key}
-                        className="flex flex-wrap items-center gap-2 text-sm"
+                <span>
+                  <span className="text-xs font-bold uppercase tracking-wide text-deep">
+                    Edit schedule
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {phases.length} phase{phases.length === 1 ? "" : "s"} ·{" "}
+                    {activities.length} activit
+                    {activities.length === 1 ? "y" : "ies"} · {deadlines.length}{" "}
+                    milestone{deadlines.length === 1 ? "" : "s"}
+                  </span>
+                </span>
+                <span
+                  className="shrink-0 text-sm font-semibold text-muted"
+                  aria-hidden
+                >
+                  {editListOpen ? "▴" : "▾"}
+                </span>
+              </button>
+
+              {editListOpen && (
+                <div className="mt-3 space-y-3">
+                  {phases.map((phase, i) => {
+                    const color = phaseColor(phase, i);
+                    const phaseActs = activities
+                      .filter((a) => a.phaseId === phase.id)
+                      .sort(
+                        (a, b) =>
+                          (a.wbs ?? "").localeCompare(b.wbs ?? "", undefined, {
+                            numeric: true,
+                          }) || a.startDate.localeCompare(b.startDate),
+                      );
+                    const phaseDls = deadlines
+                      .filter((d) => d.phaseId === phase.id)
+                      .sort((a, b) => a.date.localeCompare(b.date));
+                    return (
+                      <div
+                        key={phase.id}
+                        className="rounded-lg border border-line bg-surface/60 px-3 py-3"
                       >
-                        {item.node}
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                          <p className="text-sm font-semibold text-ink">
+                            {phase.wbs ? `${phase.wbs} ` : ""}
+                            {phase.name}
+                          </p>
+                          <p className="text-xs text-muted">
+                            {formatDate(phase.startDate)} –{" "}
+                            {formatDate(phaseEndDate(phase))} ·{" "}
+                            {phase.durationDays}d
+                            {phase.owner ? ` · ${phase.owner}` : ""}
+                          </p>
+                          <div className="ml-auto flex gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                closeForms();
+                                setEditingPhaseId(phase.id);
+                              }}
+                              className="font-semibold text-teal-accent hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                deleteGanttPhase(projectId, phase.id)
+                              }
+                              className="text-muted hover:text-red-500"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <ul className="mt-2 space-y-1.5 pl-5">
+                          {[
+                            ...phaseActs.map((a) => ({
+                              key: a.id,
+                              wbs: a.wbs,
+                              date: a.startDate,
+                              sort: a.wbs ?? a.startDate,
+                              node: (
+                                <>
+                                  <span className="text-xs text-muted">
+                                    {formatDate(a.startDate)} –{" "}
+                                    {formatDate(activityEndDate(a))}
+                                  </span>
+                                  <span className="font-medium text-ink">
+                                    {a.wbs ? `${a.wbs} ` : ""}
+                                    {a.name}
+                                  </span>
+                                  <span className="ml-auto flex gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        closeForms();
+                                        setEditingActivityId(a.id);
+                                      }}
+                                      className="font-semibold text-teal-accent hover:underline"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        deleteGanttActivity(projectId, a.id)
+                                      }
+                                      className="text-muted hover:text-red-500"
+                                    >
+                                      Delete
+                                    </button>
+                                  </span>
+                                </>
+                              ),
+                            })),
+                            ...phaseDls.map((d) => ({
+                              key: d.id,
+                              wbs: d.wbs,
+                              date: d.date,
+                              sort: d.wbs ?? d.date,
+                              node: (
+                                <>
+                                  <span className="text-xs font-semibold text-amber-accent">
+                                    ◆ {formatDate(d.date)}
+                                  </span>
+                                  <span className="font-medium text-ink">
+                                    {d.wbs ? `${d.wbs} ` : ""}
+                                    {d.name}
+                                  </span>
+                                  <span className="ml-auto flex gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        closeForms();
+                                        setEditingDeadlineId(d.id);
+                                      }}
+                                      className="font-semibold text-teal-accent hover:underline"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        deleteGanttDeadline(projectId, d.id)
+                                      }
+                                      className="text-muted hover:text-red-500"
+                                    >
+                                      Delete
+                                    </button>
+                                  </span>
+                                </>
+                              ),
+                            })),
+                          ]
+                            .sort((a, b) =>
+                              (a.wbs ?? a.date).localeCompare(
+                                b.wbs ?? b.date,
+                                undefined,
+                                { numeric: true },
+                              ),
+                            )
+                            .map((item) => (
+                              <li
+                                key={item.key}
+                                className="flex flex-wrap items-center gap-2 text-sm"
+                              >
+                                {item.node}
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </section>
   );

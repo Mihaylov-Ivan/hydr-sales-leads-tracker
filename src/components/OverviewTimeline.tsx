@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MILESTONE_LABELS, Project } from "@/lib/types";
+import { findLinkableDeadline, projectLinkableDeadlines } from "@/lib/gantt-finance";
+import { Project } from "@/lib/types";
 
 function formatMoney(n: number): string {
   return new Intl.NumberFormat("en-GB", {
@@ -90,6 +91,9 @@ type CashFlow = {
   amount: number;
   percent?: number;
   date: string;
+  /** Expected/scheduled date (linked deadline or due date) */
+  expectedDate: string;
+  received: boolean;
   label?: string;
   milestoneLabel?: string;
   color: string;
@@ -118,11 +122,12 @@ function collectFlows(
     const f = p.financials;
     const color = colorById.get(p.id) ?? PROJECT_COLORS[0];
     const cv = f.contractValue;
+    const deadlines = projectLinkableDeadlines(p);
     for (const pay of f.payments) {
-      const linked = pay.milestoneId
-        ? f.milestones.find((m) => m.id === pay.milestoneId)
-        : undefined;
+      const linked = findLinkableDeadline(pay.milestoneId, deadlines);
       const percent = resolveContractPercent(pay.amount, cv, pay.percent);
+      const expectedDate = linked?.date ?? pay.dueDate;
+      const received = Boolean(pay.actualDate);
       list.push({
         id: `in-${p.id}-${pay.id}`,
         kind: "income",
@@ -131,17 +136,19 @@ function collectFlows(
         client: p.client,
         amount: pay.amount,
         ...(percent != null ? { percent } : {}),
-        date: pay.actualDate ?? linked?.date ?? pay.dueDate,
+        date: pay.actualDate ?? expectedDate,
+        expectedDate,
+        received,
         ...(pay.label ? { label: pay.label } : {}),
-        ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
+        ...(linked ? { milestoneLabel: linked.label } : {}),
         color,
       });
     }
     for (const exp of f.expenseSchedule ?? []) {
-      const linked = exp.milestoneId
-        ? f.milestones.find((m) => m.id === exp.milestoneId)
-        : undefined;
+      const linked = findLinkableDeadline(exp.milestoneId, deadlines);
       const percent = resolveContractPercent(exp.amount, cv, exp.percent);
+      const expectedDate = linked?.date ?? exp.dueDate;
+      const received = Boolean(exp.actualDate);
       list.push({
         id: `out-${p.id}-${exp.id}`,
         kind: "expense",
@@ -150,9 +157,11 @@ function collectFlows(
         client: p.client,
         amount: exp.amount,
         ...(percent != null ? { percent } : {}),
-        date: exp.actualDate ?? linked?.date ?? exp.dueDate,
+        date: exp.actualDate ?? expectedDate,
+        expectedDate,
+        received,
         ...(exp.label ? { label: exp.label } : {}),
-        ...(linked ? { milestoneLabel: MILESTONE_LABELS[linked.kind] } : {}),
+        ...(linked ? { milestoneLabel: linked.label } : {}),
         color,
       });
     }
@@ -436,7 +445,10 @@ function CashChart({
                   height={h}
                   rx={3}
                   fill={fill}
-                  opacity={0.9}
+                  opacity={item.received ? 0.95 : 0.45}
+                  stroke={item.received ? "none" : fill}
+                  strokeWidth={item.received ? 0 : 1.25}
+                  strokeDasharray={item.received ? undefined : "3 2"}
                   className="cursor-pointer"
                   onMouseEnter={(e) => {
                     const rect = wrapRef.current?.getBoundingClientRect();
@@ -545,8 +557,23 @@ function CashChart({
             </p>
             <p className="text-xs text-muted">{hover.item.client}</p>
             <p className="text-xs text-muted">
-              Due {formatDate(hover.item.date)}
+              {hover.item.received
+                ? hover.item.kind === "income"
+                  ? `Received ${formatDate(hover.item.date)}`
+                  : `Paid ${formatDate(hover.item.date)}`
+                : `Expected ${formatDate(hover.item.date)}`}
             </p>
+            {!hover.item.received && (
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-accent">
+                Not yet {hover.item.kind === "income" ? "received" : "paid"}
+              </p>
+            )}
+            {hover.item.received &&
+              hover.item.expectedDate !== hover.item.date && (
+                <p className="text-xs text-muted">
+                  Scheduled {formatDate(hover.item.expectedDate)}
+                </p>
+              )}
             {hover.item.label && (
               <p className="text-xs text-ink">{hover.item.label}</p>
             )}
@@ -740,13 +767,21 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
   const [showIncome, setShowIncome] = useState(true);
   const [showExpenses, setShowExpenses] = useState(true);
   const [showProfit, setShowProfit] = useState(true);
+  const prevFlowIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    const valid = new Set(withFlows.map((p) => p.id));
+    const prevFlowIds = prevFlowIdsRef.current;
     setSelected((prev) => {
-      const valid = new Set(withFlows.map((p) => p.id));
       if (prev === null) return new Set(valid);
-      return new Set([...prev].filter((id) => valid.has(id)));
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      // Auto-include projects that newly gained cash lines
+      for (const id of valid) {
+        if (!prevFlowIds.has(id)) next.add(id);
+      }
+      return next;
     });
+    prevFlowIdsRef.current = valid;
   }, [withFlows]);
 
   const selectedIds = selected ?? new Set(withFlows.map((p) => p.id));
@@ -909,8 +944,8 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
         <span>
-          Up = income · Down = expenses · Line = cumulative (single series, or
-          profit)
+          Up = income · Down = expenses · Solid = received/paid · Outline =
+          expected · Line = cumulative
         </span>
         {selectedProjects.length === 1 && (
           <Link

@@ -10,7 +10,6 @@ import {
   Stage,
   STAGE_LABELS,
   BOARD_STAGES,
-  todayDate,
 } from "@/lib/types";
 
 const inputCls =
@@ -31,11 +30,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [stage, setStage] = useState<Stage>("cold-lead");
   const [leadUserId, setLeadUserId] = useState("");
   const [description, setDescription] = useState("");
-  const [lastMeaningfulActivityAt, setLastMeaningfulActivityAt] = useState(
-    todayDate(),
-  );
-  const [nextActionText, setNextActionText] = useState("");
-  const [nextActionDueAt, setNextActionDueAt] = useState("");
 
   const valid =
     name.trim() && client.trim() && country.trim() && Number(sizeKw) > 0;
@@ -54,9 +48,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       stage,
       baseDescription: description.trim(),
       leadUserId: leadUserId || undefined,
-      lastMeaningfulActivityAt: lastMeaningfulActivityAt || todayDate(),
-      nextActionText: nextActionText.trim() || undefined,
-      nextActionDueAt: nextActionDueAt || undefined,
     });
     onClose();
     router.push(`/projects/${id}`);
@@ -189,43 +180,6 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div className="sm:col-span-2 border-t border-line pt-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-deep">
-              Pipeline activity
-            </p>
-            <p className="mb-3 text-xs text-muted">
-              Last meaningful activity drives stale detection for Cold and Hot
-              leads. Under Development projects are never marked stale.
-            </p>
-          </div>
-          <div>
-            <label className={labelCls}>Last meaningful activity</label>
-            <input
-              type="date"
-              className={inputCls}
-              value={lastMeaningfulActivityAt}
-              onChange={(e) => setLastMeaningfulActivityAt(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Next action due</label>
-            <input
-              type="date"
-              className={inputCls}
-              value={nextActionDueAt}
-              onChange={(e) => setNextActionDueAt(e.target.value)}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className={labelCls}>Next action</label>
-            <input
-              className={inputCls}
-              value={nextActionText}
-              onChange={(e) => setNextActionText(e.target.value)}
-              placeholder="e.g. Follow-up proposal call"
-            />
           </div>
         </div>
 

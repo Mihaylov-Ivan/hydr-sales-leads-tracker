@@ -38,6 +38,8 @@ import {
   defaultMetricsSettings,
   normalizeStage,
   todayDate,
+  addDays,
+  phaseEndDate,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
@@ -84,6 +86,7 @@ import {
   isScheduleEmpty,
   munichBusFleetSchedule,
 } from "./gantt-munich";
+import { resolveLinkedDeadlineDate } from "./gantt-finance";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -2014,10 +2017,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const addPayment = useCallback(
     (projectId: string, input: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = input.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? input.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
+      const dueDate = linkedDate ?? input.dueDate;
       const payment: ProjectPayment = {
         id: crypto.randomUUID(),
         amount: input.amount,
@@ -2025,12 +2026,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(input.milestoneId && linkedDate
+          ? { milestoneId: input.milestoneId }
+          : {}),
         createdAt: new Date().toISOString(),
       };
       mutateFinancials(projectId, (f) => ({
         ...f,
-        payments: [...f.payments, payment],
+        payments: [...(f.payments ?? []), payment],
       }));
     },
     [mutateFinancials],
@@ -2039,10 +2042,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = patch.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? patch.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
+      const dueDate = linkedDate ?? patch.dueDate;
       mutateFinancials(projectId, (f) => ({
         ...f,
         payments: f.payments.map((p) => {
@@ -2055,7 +2056,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           };
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
-          if (linked) next.milestoneId = linked.id;
+          if (patch.milestoneId && linkedDate) {
+            next.milestoneId = patch.milestoneId;
+          }
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (p.actualDate) {
@@ -2081,10 +2084,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const addExpense = useCallback(
     (projectId: string, input: ExpenseInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = input.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === input.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? input.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
+      const dueDate = linkedDate ?? input.dueDate;
       const expense: ProjectExpenseItem = {
         id: crypto.randomUUID(),
         amount: input.amount,
@@ -2092,7 +2093,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(input.milestoneId && linkedDate
+          ? { milestoneId: input.milestoneId }
+          : {}),
         createdAt: new Date().toISOString(),
       };
       mutateFinancials(projectId, (f) => ({
@@ -2106,10 +2109,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updateExpense = useCallback(
     (projectId: string, expenseId: string, patch: ExpenseInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linked = patch.milestoneId
-        ? current?.financials.milestones.find((m) => m.id === patch.milestoneId)
-        : undefined;
-      const dueDate = linked?.date ?? patch.dueDate;
+      const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
+      const dueDate = linkedDate ?? patch.dueDate;
       mutateFinancials(projectId, (f) => ({
         ...f,
         expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
@@ -2122,7 +2123,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           };
           if (patch.percent != null) next.percent = patch.percent;
           if (patch.label?.trim()) next.label = patch.label.trim();
-          if (linked) next.milestoneId = linked.id;
+          if (patch.milestoneId && linkedDate) {
+            next.milestoneId = patch.milestoneId;
+          }
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (e.actualDate) {
@@ -2291,6 +2294,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateGanttPhase = useCallback(
     (projectId: string, phaseId: string, patch: GanttPhaseInput) => {
+      let nextEndDate: string | null = null;
       mutateSchedule(projectId, (s) => ({
         ...s,
         phases: s.phases.map((p) => {
@@ -2329,9 +2333,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             } else delete next.actualDurationDays;
           }
           if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
+          if (patch.startDate || patch.durationDays !== undefined) {
+            nextEndDate = phaseEndDate(next);
+          }
           return next;
         }),
       }));
+      if (nextEndDate) {
+        const due = nextEndDate;
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === phaseId ? { ...p, dueDate: due } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === phaseId ? { ...e, dueDate: due } : e,
+          ),
+        }));
+      }
       if (supabase && supportsGanttTables) {
         const row: Record<string, string | number | null> = {};
         if (patch.name !== undefined) row.name = patch.name.trim();
@@ -2359,15 +2378,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt phase update"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const deleteGanttPhase = useCallback(
     (projectId: string, phaseId: string) => {
+      const schedule = projectsRef.current.find((p) => p.id === projectId)
+        ?.schedule;
+      const removedIds = new Set<string>([phaseId]);
+      for (const a of schedule?.activities ?? []) {
+        if (a.phaseId === phaseId) removedIds.add(a.id);
+      }
+      for (const d of schedule?.deadlines ?? []) {
+        if (d.phaseId === phaseId) removedIds.add(d.id);
+      }
       mutateSchedule(projectId, (s) => ({
         phases: s.phases.filter((p) => p.id !== phaseId),
         activities: (s.activities ?? []).filter((a) => a.phaseId !== phaseId),
         deadlines: s.deadlines.filter((d) => d.phaseId !== phaseId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (!p.milestoneId || !removedIds.has(p.milestoneId)) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (!e.milestoneId || !removedIds.has(e.milestoneId)) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
       }));
       if (supabase && supportsGanttTables) {
         void supabase
@@ -2377,7 +2420,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt phase delete"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const addGanttActivity = useCallback(
@@ -2448,6 +2491,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateGanttActivity = useCallback(
     (projectId: string, activityId: string, patch: GanttActivityInput) => {
+      let nextEndDate: string | null = null;
       mutateSchedule(projectId, (s) => ({
         ...s,
         activities: (s.activities ?? []).map((a) => {
@@ -2491,9 +2535,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             } else delete next.actualDurationDays;
           }
           if (patch.sortOrder !== undefined) next.sortOrder = patch.sortOrder;
+          if (patch.startDate || patch.durationDays !== undefined) {
+            nextEndDate = addDays(
+              next.startDate,
+              Math.max(1, next.durationDays) - 1,
+            );
+          }
           return next;
         }),
       }));
+      if (nextEndDate) {
+        const due = nextEndDate;
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === activityId ? { ...p, dueDate: due } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === activityId ? { ...e, dueDate: due } : e,
+          ),
+        }));
+      }
       if (supabase && supportsGanttTables) {
         const row: Record<string, string | number | null> = {};
         if (patch.phaseId) row.phase_id = patch.phaseId;
@@ -2523,7 +2585,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt activity update"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const deleteGanttActivity = useCallback(
@@ -2531,6 +2593,21 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       mutateSchedule(projectId, (s) => ({
         ...s,
         activities: (s.activities ?? []).filter((a) => a.id !== activityId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (p.milestoneId !== activityId) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.milestoneId !== activityId) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
       }));
       if (supabase && supportsGanttTables) {
         void supabase
@@ -2540,7 +2617,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt activity delete"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const addGanttDeadline = useCallback(
@@ -2585,6 +2662,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateGanttDeadline = useCallback(
     (projectId: string, deadlineId: string, patch: GanttDeadlineInput) => {
+      const nextDate = patch.date;
       mutateSchedule(projectId, (s) => ({
         ...s,
         deadlines: s.deadlines.map((d) => {
@@ -2614,6 +2692,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      // Keep linked income/expense expected dates in sync with the Gantt deadline.
+      if (nextDate) {
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          payments: f.payments.map((p) =>
+            p.milestoneId === deadlineId ? { ...p, dueDate: nextDate } : p,
+          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.milestoneId === deadlineId ? { ...e, dueDate: nextDate } : e,
+          ),
+        }));
+      }
       if (supabase && supportsGanttTables) {
         const row: Record<string, string | null> = {};
         if (patch.phaseId) row.phase_id = patch.phaseId;
@@ -2632,7 +2722,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt deadline update"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const deleteGanttDeadline = useCallback(
@@ -2640,6 +2730,21 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       mutateSchedule(projectId, (s) => ({
         ...s,
         deadlines: s.deadlines.filter((d) => d.id !== deadlineId),
+      }));
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: f.payments.map((p) => {
+          if (p.milestoneId !== deadlineId) return p;
+          const next = { ...p };
+          delete next.milestoneId;
+          return next;
+        }),
+        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+          if (e.milestoneId !== deadlineId) return e;
+          const next = { ...e };
+          delete next.milestoneId;
+          return next;
+        }),
       }));
       if (supabase && supportsGanttTables) {
         void supabase
@@ -2649,7 +2754,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt deadline delete"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
   const deleteProject = useCallback((projectId: string) => {

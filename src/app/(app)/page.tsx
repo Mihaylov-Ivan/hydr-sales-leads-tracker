@@ -31,6 +31,69 @@ const CANCELLED_STORAGE_KEY = "hydrogenera-show-cancelled-v1";
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
 
+/** Nearest ancestor that can actually scroll vertically. */
+function findVerticalScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node && node !== document.documentElement) {
+    const { overflowY } = getComputedStyle(node);
+    if (
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      node.scrollHeight > node.clientHeight + 1
+    ) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}
+
+/**
+ * Column list scroll that hands the wheel to the page/main scroller
+ * when the column can't scroll further (or has no overflow).
+ */
+function ColumnScroll({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop >= maxScroll - 1;
+      const scrollingUp = e.deltaY < 0;
+      const scrollingDown = e.deltaY > 0;
+
+      if (
+        maxScroll <= 1 ||
+        (scrollingUp && atTop) ||
+        (scrollingDown && atBottom)
+      ) {
+        const parent = findVerticalScrollParent(el);
+        if (!parent || parent === el) return;
+        e.preventDefault();
+        parent.scrollTop += e.deltaY;
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  return (
+    <div ref={ref} className={className}>
+      {children}
+    </div>
+  );
+}
+
 function StageColumn({
   stage,
   projects,
@@ -40,6 +103,7 @@ function StageColumn({
   onDrop,
   accentClass,
   headerExtra,
+  minHeightClass,
 }: {
   stage: Stage;
   projects: ReturnType<typeof useProjects>["projects"];
@@ -49,6 +113,8 @@ function StageColumn({
   onDrop: (e: React.DragEvent) => void;
   accentClass: string;
   headerExtra?: React.ReactNode;
+  /** Keeps columns tall enough when the financials chart is open */
+  minHeightClass?: string;
 }) {
   const headerBg =
     isOver
@@ -62,7 +128,9 @@ function StageColumn({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-t-4 transition ${
+        minHeightClass ?? ""
+      } ${accentClass} ${
         isOver
           ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
           : stage === "cancelled"
@@ -87,7 +155,7 @@ function StageColumn({
           {headerExtra}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-3 py-3">
+      <ColumnScroll className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
         {projects.length === 0 ? (
           <p
             className={`rounded-lg border border-dashed py-8 text-center text-xs ${
@@ -101,7 +169,7 @@ function StageColumn({
         ) : (
           projects.map((p) => <ProjectCard key={p.id} project={p} />)
         )}
-      </div>
+      </ColumnScroll>
     </section>
   );
 }
@@ -350,9 +418,17 @@ export default function Dashboard() {
 
   const cancelledCount = byStage.cancelled.length;
   const cancelledOver = dragOverStage === "cancelled";
+  // ~3 project cards + column header + gaps
+  const boardColMinH = showFinancials ? "min-h-[36rem]" : undefined;
 
   return (
-    <div className="flex h-full min-h-[28rem] flex-col gap-4 overflow-hidden lg:min-h-0">
+    <div
+      className={
+        showFinancials
+          ? "flex min-h-full flex-col gap-4"
+          : "flex h-full min-h-[28rem] flex-col gap-4 overflow-hidden lg:min-h-0"
+      }
+    >
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-deep">Projects</h1>
@@ -433,7 +509,13 @@ export default function Dashboard() {
       )}
 
       {/* Stage board — cancelled expands from the left; columns scroll internally */}
-      <div className="flex min-h-0 flex-1 gap-3">
+      <div
+        className={
+          showFinancials
+            ? "flex min-h-[36rem] flex-1 gap-3"
+            : "flex min-h-0 flex-1 gap-3"
+        }
+      >
         {/* Collapsed rail: click or drop to reveal */}
         {!showCancelled && (
           <button
@@ -443,6 +525,8 @@ export default function Dashboard() {
             onClick={() => setShowCancelled(true)}
             {...columnDragHandlers("cancelled")}
             className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 border-t-muted border-line bg-muted/5 py-3 transition hover:border-muted hover:bg-muted/10 ${
+              boardColMinH ?? ""
+            } ${
               cancelledOver
                 ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
                 : ""
@@ -487,6 +571,7 @@ export default function Dashboard() {
               projects={byStage.cancelled}
               isOver={cancelledOver}
               accentClass={COLUMN_ACCENT.cancelled}
+              minHeightClass={boardColMinH}
               {...columnDragHandlers("cancelled")}
               headerExtra={
                 <button
@@ -503,7 +588,13 @@ export default function Dashboard() {
         </div>
 
         {/* Active stage columns */}
-        <div className="grid min-h-0 min-w-0 flex-1 gap-4 md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1">
+        <div
+          className={
+            showFinancials
+              ? "grid min-h-[36rem] min-w-0 flex-1 gap-4 md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
+              : "grid min-h-0 min-w-0 flex-1 gap-4 md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1"
+          }
+        >
           {BOARD_STAGES.map((stage) => (
             <StageColumn
               key={stage}
@@ -511,6 +602,7 @@ export default function Dashboard() {
               projects={byStage[stage]}
               isOver={dragOverStage === stage}
               accentClass={COLUMN_ACCENT[stage]}
+              minHeightClass={boardColMinH}
               {...columnDragHandlers(stage)}
             />
           ))}

@@ -6,6 +6,7 @@ import {
   Stage,
   todayDate,
 } from "./types";
+import { resolveLinkedDeadlineDate } from "./gantt-finance";
 
 export function isContracted(stage: Stage): boolean {
   return stage === "under-development" || stage === "commissioned";
@@ -52,13 +53,9 @@ function addMonths(
 
 function effectiveScheduleDate(
   item: { dueDate: string; milestoneId?: string },
-  milestones: Project["financials"]["milestones"],
+  project: Project,
 ): string {
-  if (item.milestoneId) {
-    const m = milestones.find((x) => x.id === item.milestoneId);
-    if (m?.date) return m.date;
-  }
-  return item.dueDate;
+  return resolveLinkedDeadlineDate(item.milestoneId, project) ?? item.dueDate;
 }
 
 type CashKind = "inflow" | "outflow";
@@ -76,11 +73,10 @@ type CashEvent = {
 
 function collectEvents(project: Project): CashEvent[] {
   const f = project.financials;
-  const milestones = f.milestones ?? [];
   const events: CashEvent[] = [];
 
   for (const p of f.payments ?? []) {
-    const due = effectiveScheduleDate(p, milestones);
+    const due = effectiveScheduleDate(p, project);
     events.push({
       projectId: project.id,
       stage: project.stage,
@@ -93,7 +89,7 @@ function collectEvents(project: Project): CashEvent[] {
     });
   }
   for (const e of f.expenseSchedule ?? []) {
-    const due = effectiveScheduleDate(e, milestones);
+    const due = effectiveScheduleDate(e, project);
     events.push({
       projectId: project.id,
       stage: project.stage,
@@ -377,11 +373,11 @@ export type ContractedProjectKpis = {
 
 function itemIsOverdue(
   item: { dueDate: string; actualDate?: string; milestoneId?: string },
-  milestones: Project["financials"]["milestones"],
+  project: Project,
   today: string,
 ): boolean {
   if (item.actualDate) return false;
-  const due = effectiveScheduleDate(item, milestones);
+  const due = effectiveScheduleDate(item, project);
   return due < today;
 }
 
@@ -390,7 +386,6 @@ export function contractedProjectKpis(
   today: string = todayDate(),
 ): ContractedProjectKpis {
   const f = project.financials;
-  const milestones = f.milestones ?? [];
   const payments = f.payments ?? [];
   const expenses = f.expenseSchedule ?? [];
 
@@ -415,7 +410,7 @@ export function contractedProjectKpis(
     .filter((p) => !p.actualDate)
     .map((p) => ({
       payment: p,
-      date: effectiveScheduleDate(p, milestones),
+      date: effectiveScheduleDate(p, project),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -428,10 +423,10 @@ export function contractedProjectKpis(
     nextPayment: pendingPayments[0]?.payment ?? null,
     nextPaymentDate: pendingPayments[0]?.date ?? null,
     overduePayments: payments.filter((p) =>
-      itemIsOverdue(p, milestones, today),
+      itemIsOverdue(p, project, today),
     ).length,
     overdueExpenses: expenses.filter((e) =>
-      itemIsOverdue(e, milestones, today),
+      itemIsOverdue(e, project, today),
     ).length,
   };
 }
