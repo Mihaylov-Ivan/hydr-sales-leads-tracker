@@ -1,14 +1,26 @@
 "use client";
 
+import { useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
+import { downloadFinancialCsv } from "@/lib/financial-csv";
 
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { teamMembers, currentUserId, setCurrentUserId, ready } = useProjects();
+  const {
+    teamMembers,
+    currentUserId,
+    setCurrentUserId,
+    ready,
+    projects,
+    financeSettings,
+    importFinancialCsvText,
+  } = useProjects();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [csvMsg, setCsvMsg] = useState<string | null>(null);
   const selectedUserId =
     currentUserId && teamMembers.some((m) => m.id === currentUserId)
       ? currentUserId
@@ -18,6 +30,29 @@ export default function Header() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.replace("/login");
     router.refresh();
+  }
+
+  async function onImportCsv(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setCsvMsg(null);
+    try {
+      const text = await file.text();
+      const result = importFinancialCsvText(text);
+      if (!result.ok) {
+        setCsvMsg(result.error);
+      } else {
+        setCsvMsg(
+          result.matched > 0
+            ? `Imported financials for ${result.matched} project${result.matched === 1 ? "" : "s"}.`
+            : "CSV loaded (no matching projects by id/name).",
+        );
+      }
+    } catch (e) {
+      setCsvMsg(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   }
 
   const navLink = (href: string, label: string) => {
@@ -87,6 +122,35 @@ export default function Header() {
               )}
             </select>
           </label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(e) => void onImportCsv(e.target.files)}
+          />
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() =>
+              downloadFinancialCsv(projects, financeSettings)
+            }
+            title="Download financial data CSV"
+            className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
+          >
+            <span className="sm:hidden">CSV ↓</span>
+            <span className="hidden sm:inline">Download financial data</span>
+          </button>
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => fileRef.current?.click()}
+            title="Import financial data CSV"
+            className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
+          >
+            <span className="sm:hidden">CSV ↑</span>
+            <span className="hidden sm:inline">Import financial data</span>
+          </button>
           <button
             type="button"
             onClick={() => void logout()}
@@ -96,6 +160,18 @@ export default function Header() {
           </button>
         </div>
       </div>
+      {csvMsg && (
+        <div className="border-t border-line bg-panel px-4 py-1.5 text-center text-[11px] text-muted sm:px-6 xl:px-8">
+          <span className="text-deep">{csvMsg}</span>
+          <button
+            type="button"
+            className="ml-2 font-semibold text-teal-accent hover:underline"
+            onClick={() => setCsvMsg(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
     </header>
   );
 }

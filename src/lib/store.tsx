@@ -87,6 +87,11 @@ import {
   munichBusFleetSchedule,
 } from "./gantt-munich";
 import { resolveLinkedDeadlineDate } from "./gantt-finance";
+import {
+  applyFinancialCsvBundle,
+  parseFinancialCsv,
+} from "./financial-csv";
+import { useStoredFinancialData } from "./financial-data-mode";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -164,6 +169,15 @@ function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
 }
 
 function withLocalFinancials(projects: Project[]): Project[] {
+  // When USE_DATABASE is false, leave financials empty until CSV import.
+  if (!useStoredFinancialData) {
+    return projects.map((p) =>
+      ensureProjectMetricsDefaults({
+        ...p,
+        financials: emptyFinancials(),
+      }),
+    );
+  }
   const local = loadLocalProjectFinancials();
   return projects.map((p) =>
     ensureProjectMetricsDefaults({
@@ -192,17 +206,17 @@ function loadLocalMetricsSettings(): CompanyMetricsSettings {
           : base.staleHotDays,
       staleUnderDevelopmentDays:
         typeof parsed.staleUnderDevelopmentDays === "number" &&
-        parsed.staleUnderDevelopmentDays > 0
+          parsed.staleUnderDevelopmentDays > 0
           ? parsed.staleUnderDevelopmentDays
           : base.staleUnderDevelopmentDays,
       maturityUnderDevelopmentMonths:
         typeof parsed.maturityUnderDevelopmentMonths === "number" &&
-        parsed.maturityUnderDevelopmentMonths > 0
+          parsed.maturityUnderDevelopmentMonths > 0
           ? parsed.maturityUnderDevelopmentMonths
           : base.maturityUnderDevelopmentMonths,
       maturityCommissionedMonths:
         typeof parsed.maturityCommissionedMonths === "number" &&
-        parsed.maturityCommissionedMonths > 0
+          parsed.maturityCommissionedMonths > 0
           ? parsed.maturityCommissionedMonths
           : base.maturityCommissionedMonths,
       healthyConversionProbability:
@@ -388,6 +402,13 @@ interface ProjectsApi {
   financeImport: FinanceImportData | null;
   applyFinanceImport: (data: FinanceImportData) => void;
   clearFinanceImport: () => void;
+  /**
+   * Replace project financials + company finance settings from the
+   * portable financial CSV (Header download / import).
+   */
+  importFinancialCsvText: (
+    text: string,
+  ) => { ok: true; matched: number } | { ok: false; error: string };
   projects: Project[];
   ready: boolean;
   /** True when the server has an AI API key configured */
@@ -870,18 +891,30 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(withLocalSchedule(withLocalFinancials(remoteProjects)));
-        setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceSettings(
+          useStoredFinancialData
+            ? loadLocalFinanceSettings()
+            : defaultFinanceSettings(),
+        );
         setMetricsSettings(remoteMetrics);
-        setFinanceImport(loadLocalFinanceImport());
+        setFinanceImport(
+          useStoredFinancialData ? loadLocalFinanceImport() : null,
+        );
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(withLocalSchedule(withLocalFinancials(loadLocal())));
-        setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceSettings(
+          useStoredFinancialData
+            ? loadLocalFinanceSettings()
+            : defaultFinanceSettings(),
+        );
         setMetricsSettings(loadLocalMetricsSettings());
-        setFinanceImport(loadLocalFinanceImport());
+        setFinanceImport(
+          useStoredFinancialData ? loadLocalFinanceImport() : null,
+        );
         setReady(true);
       }
     }
@@ -943,7 +976,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [teamMembers, ready]);
 
   useEffect(() => {
-    if (ready) {
+    if (ready && useStoredFinancialData) {
       window.localStorage.setItem(
         FINANCE_SETTINGS_STORAGE_KEY,
         JSON.stringify(financeSettings),
@@ -952,8 +985,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [financeSettings, ready]);
 
   // App-entered schedules only — never persist Excel import-/expect- ids.
+  // Skipped when USE_DATABASE=false (financials live only after CSV import).
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !useStoredFinancialData) return;
     const map: Record<string, ProjectFinancials> = {};
     for (const p of projects) {
       map[p.id] = sanitizeAppFinancials(p.financials);
@@ -978,15 +1012,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [projects, ready]);
 
   useEffect(() => {
-    if (ready) {
-      if (financeImport) {
-        window.localStorage.setItem(
-          FINANCE_IMPORT_STORAGE_KEY,
-          JSON.stringify(financeImport),
-        );
-      } else {
-        window.localStorage.removeItem(FINANCE_IMPORT_STORAGE_KEY);
-      }
+    if (!ready || !useStoredFinancialData) return;
+    if (financeImport) {
+      window.localStorage.setItem(
+        FINANCE_IMPORT_STORAGE_KEY,
+        JSON.stringify(financeImport),
+      );
+    } else {
+      window.localStorage.removeItem(FINANCE_IMPORT_STORAGE_KEY);
     }
   }, [financeImport, ready]);
 
@@ -1117,6 +1150,28 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const importFinancialCsvText = useCallback((text: string) => {
+    const parsed = parseFinancialCsv(text);
+    if (!parsed.ok) return parsed;
+
+    const { data } = parsed;
+    let matched = 0;
+    for (const p of projectsRef.current) {
+      if (
+        data.byProjectId[p.id] ||
+        data.byProjectName[p.name.toLowerCase()]
+      ) {
+        matched += 1;
+      }
+    }
+
+    setProjects((prev) => applyFinancialCsvBundle(prev, data));
+    if (data.financeSettings) {
+      setFinanceSettings(data.financeSettings);
+    }
+    return { ok: true as const, matched };
+  }, []);
+
   const resolveAuthor = useCallback(() => {
     const id = currentUserIdRef.current;
     const member = id
@@ -1225,14 +1280,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     // The summary entered at creation doubles as the first update in the timeline.
     const initialComment: ProjectComment | null = description
       ? {
-          id: crypto.randomUUID(),
-          text: description,
-          author: authorInfo.author,
-          ...(authorInfo.authorUserId
-            ? { authorUserId: authorInfo.authorUserId }
-            : {}),
-          createdAt,
-        }
+        id: crypto.randomUUID(),
+        text: description,
+        author: authorInfo.author,
+        ...(authorInfo.authorUserId
+          ? { authorUserId: authorInfo.authorUserId }
+          : {}),
+        createdAt,
+      }
       : null;
     const project: Project = {
       ...input,
@@ -1282,15 +1337,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           created_at: project.createdAt,
           ...(supportsMetricsFields
             ? {
-                cold_lead_entered_at: project.coldLeadEnteredAt,
-                hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
-                under_development_at: project.underDevelopmentAt ?? null,
-                commissioned_at: project.commissionedAt ?? null,
-                cancelled_at: project.cancelledAt ?? null,
-                last_meaningful_activity_at: project.lastMeaningfulActivityAt,
-                next_action_text: project.nextActionText ?? null,
-                next_action_due_at: project.nextActionDueAt ?? null,
-              }
+              cold_lead_entered_at: project.coldLeadEnteredAt,
+              hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
+              under_development_at: project.underDevelopmentAt ?? null,
+              commissioned_at: project.commissionedAt ?? null,
+              cancelled_at: project.cancelledAt ?? null,
+              last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+              next_action_text: project.nextActionText ?? null,
+              next_action_due_at: project.nextActionDueAt ?? null,
+            }
             : {}),
         })
         .then((res) => {
@@ -2174,13 +2229,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         milestones: f.milestones.map((m) =>
           m.id === milestoneId
             ? {
-                ...m,
-                kind: patch.kind,
-                date: patch.date,
-                ...(patch.note?.trim()
-                  ? { note: patch.note.trim() }
-                  : { note: undefined }),
-              }
+              ...m,
+              kind: patch.kind,
+              date: patch.date,
+              ...(patch.note?.trim()
+                ? { note: patch.note.trim() }
+                : { note: undefined }),
+            }
             : m,
         ),
         payments: f.payments.map((p) =>
@@ -2252,11 +2307,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(input.actualDurationDays != null && input.actualDurationDays >= 1
           ? {
-              actualDurationDays: Math.max(
-                1,
-                Math.round(input.actualDurationDays),
-              ),
-            }
+            actualDurationDays: Math.max(
+              1,
+              Math.round(input.actualDurationDays),
+            ),
+          }
           : {}),
         sortOrder:
           input.sortOrder ??
@@ -2447,11 +2502,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           : {}),
         ...(input.actualDurationDays != null && input.actualDurationDays >= 1
           ? {
-              actualDurationDays: Math.max(
-                1,
-                Math.round(input.actualDurationDays),
-              ),
-            }
+            actualDurationDays: Math.max(
+              1,
+              Math.round(input.actualDurationDays),
+            ),
+          }
           : {}),
         sortOrder:
           input.sortOrder ??
@@ -2786,6 +2841,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         financeImport,
         applyFinanceImport,
         clearFinanceImport,
+        importFinancialCsvText,
         projects,
         ready,
         aiEnabled,
