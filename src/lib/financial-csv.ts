@@ -105,7 +105,9 @@ export function buildFinancialCsv(
   company.prob_cold_lead = numStr(
     financeSettings.stageProbabilities["cold-lead"],
   );
-  company.prob_hot_lead = numStr(financeSettings.stageProbabilities["hot-lead"]);
+  company.prob_hot_lead = numStr(
+    financeSettings.stageProbabilities["hot-lead"],
+  );
   company.prob_under_development = numStr(
     financeSettings.stageProbabilities["under-development"],
   );
@@ -276,10 +278,12 @@ function isMilestoneKind(v: string): v is MilestoneKind {
 /**
  * Parse financial CSV into a bundle ready to apply onto live projects.
  */
-export function parseFinancialCsv(text: string): {
-  ok: true;
-  data: FinancialCsvBundle;
-} | { ok: false; error: string } {
+export function parseFinancialCsv(text: string):
+  | {
+      ok: true;
+      data: FinancialCsvBundle;
+    }
+  | { ok: false; error: string } {
   const rows = parseCsv(text);
   if (rows.length === 0) {
     return { ok: false, error: "CSV is empty." };
