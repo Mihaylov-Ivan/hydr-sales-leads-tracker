@@ -238,8 +238,18 @@ export default function ProjectPage() {
               className="w-full text-2xl font-bold text-deep"
             />
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            {project.client} · {project.city}, {project.country}
+          <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-muted">
+            <EditableText
+              value={project.client}
+              onSave={(v) => {
+                if (v.trim()) updateProject(project.id, { client: v.trim() });
+              }}
+              className="text-sm text-muted"
+            />
+            <span>·</span>
+            <span>
+              {project.city}, {project.country}
+            </span>
           </p>
         </div>
         {/* Clickable stage badge: opens a native dropdown */}
