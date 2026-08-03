@@ -40,6 +40,8 @@ function StageColumn({
   onDrop,
   accentClass,
   headerExtra,
+  onExpand,
+  expanded,
 }: {
   stage: Stage;
   projects: ReturnType<typeof useProjects>["projects"];
@@ -49,6 +51,9 @@ function StageColumn({
   onDrop: (e: React.DragEvent) => void;
   accentClass: string;
   headerExtra?: React.ReactNode;
+  onExpand?: () => void;
+  /** When true, column fills a fullscreen overlay (wider card grid). */
+  expanded?: boolean;
 }) {
   const headerBg =
     isOver
@@ -84,17 +89,42 @@ function StageColumn({
           <span className="rounded-full bg-panel px-2.5 py-0.5 text-xs font-semibold text-muted shadow-sm">
             {projects.length}
           </span>
+          {onExpand && (
+            <button
+              type="button"
+              onClick={onExpand}
+              title={
+                expanded
+                  ? "Exit full screen"
+                  : `Expand ${STAGE_LABELS[stage]}`
+              }
+              aria-label={
+                expanded
+                  ? "Exit full screen"
+                  : `Expand ${STAGE_LABELS[stage]} to full screen`
+              }
+              className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition hover:bg-panel hover:text-deep"
+            >
+              {expanded ? "Exit" : "Expand"}
+            </button>
+          )}
           {headerExtra}
         </div>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain px-3 py-3">
+      <div
+        className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-3 py-3 ${
+          expanded
+            ? "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            : "flex-col"
+        }`}
+      >
         {projects.length === 0 ? (
           <p
             className={`rounded-lg border border-dashed py-8 text-center text-xs ${
               isOver
                 ? "border-teal-accent text-teal-accent"
                 : "border-line text-muted"
-            }`}
+            } ${expanded ? "col-span-full" : ""}`}
           >
             {isOver ? "Drop to move here" : "No projects here."}
           </p>
@@ -244,6 +274,7 @@ export default function Dashboard() {
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [cancelledPrefReady, setCancelledPrefReady] = useState(false);
+  const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
 
   const displayProjects = useMemo(
     () => projectsWithMergedFinancials(projects, financeImport),
@@ -272,6 +303,15 @@ export default function Dashboard() {
       // ignore
     }
   }, [showCancelled, cancelledPrefReady]);
+
+  useEffect(() => {
+    if (!expandedStage) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setExpandedStage(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [expandedStage]);
 
   const countries = useMemo(
     () => [...new Set(displayProjects.map((p) => p.country))].sort(),
@@ -488,6 +528,7 @@ export default function Dashboard() {
               isOver={cancelledOver}
               accentClass={COLUMN_ACCENT.cancelled}
               {...columnDragHandlers("cancelled")}
+              onExpand={() => setExpandedStage("cancelled")}
               headerExtra={
                 <button
                   type="button"
@@ -512,10 +553,33 @@ export default function Dashboard() {
               isOver={dragOverStage === stage}
               accentClass={COLUMN_ACCENT[stage]}
               {...columnDragHandlers(stage)}
+              onExpand={() => setExpandedStage(stage)}
             />
           ))}
         </div>
       </div>
+
+      {expandedStage && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-deep/40 p-3 backdrop-blur-sm sm:p-4"
+          onClick={() => setExpandedStage(null)}
+        >
+          <div
+            className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <StageColumn
+              stage={expandedStage}
+              projects={byStage[expandedStage]}
+              isOver={dragOverStage === expandedStage}
+              accentClass={COLUMN_ACCENT[expandedStage]}
+              {...columnDragHandlers(expandedStage)}
+              expanded
+              onExpand={() => setExpandedStage(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}
       {showTeamMembers && (
