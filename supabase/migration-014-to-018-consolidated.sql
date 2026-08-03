@@ -59,6 +59,7 @@ create table if not exists public.project_stage_history (
   created_at timestamptz not null default now(),
   constraint project_stage_history_stage_check check (
     stage in (
+      'to-contact',
       'cold-lead',
       'hot-lead',
       'under-development',

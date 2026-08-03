@@ -35,6 +35,7 @@ create table if not exists public.projects (
     check (size_kw > 0),
   stage text not null default 'cold-lead'
     check (stage in (
+      'to-contact',
       'cold-lead',
       'hot-lead',
       'under-development',
@@ -61,6 +62,7 @@ create table if not exists public.project_comments (
   -- Set when the comment also moved the project to a new stage
   stage_change text
     check (stage_change in (
+      'to-contact',
       'cold-lead',
       'hot-lead',
       'under-development',

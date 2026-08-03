@@ -19,6 +19,7 @@ const SIZE_BUCKETS: { id: SizeBucket; label: string; match: (kw: number) => bool
 ];
 
 const COLUMN_ACCENT: Record<Stage, string> = {
+  "to-contact": "border-t-deep",
   "cold-lead": "border-t-teal-accent",
   "hot-lead": "border-t-amber-accent",
   "under-development": "border-t-olive",
@@ -27,9 +28,79 @@ const COLUMN_ACCENT: Record<Stage, string> = {
 };
 
 const CANCELLED_STORAGE_KEY = "hydrogenera-show-cancelled-v1";
+const TO_CONTACT_STORAGE_KEY = "hydrogenera-show-to-contact-v1";
+const COLUMN_MIN_PX = 270;
 
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
+
+type ColumnDragHandlers = {
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+};
+
+function CollapsedStageRail({
+  stage,
+  count,
+  isOver,
+  onExpand,
+  dragHandlers,
+}: {
+  stage: "to-contact" | "cancelled";
+  count: number;
+  isOver: boolean;
+  onExpand: () => void;
+  dragHandlers: ColumnDragHandlers;
+}) {
+  const label = STAGE_LABELS[stage];
+  const muted = stage === "cancelled";
+  return (
+    <button
+      type="button"
+      aria-expanded={false}
+      aria-controls={`${stage}-column`}
+      onClick={onExpand}
+      {...dragHandlers}
+      className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 py-3 transition ${
+        muted
+          ? "border-t-muted border-line bg-muted/5 hover:border-muted hover:bg-muted/10"
+          : "border-t-deep border-line bg-surface-tint/60 hover:border-deep/40 hover:bg-surface-tint"
+      } ${
+        isOver
+          ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
+          : ""
+      }`}
+      title={`Show ${label.toLowerCase()} projects`}
+    >
+      <span
+        className={`rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${
+          muted ? "text-muted" : "text-deep"
+        }`}
+      >
+        {count}
+      </span>
+      <span
+        className={`flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
+          muted ? "text-muted" : "text-deep"
+        }`}
+        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+      >
+        {label}
+      </span>
+      <span
+        className={`text-sm transition group-hover:translate-x-0.5 ${
+          muted
+            ? "text-muted/70 group-hover:text-muted"
+            : "text-deep/50 group-hover:text-deep"
+        }`}
+        aria-hidden
+      >
+        ›
+      </span>
+    </button>
+  );
+}
 
 function StageColumn({
   stage,
@@ -67,7 +138,7 @@ function StageColumn({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${
+      className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${
         isOver
           ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
           : stage === "cancelled"
@@ -274,6 +345,8 @@ export default function Dashboard() {
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [cancelledPrefReady, setCancelledPrefReady] = useState(false);
+  const [showToContact, setShowToContact] = useState(false);
+  const [toContactPrefReady, setToContactPrefReady] = useState(false);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
 
   const displayProjects = useMemo(
@@ -286,10 +359,14 @@ export default function Dashboard() {
       if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
         setShowCancelled(true);
       }
+      if (window.localStorage.getItem(TO_CONTACT_STORAGE_KEY) === "1") {
+        setShowToContact(true);
+      }
     } catch {
       // ignore
     }
     setCancelledPrefReady(true);
+    setToContactPrefReady(true);
   }, []);
 
   useEffect(() => {
@@ -303,6 +380,18 @@ export default function Dashboard() {
       // ignore
     }
   }, [showCancelled, cancelledPrefReady]);
+
+  useEffect(() => {
+    if (!toContactPrefReady) return;
+    try {
+      window.localStorage.setItem(
+        TO_CONTACT_STORAGE_KEY,
+        showToContact ? "1" : "0",
+      );
+    } catch {
+      // ignore
+    }
+  }, [showToContact, toContactPrefReady]);
 
   useEffect(() => {
     if (!expandedStage) return;
@@ -345,6 +434,7 @@ export default function Dashboard() {
 
   const byStage = useMemo(() => {
     const map: Record<Stage, typeof filtered> = {
+      "to-contact": [],
       "cold-lead": [],
       "hot-lead": [],
       "under-development": [],
@@ -360,6 +450,7 @@ export default function Dashboard() {
     if (!project || project.stage === stage) return;
     updateProject(projectId, { stage });
     if (stage === "cancelled") setShowCancelled(true);
+    if (stage === "to-contact") setShowToContact(true);
   }
 
   function columnDragHandlers(stage: Stage) {
@@ -390,6 +481,8 @@ export default function Dashboard() {
 
   const cancelledCount = byStage.cancelled.length;
   const cancelledOver = dragOverStage === "cancelled";
+  const toContactCount = byStage["to-contact"].length;
+  const toContactOver = dragOverStage === "to-contact";
 
   return (
     <div className="flex h-full min-h-0 max-h-full flex-col gap-3 overflow-hidden sm:gap-4">
@@ -474,51 +567,28 @@ export default function Dashboard() {
 
       {/* Stage board fills leftover height; only columns scroll */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        {/* Collapsed rail: click or drop to reveal */}
         {!showCancelled && (
-          <button
-            type="button"
-            aria-expanded={false}
-            aria-controls="cancelled-column"
-            onClick={() => setShowCancelled(true)}
-            {...columnDragHandlers("cancelled")}
-            className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 border-t-muted border-line bg-muted/5 py-3 transition hover:border-muted hover:bg-muted/10 ${
-              cancelledOver
-                ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
-                : ""
-            }`}
-            title="Show cancelled projects"
-          >
-            <span className="rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold text-muted shadow-sm">
-              {cancelledCount}
-            </span>
-            <span
-              className="flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
-              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-            >
-              Cancelled
-            </span>
-            <span
-              className="text-sm text-muted/70 transition group-hover:translate-x-0.5 group-hover:text-muted"
-              aria-hidden
-            >
-              ›
-            </span>
-          </button>
+          <CollapsedStageRail
+            stage="cancelled"
+            count={cancelledCount}
+            isOver={cancelledOver}
+            onExpand={() => setShowCancelled(true)}
+            dragHandlers={columnDragHandlers("cancelled")}
+          />
         )}
 
-        {/* Expanded cancelled column slides in from the left */}
         <div
           id="cancelled-column"
           aria-hidden={!showCancelled}
-          className={`min-h-0 min-w-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
+          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
             showCancelled
-              ? "max-w-[20rem] flex-1 basis-[20rem] opacity-100"
+              ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
               : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
           }`}
+          style={showCancelled ? { minWidth: COLUMN_MIN_PX } : undefined}
         >
           <div
-            className={`h-full min-h-0 w-[min(100%,20rem)] transition-transform duration-300 ease-out ${
+            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${
               showCancelled ? "translate-x-0" : "-translate-x-3"
             }`}
           >
@@ -543,18 +613,68 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Active stage columns */}
-        <div className="grid min-h-0 min-w-0 flex-1 gap-4 md:grid-cols-2 md:grid-rows-2 xl:grid-cols-4 xl:grid-rows-1">
-          {BOARD_STAGES.map((stage) => (
+        {!showToContact && (
+          <CollapsedStageRail
+            stage="to-contact"
+            count={toContactCount}
+            isOver={toContactOver}
+            onExpand={() => setShowToContact(true)}
+            dragHandlers={columnDragHandlers("to-contact")}
+          />
+        )}
+
+        <div
+          id="to-contact-column"
+          aria-hidden={!showToContact}
+          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
+            showToContact
+              ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
+              : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
+          }`}
+          style={showToContact ? { minWidth: COLUMN_MIN_PX } : undefined}
+        >
+          <div
+            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${
+              showToContact ? "translate-x-0" : "-translate-x-3"
+            }`}
+          >
             <StageColumn
-              key={stage}
-              stage={stage}
-              projects={byStage[stage]}
-              isOver={dragOverStage === stage}
-              accentClass={COLUMN_ACCENT[stage]}
-              {...columnDragHandlers(stage)}
-              onExpand={() => setExpandedStage(stage)}
+              stage="to-contact"
+              projects={byStage["to-contact"]}
+              isOver={toContactOver}
+              accentClass={COLUMN_ACCENT["to-contact"]}
+              {...columnDragHandlers("to-contact")}
+              onExpand={() => setExpandedStage("to-contact")}
+              headerExtra={
+                <button
+                  type="button"
+                  onClick={() => setShowToContact(false)}
+                  title="Hide to contact"
+                  className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition hover:bg-panel hover:text-deep"
+                >
+                  Hide
+                </button>
+              }
             />
+          </div>
+        </div>
+
+        {/* Active stage columns — min 270px, scroll horizontally when they won't fit */}
+        <div className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+          {BOARD_STAGES.map((stage) => (
+            <div
+              key={stage}
+              className="flex h-full min-h-0 min-w-[270px] flex-1 basis-[270px]"
+            >
+              <StageColumn
+                stage={stage}
+                projects={byStage[stage]}
+                isOver={dragOverStage === stage}
+                accentClass={COLUMN_ACCENT[stage]}
+                {...columnDragHandlers(stage)}
+                onExpand={() => setExpandedStage(stage)}
+              />
+            </div>
           ))}
         </div>
       </div>

@@ -9,7 +9,7 @@ import {
   Series,
   Stage,
   STAGE_LABELS,
-  BOARD_STAGES,
+  CREATE_STAGES,
 } from "@/lib/types";
 
 const inputCls =
@@ -140,8 +140,8 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Stage</label>
-            <div className="grid grid-cols-2 gap-2">
-              {BOARD_STAGES.map((s) => (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CREATE_STAGES.map((s) => (
                 <button
                   key={s}
                   type="button"

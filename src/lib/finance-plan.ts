@@ -20,7 +20,7 @@ export function probabilityFor(
   stage: Stage,
   settings: CompanyFinanceSettings,
 ): number {
-  if (stage === "cancelled") return 0;
+  if (stage === "cancelled" || stage === "to-contact") return 0;
   const fromSettings = settings.stageProbabilities[stage];
   if (typeof fromSettings === "number" && Number.isFinite(fromSettings)) {
     return Math.min(100, Math.max(0, fromSettings));

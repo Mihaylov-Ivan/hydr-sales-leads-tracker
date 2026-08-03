@@ -1,6 +1,7 @@
 import { Project, STAGE_LABELS } from "./types";
 
 const STAGE_PHRASES: Record<string, string> = {
+  "to-contact": "a lead still to be contacted",
   "cold-lead": "a cold lead currently in contact",
   "hot-lead": "a hot lead with an offer sent",
   "under-development": "under active development",
