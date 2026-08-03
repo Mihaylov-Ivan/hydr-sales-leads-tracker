@@ -457,9 +457,6 @@ export interface Project {
   cancelledAt?: string;
   /** Last substantive client activity (not auto-reminders). yyyy-mm-dd */
   lastMeaningfulActivityAt: string;
-  nextActionText?: string;
-  /** yyyy-mm-dd — required with nextActionText to keep open projects healthy */
-  nextActionDueAt?: string;
   cancellationReason?: string;
   comments: ProjectComment[];
   todos: ProjectTodo[];

@@ -58,8 +58,6 @@ export interface ProjectRow {
   commissioned_at?: string | null;
   cancelled_at?: string | null;
   last_meaningful_activity_at?: string | null;
-  next_action_text?: string | null;
-  next_action_due_at?: string | null;
   cancellation_reason?: string | null;
 }
 
@@ -369,12 +367,6 @@ export function projectFromRow(
       row.last_meaningful_activity_at,
       row.last_client_contact_at ?? createdDate,
     ),
-    ...(row.next_action_text?.trim()
-      ? { nextActionText: row.next_action_text.trim() }
-      : {}),
-    ...(optionalDate(row.next_action_due_at)
-      ? { nextActionDueAt: optionalDate(row.next_action_due_at) }
-      : {}),
     ...(row.cancellation_reason?.trim()
       ? { cancellationReason: row.cancellation_reason.trim() }
       : {}),
@@ -412,8 +404,6 @@ export function projectToRow(p: Project): ProjectRow {
     commissioned_at: p.commissionedAt ?? null,
     cancelled_at: p.cancelledAt ?? null,
     last_meaningful_activity_at: p.lastMeaningfulActivityAt,
-    next_action_text: p.nextActionText ?? null,
-    next_action_due_at: p.nextActionDueAt ?? null,
     cancellation_reason: p.cancellationReason ?? null,
   };
 }

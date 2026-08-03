@@ -136,8 +136,6 @@ function makeProject(
   let commissionedAt: string | undefined;
   let cancelledAt: string | undefined;
   let lastMeaningfulActivityAt: string;
-  let nextActionText: string | undefined;
-  let nextActionDueAt: string | undefined;
   let cancellationReason: string | undefined;
   let staleReason: string | undefined;
 
@@ -166,8 +164,6 @@ function makeProject(
       );
       currentStatus = "under-development";
       lastMeaningfulActivityAt = addDays(asOf, -Math.floor(rng() * 40));
-      nextActionText = "Technical design review with client";
-      nextActionDueAt = addDays(asOf, 7 + Math.floor(rng() * 21));
       break;
     }
     case "hot-healthy": {
@@ -176,8 +172,6 @@ function makeProject(
       hotLeadEnteredAt = addMonths(createdAt, 1 + Math.floor(rng() * 4));
       currentStatus = "hot-lead";
       lastMeaningfulActivityAt = addDays(asOf, -Math.floor(rng() * 50));
-      nextActionText = "Follow-up proposal call";
-      nextActionDueAt = addDays(asOf, 5 + Math.floor(rng() * 20));
       break;
     }
     case "hot-stale": {
@@ -195,8 +189,6 @@ function makeProject(
       createdAt = addMonths(asOf, -ageMonths);
       currentStatus = "cold-lead";
       lastMeaningfulActivityAt = addDays(asOf, -Math.floor(rng() * 90));
-      nextActionText = "Send introductory pack";
-      nextActionDueAt = addDays(asOf, 3 + Math.floor(rng() * 14));
       break;
     }
     case "cold-stale": {
@@ -244,8 +236,6 @@ function makeProject(
       createdAt = addMonths(asOf, -ageMonths);
       currentStatus = "cold-lead";
       lastMeaningfulActivityAt = addDays(asOf, -Math.floor(rng() * 30));
-      nextActionText = "Qualify site constraints";
-      nextActionDueAt = addDays(asOf, 7 + Math.floor(rng() * 21));
       break;
     }
   }
@@ -293,8 +283,6 @@ function makeProject(
     commissionedAt,
     cancelledAt,
     lastMeaningfulActivityAt,
-    nextActionText,
-    nextActionDueAt,
     staleStatus: isStaleArchetype || undefined,
     staleSince: isStaleArchetype
       ? addDays(lastMeaningfulActivityAt, 1)

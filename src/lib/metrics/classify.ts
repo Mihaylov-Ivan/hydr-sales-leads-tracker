@@ -85,9 +85,6 @@ export function buildStaleReason(
 
 export function staleRequiredAction(p: MetricsProject): StaleRequiredAction {
   if (p.cancellationReason) return "Cancel";
-  if (p.nextActionText && !p.nextActionDueAt) {
-    return "Keep Open with Justification";
-  }
   return "Reactivate";
 }
 

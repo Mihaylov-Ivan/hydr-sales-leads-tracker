@@ -64,8 +64,6 @@ export function projectToMetricsProject(p: Project): MetricsProject {
     commissionedAt: toDate(p.commissionedAt),
     cancelledAt: toDate(p.cancelledAt),
     lastMeaningfulActivityAt: activity,
-    nextActionText: p.nextActionText,
-    nextActionDueAt: toDate(p.nextActionDueAt),
     cancellationReason: p.cancellationReason,
   };
 }
@@ -104,8 +102,6 @@ export function initialMetricsFields(input: {
   stage: Stage;
   createdDate: string;
   lastMeaningfulActivityAt?: string;
-  nextActionText?: string;
-  nextActionDueAt?: string;
 }): Pick<
   Project,
   | "coldLeadEnteredAt"
@@ -114,19 +110,11 @@ export function initialMetricsFields(input: {
   | "commissionedAt"
   | "cancelledAt"
   | "lastMeaningfulActivityAt"
-  | "nextActionText"
-  | "nextActionDueAt"
 > {
   const d = input.createdDate;
   const fields: ReturnType<typeof initialMetricsFields> = {
     coldLeadEnteredAt: d,
     lastMeaningfulActivityAt: input.lastMeaningfulActivityAt || d,
-    ...(input.nextActionText?.trim()
-      ? { nextActionText: input.nextActionText.trim() }
-      : {}),
-    ...(input.nextActionDueAt
-      ? { nextActionDueAt: input.nextActionDueAt }
-      : {}),
   };
 
   if (input.stage === "hot-lead") {

@@ -3,7 +3,7 @@
  *
  * Target DB shape (see supabase/migration-014-pipeline-metrics.sql):
  * - projects: stage entered-at timestamps, last_meaningful_activity_at,
- *   next_action_*, stale_*, cancellation_reason
+ *   stale_*, cancellation_reason
  * - project_stage_history: historical stage transitions
  *
  * Until live wiring lands, MetricsProject is populated from placeholder data.
@@ -35,10 +35,7 @@ export type ProjectOutcomeClass =
   | "stale"
   | "healthy-active";
 
-export type StaleRequiredAction =
-  | "Reactivate"
-  | "Keep Open with Justification"
-  | "Cancel";
+export type StaleRequiredAction = "Reactivate" | "Cancel";
 
 export type TargetPeriod = "month" | "quarter" | "year";
 
@@ -71,8 +68,6 @@ export interface MetricsProject {
   commissionedAt?: string;
   cancelledAt?: string;
   lastMeaningfulActivityAt: string;
-  nextActionText?: string;
-  nextActionDueAt?: string;
   staleStatus?: boolean;
   staleSince?: string;
   staleReason?: string;

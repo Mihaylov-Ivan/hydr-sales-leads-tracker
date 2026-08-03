@@ -28,8 +28,6 @@ alter table public.projects
   add column if not exists commissioned_at timestamptz,
   add column if not exists cancelled_at timestamptz,
   add column if not exists last_meaningful_activity_at timestamptz,
-  add column if not exists next_action_text text,
-  add column if not exists next_action_due_at date,
   add column if not exists stale_status boolean not null default false,
   add column if not exists stale_since timestamptz,
   add column if not exists stale_reason text,
@@ -47,12 +45,8 @@ comment on column public.projects.cancelled_at is
   'When the project was cancelled.';
 comment on column public.projects.last_meaningful_activity_at is
   'Last substantive client activity (not auto-reminders or internal-only edits).';
-comment on column public.projects.next_action_text is
-  'Agreed next commercial / technical action.';
-comment on column public.projects.next_action_due_at is
-  'Due date for the next action; required for healthy (non-stale) open projects.';
 comment on column public.projects.stale_status is
-  'True when the project is open and past the stage stale threshold without a valid next action.';
+  'True when a Cold/Hot lead is past the stage stale threshold (inactivity).';
 comment on column public.projects.cancellation_reason is
   'Why the project was formally cancelled (distinct from stale).';
 

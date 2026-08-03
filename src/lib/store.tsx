@@ -256,8 +256,6 @@ export interface NewProjectInput {
   baseDescription: string;
   leadUserId?: string;
   lastMeaningfulActivityAt?: string;
-  nextActionText?: string;
-  nextActionDueAt?: string;
 }
 
 export type ProjectPatch = Partial<
@@ -282,8 +280,6 @@ export type ProjectPatch = Partial<
     | "commissionedAt"
     | "cancelledAt"
     | "lastMeaningfulActivityAt"
-    | "nextActionText"
-    | "nextActionDueAt"
     | "cancellationReason"
   >
 >;
@@ -930,7 +926,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("lead_user_id").limit(1),
         supabase.from("project_todos").select("owner_user_id").limit(1),
         supabase.from("project_comments").select("author_user_id").limit(1),
-        supabase.from("projects").select("next_action_text").limit(1),
+        supabase.from("projects").select("last_meaningful_activity_at").limit(1),
         supabase.from("company_metrics_settings").select("id").limit(1),
         supabase.from("project_gantt_phases").select("id").limit(1),
       ])
@@ -1300,8 +1296,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         stage: input.stage,
         createdDate: createdAt.slice(0, 10),
         lastMeaningfulActivityAt: input.lastMeaningfulActivityAt,
-        nextActionText: input.nextActionText,
-        nextActionDueAt: input.nextActionDueAt,
       }),
       comments: initialComment ? [initialComment] : [],
       todos: [],
@@ -1343,8 +1337,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               commissioned_at: project.commissionedAt ?? null,
               cancelled_at: project.cancelledAt ?? null,
               last_meaningful_activity_at: project.lastMeaningfulActivityAt,
-              next_action_text: project.nextActionText ?? null,
-              next_action_due_at: project.nextActionDueAt ?? null,
             }
             : {}),
         })
@@ -1475,8 +1467,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const mergedPatch = { ...stageExtras, ...patch };
       const updated: Project = { ...current, ...mergedPatch };
       // Empty strings clear optional text/date fields
-      if (mergedPatch.nextActionText === "") delete updated.nextActionText;
-      if (mergedPatch.nextActionDueAt === "") delete updated.nextActionDueAt;
       if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
       if (mergedPatch.underDevelopmentAt === "")
         delete updated.underDevelopmentAt;
@@ -1512,10 +1502,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (mergedPatch.lastMeaningfulActivityAt !== undefined)
             row.last_meaningful_activity_at =
               mergedPatch.lastMeaningfulActivityAt;
-          if (mergedPatch.nextActionText !== undefined)
-            row.next_action_text = mergedPatch.nextActionText.trim() || null;
-          if (mergedPatch.nextActionDueAt !== undefined)
-            row.next_action_due_at = mergedPatch.nextActionDueAt || null;
           if (mergedPatch.cancellationReason !== undefined)
             row.cancellation_reason =
               mergedPatch.cancellationReason.trim() || null;
