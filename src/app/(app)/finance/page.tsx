@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects } from "@/lib/store";
 import {
@@ -10,6 +10,7 @@ import {
 import { parseFinanceWorkbook } from "@/lib/finance-import";
 import { downloadFinanceWorkbook } from "@/lib/finance-export";
 import { projectsWithMergedFinancials } from "@/lib/finance-merge";
+import OverviewTimeline from "@/components/OverviewTimeline";
 import {
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
@@ -22,6 +23,19 @@ const inputCls =
   "w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent";
 const labelCls =
   "mb-1 block text-xs font-semibold uppercase tracking-wide text-muted";
+
+const VIEW_RANGE_STORAGE_KEY = "hydrogenera-finance-view-range-v1";
+const CASH_CHART_STORAGE_KEY = "hydrogenera-finance-cash-chart-open-v1";
+
+function loadCashChartOpen(): boolean {
+  try {
+    const raw = window.localStorage.getItem(CASH_CHART_STORAGE_KEY);
+    if (raw == null) return true;
+    return JSON.parse(raw) !== false;
+  } catch {
+    return true;
+  }
+}
 
 function formatMoney(n: number): string {
   return new Intl.NumberFormat("en-GB", {
@@ -51,7 +65,6 @@ function parseNum(raw: string): number | null {
 }
 
 const PIPELINE_STAGES: Stage[] = ["cold-lead", "hot-lead"];
-const VIEW_RANGE_STORAGE_KEY = "hydrogenera-finance-view-range-v1";
 
 function defaultViewRange(today: string): { from: string; to: string } {
   const [ys, ms] = today.split("-").map(Number);
@@ -116,6 +129,25 @@ export default function FinancePage() {
   const today = todayDate();
   const [viewFrom, setViewFrom] = useState(() => loadViewRange(today).from);
   const [viewTo, setViewTo] = useState(() => loadViewRange(today).to);
+  const [cashChartOpen, setCashChartOpen] = useState(true);
+  const [cashChartPrefReady, setCashChartPrefReady] = useState(false);
+
+  useEffect(() => {
+    setCashChartOpen(loadCashChartOpen());
+    setCashChartPrefReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!cashChartPrefReady) return;
+    try {
+      window.localStorage.setItem(
+        CASH_CHART_STORAGE_KEY,
+        JSON.stringify(cashChartOpen),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [cashChartOpen, cashChartPrefReady]);
 
   const planProjects = useMemo(
     () => projectsWithMergedFinancials(projects, financeImport, today),
@@ -367,6 +399,38 @@ export default function FinancePage() {
           </div>
         )}
       </header>
+
+      {/* Project cash flow chart */}
+      <section className="rounded-xl border border-line bg-panel shadow-sm">
+        <button
+          type="button"
+          aria-expanded={cashChartOpen}
+          onClick={() => setCashChartOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-surface-tint/40"
+        >
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+              Cash flow chart
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Scheduled and actual income/expenses across projects
+            </p>
+          </div>
+          <span
+            className={`shrink-0 text-sm font-semibold text-muted transition ${
+              cashChartOpen ? "rotate-90" : ""
+            }`}
+            aria-hidden
+          >
+            ›
+          </span>
+        </button>
+        {cashChartOpen && (
+          <div className="border-t border-line px-5 pb-5 pt-4">
+            <OverviewTimeline projects={planProjects} embedded />
+          </div>
+        )}
+      </section>
 
       {/* Import / export */}
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">

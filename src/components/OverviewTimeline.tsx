@@ -754,7 +754,14 @@ function ProjectMultiSelect({
   );
 }
 
-export default function OverviewTimeline({ projects }: { projects: Project[] }) {
+export default function OverviewTimeline({
+  projects,
+  embedded = false,
+}: {
+  projects: Project[];
+  /** Skip outer card chrome when nested in a parent panel. */
+  embedded?: boolean;
+}) {
   const withFlows = useMemo(
     () =>
       [...projects]
@@ -828,31 +835,43 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
   }
 
   if (withFlows.length === 0) {
-    return (
-      <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-          Cash flow
-        </h2>
-        <p className="mt-3 text-sm text-muted">
+    const emptyBody = (
+      <>
+        {!embedded && (
+          <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+            Cash flow
+          </h2>
+        )}
+        <p className={embedded ? "text-sm text-muted" : "mt-3 text-sm text-muted"}>
           No cash flows yet. Upload actuals on Finance, or add future payments
           and expenses on a project page.
         </p>
+      </>
+    );
+    if (embedded) return <div>{emptyBody}</div>;
+    return (
+      <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
+        {emptyBody}
       </section>
     );
   }
 
-  return (
-    <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
+  const body = (
+    <>
       <div className="mb-1 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-            Cash flow
-          </h2>
-          <p className="mt-0.5 text-xs text-muted">
-            Scheduled and actual income/expenses across selected projects
-            (Excel actuals + in-app forecasts)
-          </p>
-        </div>
+        {!embedded ? (
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+              Cash flow
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Scheduled and actual income/expenses across selected projects
+              (Excel actuals + in-app forecasts)
+            </p>
+          </div>
+        ) : (
+          <div />
+        )}
         <div className="flex flex-wrap gap-4 text-right">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -956,6 +975,13 @@ export default function OverviewTimeline({ projects }: { projects: Project[] }) 
           </Link>
         )}
       </div>
+    </>
+  );
+
+  if (embedded) return <div>{body}</div>;
+  return (
+    <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
+      {body}
     </section>
   );
 }

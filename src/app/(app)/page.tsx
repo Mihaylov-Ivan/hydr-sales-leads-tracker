@@ -5,8 +5,6 @@ import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Stage, STAGE_LABELS, BOARD_STAGES } from "@/lib/types";
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
-import OverviewTimeline from "@/components/OverviewTimeline";
-import { projectsWithMergedFinancials } from "@/lib/finance-merge";
 import TeamMembersPanel from "@/components/TeamMembersPanel";
 
 type SizeBucket = "any" | "small" | "medium" | "large";
@@ -321,9 +319,6 @@ export default function Dashboard() {
     projects,
     ready,
     updateProject,
-    showFinancials,
-    setShowFinancials,
-    financeImport,
   } = useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState<Set<Market>>(
@@ -339,11 +334,6 @@ export default function Dashboard() {
   const [showToContact, setShowToContact] = useState(false);
   const [toContactPrefReady, setToContactPrefReady] = useState(false);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
-
-  const displayProjects = useMemo(
-    () => projectsWithMergedFinancials(projects, financeImport),
-    [projects, financeImport],
-  );
 
   useEffect(() => {
     try {
@@ -394,14 +384,14 @@ export default function Dashboard() {
   }, [expandedStage]);
 
   const countries = useMemo(
-    () => [...new Set(displayProjects.map((p) => p.country))].sort(),
-    [displayProjects],
+    () => [...new Set(projects.map((p) => p.country))].sort(),
+    [projects],
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === sizeFilter)!;
-    return displayProjects.filter(
+    return projects.filter(
       (p) =>
         (countryFilter === "all" || p.country === countryFilter) &&
         marketFilter.has(p.market) &&
@@ -412,7 +402,7 @@ export default function Dashboard() {
             .toLowerCase()
             .includes(q)),
     );
-  }, [displayProjects, countryFilter, marketFilter, sizeFilter, search]);
+  }, [projects, countryFilter, marketFilter, sizeFilter, search]);
 
   function toggleMarket(m: Market) {
     setMarketFilter((prev) => {
@@ -483,18 +473,6 @@ export default function Dashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
-            type="button"
-            role="switch"
-            aria-checked={showFinancials}
-            onClick={() => setShowFinancials(!showFinancials)}
-            className={`rounded-lg border px-4 py-2.5 text-sm font-bold uppercase tracking-wide shadow-sm transition ${showFinancials
-              ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
-              : "border-line bg-panel text-deep hover:border-teal-accent/40 hover:text-teal-accent"
-              }`}
-          >
-            Financials {showFinancials ? "On" : "Off"}
-          </button>
-          <button
             onClick={() => setShowTeamMembers(true)}
             className="rounded-lg border border-line bg-panel px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
           >
@@ -547,13 +525,6 @@ export default function Dashboard() {
           ))}
         </select>
       </div>
-
-      {/* Cash chart — capped so columns keep the remaining viewport */}
-      {showFinancials && (
-        <div className="max-h-[min(32vh,18rem)] shrink-0 overflow-y-auto overscroll-contain">
-          <OverviewTimeline projects={filtered} />
-        </div>
-      )}
 
       {/* Stage board fills leftover height; only columns scroll */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">

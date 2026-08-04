@@ -97,7 +97,6 @@ const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
-const SHOW_FINANCIALS_STORAGE_KEY = "hydrogenera-show-financials-v1";
 const FINANCE_SETTINGS_STORAGE_KEY = "hydrogenera-finance-settings-v1";
 const FINANCE_IMPORT_STORAGE_KEY = "hydrogenera-finance-import-v1";
 const PROJECT_FINANCIALS_STORAGE_KEY = "hydrogenera-project-financials-v1";
@@ -385,9 +384,6 @@ interface ProjectsApi {
   /** Currently selected app user (for authorship of updates) */
   currentUserId: string | null;
   setCurrentUserId: (userId: string | null) => void;
-  /** When false, financial panels/timelines stay hidden */
-  showFinancials: boolean;
-  setShowFinancials: (show: boolean) => void;
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
@@ -637,16 +633,6 @@ function loadLocalCurrentUserId(members: TeamMember[]): string | null {
   }
 }
 
-function loadShowFinancials(): boolean {
-  try {
-    const raw = window.localStorage.getItem(SHOW_FINANCIALS_STORAGE_KEY);
-    if (raw == null) return false;
-    return JSON.parse(raw) === true;
-  } catch {
-    return false;
-  }
-}
-
 function loadLocalFinanceSettings(): CompanyFinanceSettings {
   try {
     const raw = window.localStorage.getItem(FINANCE_SETTINGS_STORAGE_KEY);
@@ -842,7 +828,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
-  const [showFinancials, setShowFinancialsState] = useState(false);
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
@@ -869,8 +854,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   currentUserIdRef.current = currentUserId;
 
   useEffect(() => {
-    setShowFinancialsState(loadShowFinancials());
-
     async function boot() {
       if (supabase) {
         const [members, remoteProjects, remoteMetrics] = await Promise.all([
@@ -1028,15 +1011,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUserId, ready]);
 
-  useEffect(() => {
-    if (ready) {
-      window.localStorage.setItem(
-        SHOW_FINANCIALS_STORAGE_KEY,
-        JSON.stringify(showFinancials),
-      );
-    }
-  }, [showFinancials, ready]);
-
   // If the selected user is removed/edited away, fall back to first member.
   useEffect(() => {
     if (!ready) return;
@@ -1050,10 +1024,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const setCurrentUserId = useCallback((userId: string | null) => {
     setCurrentUserIdState(userId);
-  }, []);
-
-  const setShowFinancials = useCallback((show: boolean) => {
-    setShowFinancialsState(show);
   }, []);
 
   const updateFinanceSettings = useCallback((patch: FinanceSettingsPatch) => {
@@ -2818,8 +2788,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateTeamMember,
         currentUserId,
         setCurrentUserId,
-        showFinancials,
-        setShowFinancials,
         financeSettings,
         updateFinanceSettings,
         metricsSettings,
