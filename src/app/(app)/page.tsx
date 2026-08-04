@@ -62,38 +62,33 @@ function CollapsedStageRail({
       aria-controls={`${stage}-column`}
       onClick={onExpand}
       {...dragHandlers}
-      className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 py-3 transition ${
-        muted
-          ? "border-t-muted border-line bg-muted/5 hover:border-muted hover:bg-muted/10"
-          : "border-t-deep border-line bg-surface-tint/60 hover:border-deep/40 hover:bg-surface-tint"
-      } ${
-        isOver
+      className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 py-3 transition ${muted
+        ? "border-t-muted border-line bg-muted/5 hover:border-muted hover:bg-muted/10"
+        : "border-t-deep border-line bg-surface-tint/60 hover:border-deep/40 hover:bg-surface-tint"
+        } ${isOver
           ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
           : ""
-      }`}
+        }`}
       title={`Show ${label.toLowerCase()} projects`}
     >
       <span
-        className={`rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${
-          muted ? "text-muted" : "text-deep"
-        }`}
+        className={`rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${muted ? "text-muted" : "text-deep"
+          }`}
       >
         {count}
       </span>
       <span
-        className={`flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] ${
-          muted ? "text-muted" : "text-deep"
-        }`}
+        className={`flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] ${muted ? "text-muted" : "text-deep"
+          }`}
         style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
       >
         {label}
       </span>
       <span
-        className={`text-sm transition group-hover:translate-x-0.5 ${
-          muted
-            ? "text-muted/70 group-hover:text-muted"
-            : "text-deep/50 group-hover:text-deep"
-        }`}
+        className={`text-sm transition group-hover:translate-x-0.5 ${muted
+          ? "text-muted/70 group-hover:text-muted"
+          : "text-deep/50 group-hover:text-deep"
+          }`}
         aria-hidden
       >
         ›
@@ -138,21 +133,19 @@ function StageColumn({
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${
-        isOver
-          ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
-          : stage === "cancelled"
-            ? "border-line/80 bg-muted/5"
-            : "border-line bg-surface-tint/60"
-      }`}
+      className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${isOver
+        ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
+        : stage === "cancelled"
+          ? "border-line/80 bg-muted/5"
+          : "border-line bg-surface-tint/60"
+        }`}
     >
       <header
         className={`sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 border-b border-line/70 px-4 py-3 backdrop-blur-sm ${headerBg}`}
       >
         <h2
-          className={`text-sm font-bold uppercase tracking-wide ${
-            stage === "cancelled" ? "text-muted" : "text-deep"
-          }`}
+          className={`text-sm font-bold uppercase tracking-wide ${stage === "cancelled" ? "text-muted" : "text-deep"
+            }`}
         >
           {STAGE_LABELS[stage]}
         </h2>
@@ -183,19 +176,17 @@ function StageColumn({
         </div>
       </header>
       <div
-        className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-3 py-3 ${
-          expanded
-            ? "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-            : "flex-col"
-        }`}
+        className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-3 py-3 ${expanded
+          ? "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+          : "flex-col"
+          }`}
       >
         {projects.length === 0 ? (
           <p
-            className={`rounded-lg border border-dashed py-8 text-center text-xs ${
-              isOver
-                ? "border-teal-accent text-teal-accent"
-                : "border-line text-muted"
-            } ${expanded ? "col-span-full" : ""}`}
+            className={`rounded-lg border border-dashed py-8 text-center text-xs ${isOver
+              ? "border-teal-accent text-teal-accent"
+              : "border-line text-muted"
+              } ${expanded ? "col-span-full" : ""}`}
           >
             {isOver ? "Drop to move here" : "No projects here."}
           </p>
@@ -304,8 +295,8 @@ function MarketMultiSelect({
                   >
                     <span
                       className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${on
-                          ? "border-teal-accent bg-teal-accent text-white"
-                          : "border-line bg-panel text-transparent"
+                        ? "border-teal-accent bg-teal-accent text-white"
+                        : "border-line bg-panel text-transparent"
                         }`}
                       aria-hidden
                     >
@@ -496,11 +487,10 @@ export default function Dashboard() {
             role="switch"
             aria-checked={showFinancials}
             onClick={() => setShowFinancials(!showFinancials)}
-            className={`rounded-lg border px-4 py-2.5 text-sm font-bold uppercase tracking-wide shadow-sm transition ${
-              showFinancials
-                ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
-                : "border-line bg-panel text-deep hover:border-teal-accent/40 hover:text-teal-accent"
-            }`}
+            className={`rounded-lg border px-4 py-2.5 text-sm font-bold uppercase tracking-wide shadow-sm transition ${showFinancials
+              ? "border-teal-accent/40 bg-teal-soft text-teal-accent"
+              : "border-line bg-panel text-deep hover:border-teal-accent/40 hover:text-teal-accent"
+              }`}
           >
             Financials {showFinancials ? "On" : "Off"}
           </button>
@@ -580,17 +570,15 @@ export default function Dashboard() {
         <div
           id="cancelled-column"
           aria-hidden={!showCancelled}
-          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
-            showCancelled
-              ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
-              : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
-          }`}
+          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${showCancelled
+            ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
+            : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
+            }`}
           style={showCancelled ? { minWidth: COLUMN_MIN_PX } : undefined}
         >
           <div
-            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${
-              showCancelled ? "translate-x-0" : "-translate-x-3"
-            }`}
+            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${showCancelled ? "translate-x-0" : "-translate-x-3"
+              }`}
           >
             <StageColumn
               stage="cancelled"
@@ -626,17 +614,15 @@ export default function Dashboard() {
         <div
           id="to-contact-column"
           aria-hidden={!showToContact}
-          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${
-            showToContact
-              ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
-              : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
-          }`}
+          className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${showToContact
+            ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
+            : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
+            }`}
           style={showToContact ? { minWidth: COLUMN_MIN_PX } : undefined}
         >
           <div
-            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${
-              showToContact ? "translate-x-0" : "-translate-x-3"
-            }`}
+            className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${showToContact ? "translate-x-0" : "-translate-x-3"
+              }`}
           >
             <StageColumn
               stage="to-contact"
