@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { findLinkableDeadline, projectLinkableDeadlines } from "@/lib/gantt-finance";
-import { Project } from "@/lib/types";
+import ProjectMultiSelect, {
+  colorForProjectIndex,
+} from "@/components/ProjectMultiSelect";
+import {
+  CASH_EXPENSE_CATEGORIES,
+  CompanyFinanceSettings,
+  Project,
+  companyMonthlyCashTotal,
+  normalizeCompanyMonthlyExpense,
+  normalizeProjectExpense,
+} from "@/lib/types";
 
 function formatMoney(n: number): string {
   return new Intl.NumberFormat("en-GB", {
@@ -59,6 +69,10 @@ function formatQuarter(ms: number): string {
   return `${month} ${d.getFullYear()}`;
 }
 
+const INCOME_COLOR = "#009e98";
+const EXPENSE_COLOR = "#c45c26";
+const PROFIT_COLOR = "#14545c";
+
 const PROJECT_COLORS = [
   "#009e98",
   "#b4be35",
@@ -72,12 +86,8 @@ const PROJECT_COLORS = [
   "#a35d6a",
 ];
 
-const INCOME_COLOR = "#009e98";
-const EXPENSE_COLOR = "#c45c26";
-const PROFIT_COLOR = "#14545c";
-
 function colorForIndex(index: number): string {
-  return PROJECT_COLORS[index % PROJECT_COLORS.length];
+  return colorForProjectIndex(index);
 }
 
 type FlowKind = "income" | "expense";
@@ -113,9 +123,16 @@ function resolveContractPercent(
   return Math.round(raw * 10) / 10;
 }
 
+function asOfMonthStart(asOf?: string | null): string | null {
+  if (!asOf) return null;
+  const key = asOf.slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(key) ? `${key}-01` : null;
+}
+
 function collectFlows(
   projects: Project[],
   colorById: Map<string, string>,
+  financeSettings?: CompanyFinanceSettings | null,
 ): CashFlow[] {
   const list: CashFlow[] = [];
   for (const p of projects) {
@@ -144,11 +161,17 @@ function collectFlows(
         color,
       });
     }
-    for (const exp of f.expenseSchedule ?? []) {
+    for (const raw of f.expenseSchedule ?? []) {
+      const exp = normalizeProjectExpense(raw);
+      const category = exp.category ?? "materials";
+      if (!CASH_EXPENSE_CATEGORIES.has(category)) continue;
+
       const linked = findLinkableDeadline(exp.milestoneId, deadlines);
       const percent = resolveContractPercent(exp.amount, cv, exp.percent);
       const expectedDate = linked?.date ?? exp.dueDate;
       const received = Boolean(exp.actualDate);
+      const typeLabel =
+        category === "installation" ? "Installation" : "Materials";
       list.push({
         id: `out-${p.id}-${exp.id}`,
         kind: "expense",
@@ -160,22 +183,55 @@ function collectFlows(
         date: exp.actualDate ?? expectedDate,
         expectedDate,
         received,
-        ...(exp.label ? { label: exp.label } : {}),
+        label: exp.label
+          ? `${typeLabel} · ${exp.label}`
+          : typeLabel,
         ...(linked ? { milestoneLabel: linked.label } : {}),
         color,
       });
     }
   }
+
+  if (financeSettings) {
+    for (const raw of financeSettings.monthlyExpenses ?? []) {
+      const opex = normalizeCompanyMonthlyExpense(raw);
+      if (!opex) continue;
+      const total = companyMonthlyCashTotal(opex);
+      if (total <= 0) continue;
+      const parts: string[] = [];
+      if (opex.salary > 0) parts.push(`Salary ${formatMoney(opex.salary)}`);
+      if (opex.other > 0) parts.push(`Other ${formatMoney(opex.other)}`);
+      // Mid-month so company costs sit visibly in the month on the chart
+      const date = `${opex.month}-15`;
+      list.push({
+        id: `company-opex-${opex.month}`,
+        kind: "expense",
+        projectId: "__company__",
+        projectName: "Company",
+        client: "",
+        amount: total,
+        date,
+        expectedDate: date,
+        received: opex.status === "actual",
+        label: parts.join(" · ") || "Company",
+        color: EXPENSE_COLOR,
+      });
+    }
+  }
+
   return list.sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
 }
 
 function projectHasCashFlows(p: Project): boolean {
-  return (
-    p.financials.payments.length > 0 ||
-    (p.financials.expenseSchedule?.length ?? 0) > 0
+  const hasPayments = p.financials.payments.length > 0;
+  const hasCashExpenses = (p.financials.expenseSchedule ?? []).some((e) =>
+    CASH_EXPENSE_CATEGORIES.has(
+      normalizeProjectExpense(e).category ?? "materials",
+    ),
   );
+  return hasPayments || hasCashExpenses;
 }
 
 const CHART_H = 260;
@@ -186,11 +242,20 @@ function CashChart({
   showIncome,
   showExpenses,
   showProfit,
+  openingCash = 0,
+  asOfDate = null,
+  cashLineStartDate = null,
 }: {
   flows: CashFlow[];
   showIncome: boolean;
   showExpenses: boolean;
   showProfit: boolean;
+  /** Bank balance at `cashLineStartDate` (already rolled forward if the view starts after as-of). */
+  openingCash?: number;
+  /** yyyy-mm-dd — flows before this are shown as bars but excluded from the cash line. */
+  asOfDate?: string | null;
+  /** yyyy-mm-dd — where the cash line begins on the chart. */
+  cashLineStartDate?: string | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(640);
@@ -222,17 +287,21 @@ function CashChart({
       (f.kind === "expense" && showExpenses),
   );
 
+  const cashStart = cashLineStartDate ?? asOfDate;
+  const hasBaseline = Boolean(cashStart);
+  const baselineCash = hasBaseline ? openingCash : 0;
+
   if (!showIncome && !showExpenses && !showProfit) {
     return (
       <div ref={wrapRef} className="w-full">
         <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
-          Enable Income, Expenses, or Profit above to display the chart.
+          Enable Income, Expenses, or Cash above to display the chart.
         </p>
       </div>
     );
   }
 
-  if (flows.length === 0) {
+  if (flows.length === 0 && !hasBaseline) {
     return (
       <div ref={wrapRef} className="w-full">
         <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
@@ -254,7 +323,11 @@ function CashChart({
     );
   }
 
-  const times = flows.map((i) => new Date(i.date + "T00:00:00").getTime());
+  const times = [
+    ...flows.map((i) => new Date(i.date + "T00:00:00").getTime()),
+    ...(cashStart ? [new Date(cashStart + "T00:00:00").getTime()] : []),
+    ...(asOfDate ? [new Date(asOfDate + "T00:00:00").getTime()] : []),
+  ];
   const rangeStart = startOfQuarter(Math.min(...times));
   const rangeEnd = nextQuarter(startOfQuarter(Math.max(...times)));
   const span = Math.max(rangeEnd - rangeStart, 1);
@@ -268,30 +341,46 @@ function CashChart({
     (showIncome ? 1 : 0) + (showExpenses ? 1 : 0) + (showProfit ? 1 : 0);
   const onlyIncome = seriesOn === 1 && showIncome;
   const onlyExpenses = seriesOn === 1 && showExpenses;
-  // Cumulative line when a single series is selected (or profit alongside bars)
   const showCumLine = onlyIncome || onlyExpenses || showProfit;
 
   type CumPt = { date: string; total: number; x: number; y: number };
   let runIncome = 0;
   let runExpense = 0;
+  let cashIncome = 0;
+  let cashExpense = 0;
   const cumIncome: CumPt[] = [];
   const cumExpense: CumPt[] = [];
-  const cumProfit: CumPt[] = [];
+  const cumCash: CumPt[] = [];
+  if (hasBaseline && cashStart) {
+    cumCash.push({ date: cashStart, total: baselineCash, x: 0, y: 0 });
+  }
   for (const f of flows) {
     if (f.kind === "income") {
       runIncome += f.amount;
       cumIncome.push({ date: f.date, total: runIncome, x: 0, y: 0 });
     } else {
       runExpense += f.amount;
-      // Negative so the line tracks below the axis with expense bars
       cumExpense.push({ date: f.date, total: -runExpense, x: 0, y: 0 });
     }
-    cumProfit.push({
-      date: f.date,
-      total: runIncome - runExpense,
-      x: 0,
-      y: 0,
-    });
+    // Cash line only from as-of onward (pre-as-of bars stay disconnected)
+    const countsForCash = !asOfDate || f.date >= asOfDate;
+    if (countsForCash && hasBaseline) {
+      if (f.kind === "income") cashIncome += f.amount;
+      else cashExpense += f.amount;
+      cumCash.push({
+        date: f.date,
+        total: baselineCash + cashIncome - cashExpense,
+        x: 0,
+        y: 0,
+      });
+    } else if (!hasBaseline) {
+      cumCash.push({
+        date: f.date,
+        total: runIncome - runExpense,
+        x: 0,
+        y: 0,
+      });
+    }
   }
 
   const activeCum: CumPt[] = onlyIncome
@@ -299,7 +388,7 @@ function CashChart({
     : onlyExpenses
       ? cumExpense
       : showProfit
-        ? cumProfit
+        ? cumCash
         : [];
   const cumColor = onlyIncome
     ? INCOME_COLOR
@@ -312,11 +401,11 @@ function CashChart({
   const maxAbs = Math.max(
     ...barAmounts,
     ...cumExtents.map(Math.abs),
+    hasBaseline ? Math.abs(baselineCash) : 0,
     1,
   );
   const scaleMax = maxAbs * 1.15;
   const ySteps = 4;
-  // Symmetric scale around 0 so expenses can go below the axis
   const scaleTicks = Array.from({ length: ySteps * 2 + 1 }, (_, i) => {
     return -scaleMax + (scaleMax * 2 * i) / (ySteps * 2);
   });
@@ -329,7 +418,6 @@ function CashChart({
   const zeroY = PAD.top + innerH / 2;
 
   function yScale(amount: number): number {
-    // positive up from center, negative down
     return zeroY - (amount / scaleMax) * (innerH / 2);
   }
 
@@ -436,6 +524,7 @@ function CashChart({
             const top = Math.min(y1, y2);
             const h = Math.max(Math.abs(y1 - y2), 2);
             const fill = item.kind === "income" ? INCOME_COLOR : EXPENSE_COLOR;
+            const beforeAsOf = Boolean(asOfDate && item.date < asOfDate);
             return (
               <g key={item.id}>
                 <rect
@@ -445,7 +534,15 @@ function CashChart({
                   height={h}
                   rx={3}
                   fill={fill}
-                  opacity={item.received ? 0.95 : 0.45}
+                  opacity={
+                    beforeAsOf
+                      ? item.received
+                        ? 0.35
+                        : 0.2
+                      : item.received
+                        ? 0.95
+                        : 0.45
+                  }
                   stroke={item.received ? "none" : fill}
                   strokeWidth={item.received ? 0 : 1.25}
                   strokeDasharray={item.received ? undefined : "3 2"}
@@ -470,22 +567,32 @@ function CashChart({
                   }}
                   onMouseLeave={() => setHover(null)}
                 />
-                {item.percent != null && (
-                  <text
-                    x={x + barW / 2}
-                    y={item.kind === "income" ? top - 4 : top + h + 11}
-                    textAnchor="middle"
-                    className="fill-muted"
-                    style={{ fontSize: 9, fontWeight: 700 }}
-                  >
-                    {item.percent % 1 === 0
-                      ? `${item.percent}%`
-                      : `${item.percent.toFixed(1)}%`}
-                  </text>
-                )}
               </g>
             );
           }),
+        )}
+
+        {asOfDate && showProfit && (
+          <g>
+            <line
+              x1={xOf(asOfDate)}
+              x2={xOf(asOfDate)}
+              y1={PAD.top}
+              y2={PAD.top + innerH}
+              stroke={PROFIT_COLOR}
+              strokeWidth={1.25}
+              strokeDasharray="4 3"
+              opacity={0.55}
+            />
+            <text
+              x={xOf(asOfDate) + 4}
+              y={PAD.top + 10}
+              className="fill-muted"
+              style={{ fontSize: 9, fontWeight: 700 }}
+            >
+              As of
+            </text>
+          </g>
         )}
 
         <line
@@ -533,18 +640,10 @@ function CashChart({
         >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
             {hover.item.kind === "income" ? "Incoming payment" : "Expense"}
+            {asOfDate && hover.item.date < asOfDate ? " · before as of" : ""}
           </p>
           <p className="mt-1 text-lg font-bold text-deep">
             {formatMoney(hover.item.amount)}
-            {hover.item.percent != null && (
-              <span className="ml-1.5 text-sm font-semibold text-teal-accent">
-                (
-                {hover.item.percent % 1 === 0
-                  ? hover.item.percent
-                  : hover.item.percent.toFixed(1)}
-                % of contract)
-              </span>
-            )}
           </p>
           <div className="mt-2 space-y-1 text-sm">
             <p>
@@ -620,147 +719,16 @@ function SeriesToggle({
   );
 }
 
-function ProjectMultiSelect({
-  projects,
-  selectedIds,
-  colorById,
-  onToggle,
-  onSelectAll,
-  onClear,
-}: {
-  projects: Project[];
-  selectedIds: Set<string>;
-  colorById: Map<string, string>;
-  onToggle: (id: string) => void;
-  onSelectAll: () => void;
-  onClear: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const count = selectedIds.size;
-  const label =
-    count === 0
-      ? "No projects"
-      : count === projects.length
-        ? "All projects"
-        : count === 1
-          ? (projects.find((p) => selectedIds.has(p.id))?.name ?? "1 project")
-          : `${count} projects`;
-
-  return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex max-w-[16rem] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent"
-      >
-        <span className="truncate">{label}</span>
-        <span className="shrink-0 text-muted" aria-hidden>
-          {open ? "▴" : "▾"}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          className="absolute left-0 z-30 mt-1 w-72 max-w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Projects
-            </span>
-            <div className="flex gap-2 text-xs">
-              <button
-                type="button"
-                onClick={onSelectAll}
-                className="font-semibold text-teal-accent hover:underline"
-              >
-                All
-              </button>
-              <span className="text-line">|</span>
-              <button
-                type="button"
-                onClick={onClear}
-                className="font-semibold text-muted hover:text-ink hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-          <ul className="max-h-64 overflow-y-auto py-1">
-            {projects.map((p, i) => {
-              const on = selectedIds.has(p.id);
-              const color = colorById.get(p.id) ?? colorForIndex(i);
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={on}
-                    onClick={() => onToggle(p.id)}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
-                        on
-                          ? "border-transparent text-white"
-                          : "border-line bg-panel text-transparent"
-                      }`}
-                      style={on ? { backgroundColor: color } : undefined}
-                      aria-hidden
-                    >
-                      ✓
-                    </span>
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="min-w-0 flex-1 truncate font-medium text-ink">
-                      {p.name}
-                    </span>
-                    {p.client && (
-                      <span className="max-w-[40%] truncate text-xs text-muted">
-                        {p.client}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function OverviewTimeline({
   projects,
   embedded = false,
+  financeSettings = null,
 }: {
   projects: Project[];
   /** Skip outer card chrome when nested in a parent panel. */
   embedded?: boolean;
+  /** When set, company salary + other are included as cash outflows. */
+  financeSettings?: CompanyFinanceSettings | null;
 }) {
   const withFlows = useMemo(
     () =>
@@ -769,6 +737,14 @@ export default function OverviewTimeline({
         .sort((a, b) => a.name.localeCompare(b.name)),
     [projects],
   );
+
+  const hasCompanyOpex = useMemo(() => {
+    if (!financeSettings) return false;
+    return (financeSettings.monthlyExpenses ?? []).some((raw) => {
+      const opex = normalizeCompanyMonthlyExpense(raw);
+      return opex != null && companyMonthlyCashTotal(opex) > 0;
+    });
+  }, [financeSettings]);
 
   const [selected, setSelected] = useState<Set<string> | null>(null);
   const [showIncome, setShowIncome] = useState(true);
@@ -804,9 +780,73 @@ export default function OverviewTimeline({
     return map;
   }, [selectedProjects]);
 
+  const asOfDate = asOfMonthStart(financeSettings?.openingCashAsOf);
+  const openingCash = financeSettings?.openingCash ?? 0;
+
+  const allFlows = useMemo(
+    () =>
+      collectFlows(
+        selectedProjects,
+        colorById,
+        // Company opex always included when settings provided (independent of project selection)
+        financeSettings,
+      ),
+    [selectedProjects, colorById, financeSettings],
+  );
+
+  const dataMonthBounds = useMemo(() => {
+    const months = allFlows.map((f) => f.date.slice(0, 7));
+    if (asOfDate) months.push(asOfDate.slice(0, 7));
+    if (months.length === 0) {
+      const today = new Date();
+      const cur = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+      return { from: cur, to: cur };
+    }
+    months.sort();
+    return { from: months[0], to: months[months.length - 1] };
+  }, [allFlows, asOfDate]);
+
+  const [chartFrom, setChartFrom] = useState<string | null>(null);
+  const [chartTo, setChartTo] = useState<string | null>(null);
+
+  const viewFrom = chartFrom ?? dataMonthBounds.from;
+  const viewTo = chartTo ?? dataMonthBounds.to;
+  const orderedFrom = viewFrom <= viewTo ? viewFrom : viewTo;
+  const orderedTo = viewFrom <= viewTo ? viewTo : viewFrom;
+  const rangeStartDay = `${orderedFrom}-01`;
+
   const flows = useMemo(
-    () => collectFlows(selectedProjects, colorById),
-    [selectedProjects, colorById],
+    () =>
+      allFlows.filter((f) => {
+        const m = f.date.slice(0, 7);
+        return m >= orderedFrom && m <= orderedTo;
+      }),
+    [allFlows, orderedFrom, orderedTo],
+  );
+
+  /** Opening cash at the chart cash-line start (rolled forward if view begins after as-of). */
+  const chartOpeningCash = useMemo(() => {
+    if (!asOfDate) return 0;
+    let cash = openingCash;
+    if (rangeStartDay > asOfDate) {
+      for (const f of allFlows) {
+        if (f.date >= asOfDate && f.date < rangeStartDay) {
+          cash += f.kind === "income" ? f.amount : -f.amount;
+        }
+      }
+    }
+    return cash;
+  }, [asOfDate, openingCash, rangeStartDay, allFlows]);
+
+  const cashLineStartDate = useMemo(() => {
+    if (!asOfDate) return null;
+    return asOfDate < rangeStartDay ? rangeStartDay : asOfDate;
+  }, [asOfDate, rangeStartDay]);
+
+  const cashFlowsInView = useMemo(
+    () =>
+      asOfDate ? flows.filter((f) => f.date >= asOfDate) : flows,
+    [flows, asOfDate],
   );
 
   const totalIncome = flows
@@ -815,7 +855,15 @@ export default function OverviewTimeline({
   const totalExpense = flows
     .filter((f) => f.kind === "expense")
     .reduce((s, i) => s + i.amount, 0);
-  const totalProfit = totalIncome - totalExpense;
+  const totalCash = asOfDate
+    ? chartOpeningCash +
+      cashFlowsInView
+        .filter((f) => f.kind === "income")
+        .reduce((s, i) => s + i.amount, 0) -
+      cashFlowsInView
+        .filter((f) => f.kind === "expense")
+        .reduce((s, i) => s + i.amount, 0)
+    : totalIncome - totalExpense;
 
   const upcoming = flows
     .filter((f) => f.kind === "income")
@@ -834,7 +882,7 @@ export default function OverviewTimeline({
     });
   }
 
-  if (withFlows.length === 0) {
+  if (withFlows.length === 0 && !hasCompanyOpex && !asOfDate) {
     const emptyBody = (
       <>
         {!embedded && (
@@ -891,11 +939,17 @@ export default function OverviewTimeline({
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Profit
+              {asOfDate ? "Cash" : "Profit"}
             </p>
             <p className="text-lg font-bold text-deep">
-              {formatMoney(totalProfit)}
+              {formatMoney(totalCash)}
             </p>
+            {asOfDate && (
+              <p className="text-[10px] text-muted">
+                opening {formatMoney(openingCash)} · as of{" "}
+                {formatDate(asOfDate)}
+              </p>
+            )}
           </div>
           {upcoming && (
             <div>
@@ -930,6 +984,26 @@ export default function OverviewTimeline({
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            From
+          </span>
+          <input
+            type="month"
+            value={orderedFrom}
+            onChange={(e) => setChartFrom(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-semibold text-ink outline-none focus:border-teal-accent"
+          />
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            To
+          </span>
+          <input
+            type="month"
+            value={orderedTo}
+            onChange={(e) => setChartTo(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-2 py-1.5 text-xs font-semibold text-ink outline-none focus:border-teal-accent"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Show
           </span>
@@ -946,7 +1020,7 @@ export default function OverviewTimeline({
             onToggle={() => setShowExpenses((v) => !v)}
           />
           <SeriesToggle
-            label="Profit"
+            label={asOfDate ? "Cash" : "Profit"}
             color={PROFIT_COLOR}
             on={showProfit}
             onToggle={() => setShowProfit((v) => !v)}
@@ -959,12 +1033,18 @@ export default function OverviewTimeline({
         showIncome={showIncome}
         showExpenses={showExpenses}
         showProfit={showProfit}
+        openingCash={chartOpeningCash}
+        asOfDate={asOfDate}
+        cashLineStartDate={cashLineStartDate}
       />
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
         <span>
           Up = income · Down = expenses · Solid = received/paid · Outline =
-          expected · Line = cumulative
+          expected
+          {asOfDate
+            ? " · Bars before As of are history only · Line = cash from opening"
+            : " · Line = cumulative"}
         </span>
         {selectedProjects.length === 1 && (
           <Link

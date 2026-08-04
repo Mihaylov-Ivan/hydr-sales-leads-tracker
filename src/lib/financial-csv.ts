@@ -8,7 +8,7 @@
  *   - expense       — expense schedule line
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
- *   - company_opex  — company monthly opex
+ *   - company_opex  — company monthly salary + unexpected other
  */
 
 import { sanitizeAppFinancials } from "./finance-import";
@@ -23,8 +23,12 @@ import {
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
+  companyMonthlyCashTotal,
   defaultFinanceSettings,
   emptyFinancials,
+  inferExpenseCategory,
+  isProjectExpenseCategory,
+  normalizeCompanyMonthlyExpense,
 } from "./types";
 
 export const FINANCIAL_CSV_HEADERS = [
@@ -54,6 +58,9 @@ export const FINANCIAL_CSV_HEADERS = [
   "prob_hot_lead",
   "prob_under_development",
   "prob_commissioned",
+  "salary",
+  "other",
+  "category",
 ] as const;
 
 export type FinancialCsvHeader = (typeof FINANCIAL_CSV_HEADERS)[number];
@@ -120,7 +127,9 @@ export function buildFinancialCsv(
     const r = emptyRow();
     r.type = "company_opex";
     r.month = opex.month;
-    r.amount = numStr(opex.amount);
+    r.salary = numStr(opex.salary);
+    r.other = numStr(opex.other);
+    r.amount = numStr(companyMonthlyCashTotal(opex));
     r.status = opex.status;
     lines.push(rowLine(r));
   }
@@ -166,6 +175,7 @@ export function buildFinancialCsv(
       r.actual_date = exp.actualDate ?? "";
       r.milestone_id = exp.milestoneId ?? "";
       r.created_at = exp.createdAt ?? "";
+      r.category = exp.category ?? inferExpenseCategory(exp.label);
       lines.push(rowLine(r));
     }
 
@@ -358,12 +368,24 @@ export function parseFinancialCsv(text: string):
 
     if (type === "company_opex") {
       const month = cell(row, "month");
-      const amount = parseOptionalNumber(cell(row, "amount"));
       const statusRaw = cell(row, "status") || "projected";
       const status: CompanyMonthlyExpenseStatus =
         statusRaw === "actual" ? "actual" : "projected";
-      if (!month || amount == null || amount <= 0) continue;
-      opex.push({ month, amount, status });
+      const salary =
+        parseOptionalNumber(cell(row, "salary")) ??
+        parseOptionalNumber(cell(row, "amount"));
+      const other = parseOptionalNumber(cell(row, "other")) ?? 0;
+      const normalized = normalizeCompanyMonthlyExpense({
+        month,
+        salary: salary ?? 0,
+        other,
+        status,
+        // legacy fallback if only amount was present without salary column
+        ...(salary == null
+          ? { amount: parseOptionalNumber(cell(row, "amount")) ?? 0 }
+          : {}),
+      });
+      if (normalized) opex.push(normalized);
       continue;
     }
 
@@ -426,6 +448,10 @@ export function parseFinancialCsv(text: string):
       if (label) expense.label = label;
       const mid = cell(row, "milestone_id");
       if (mid) expense.milestoneId = mid;
+      const categoryRaw = cell(row, "category");
+      expense.category = isProjectExpenseCategory(categoryRaw)
+        ? categoryRaw
+        : inferExpenseCategory(label);
       f.expenseSchedule.push(expense);
       continue;
     }

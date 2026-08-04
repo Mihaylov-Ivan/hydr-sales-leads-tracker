@@ -209,6 +209,59 @@ export interface ProjectPayment {
   createdAt: string; // ISO
 }
 
+/**
+ * Project expense kind.
+ * - man-hr: allocated labour (for project margin later — not company cash)
+ * - materials: purchases that hit cash
+ * - installation: extra pay above salary that hits cash
+ */
+export type ProjectExpenseCategory = "man-hr" | "materials" | "installation";
+
+export const PROJECT_EXPENSE_CATEGORIES: ProjectExpenseCategory[] = [
+  "man-hr",
+  "materials",
+  "installation",
+];
+
+export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
+  ProjectExpenseCategory,
+  string
+> = {
+  "man-hr": "Man-hr",
+  materials: "Materials",
+  installation: "Installation",
+};
+
+/** Categories that leave the company bank account */
+export const CASH_EXPENSE_CATEGORIES: ReadonlySet<ProjectExpenseCategory> =
+  new Set(["materials", "installation"]);
+
+export function isProjectExpenseCategory(
+  value: unknown,
+): value is ProjectExpenseCategory {
+  return (
+    value === "man-hr" || value === "materials" || value === "installation"
+  );
+}
+
+/** Best-effort category from free-text labels (imports / legacy rows). */
+export function inferExpenseCategory(
+  label?: string | null,
+): ProjectExpenseCategory {
+  const t = (label ?? "").trim().toLowerCase();
+  if (!t) return "materials";
+  if (
+    /\bman[\s-]?hrs?\b/.test(t) ||
+    /\blabou?r\b/.test(t) ||
+    /\bsalary\b/.test(t) ||
+    /\bwages?\b/.test(t)
+  ) {
+    return "man-hr";
+  }
+  if (/\binstall/.test(t)) return "installation";
+  return "materials";
+}
+
 /** A scheduled project cost / outflow */
 export interface ProjectExpenseItem {
   id: string;
@@ -223,8 +276,22 @@ export interface ProjectExpenseItem {
    */
   actualDate?: string;
   label?: string;
+  /**
+   * man-hr is for project analysis only; materials + installation hit cashflow.
+   * Missing on legacy rows — treat via `normalizeProjectExpense`.
+   */
+  category?: ProjectExpenseCategory;
   milestoneId?: string;
   createdAt: string; // ISO
+}
+
+export function normalizeProjectExpense(
+  item: ProjectExpenseItem,
+): ProjectExpenseItem {
+  const category = isProjectExpenseCategory(item.category)
+    ? item.category
+    : inferExpenseCategory(item.label);
+  return { ...item, category };
 }
 
 /** Stage → win probability (0–100). Used for weighted pipeline. */
@@ -240,18 +307,63 @@ export const DEFAULT_STAGE_PROBABILITIES: Record<
   commissioned: 100,
 };
 
-/** Company overhead for one calendar month (opex, salaries, etc.) */
+/** Company overhead for one calendar month (salaries + unexpected other). */
 export type CompanyMonthlyExpenseStatus = "actual" | "projected";
 
 export interface CompanyMonthlyExpense {
   /** yyyy-mm */
   month: string;
-  amount: number;
+  /** Payroll / fixed headcount cost for the month */
+  salary: number;
+  /** Unexpected company spend for the month (not from projects) */
+  other: number;
   /**
    * actual = money already spent (past / closed months)
-   * projected = planned company opex (current / future)
+   * projected = planned company spend (current / future)
    */
   status: CompanyMonthlyExpenseStatus;
+}
+
+export function companyMonthlyCashTotal(
+  entry: Pick<CompanyMonthlyExpense, "salary" | "other">,
+): number {
+  return Math.max(0, entry.salary || 0) + Math.max(0, entry.other || 0);
+}
+
+/**
+ * Accepts current `{ salary, other }` or legacy `{ amount }` rows from localStorage/CSV.
+ */
+export function normalizeCompanyMonthlyExpense(
+  raw: unknown,
+): CompanyMonthlyExpense | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const month = typeof r.month === "string" ? r.month.slice(0, 7) : "";
+  if (!/^\d{4}-\d{2}$/.test(month)) return null;
+  const status: CompanyMonthlyExpenseStatus =
+    r.status === "actual" ? "actual" : "projected";
+
+  let salary =
+    typeof r.salary === "number" && Number.isFinite(r.salary) ? r.salary : 0;
+  let other =
+    typeof r.other === "number" && Number.isFinite(r.other) ? r.other : 0;
+
+  // Legacy single-amount opex → salary
+  if (
+    salary <= 0 &&
+    other <= 0 &&
+    typeof r.amount === "number" &&
+    Number.isFinite(r.amount) &&
+    r.amount > 0
+  ) {
+    salary = r.amount;
+  }
+
+  if (salary < 0) salary = 0;
+  if (other < 0) other = 0;
+  if (salary <= 0 && other <= 0) return null;
+
+  return { month, salary, other, status };
 }
 
 /** Company-level cash plan settings (singleton) */
@@ -268,7 +380,7 @@ export interface CompanyFinanceSettings {
   openingCashAsOf?: string;
   minWorkingCapital: number;
   stageProbabilities: StageProbabilities;
-  /** Company monthly operating expenses (not project-linked) */
+  /** Per-month company salary + unexpected other (not project-linked) */
   monthlyExpenses: CompanyMonthlyExpense[];
 }
 

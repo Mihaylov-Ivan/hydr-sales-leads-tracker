@@ -19,6 +19,8 @@ import {
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
+  inferExpenseCategory,
+  normalizeProjectExpense,
   todayDate,
 } from "./types";
 
@@ -403,6 +405,7 @@ export function projectActualExpensesFromImport(
       id: `import-exp-${projectId}-${a.dueDate}-${i}`,
       amount: a.amount,
       dueDate: a.dueDate,
+      category: inferExpenseCategory(a.label),
       ...(a.actualDate ? { actualDate: a.actualDate } : {}),
       ...(a.label ? { label: a.label } : {}),
       ...(a.percent != null ? { percent: a.percent } : {}),
@@ -444,9 +447,9 @@ export function sanitizeAppFinancials(
   return {
     ...f,
     payments: (f.payments ?? []).filter((p) => !isFileOwnedFinanceId(p.id)),
-    expenseSchedule: (f.expenseSchedule ?? []).filter(
-      (e) => !isFileOwnedFinanceId(e.id),
-    ),
+    expenseSchedule: (f.expenseSchedule ?? [])
+      .filter((e) => !isFileOwnedFinanceId(e.id))
+      .map(normalizeProjectExpense),
     milestones: (f.milestones ?? []).filter((m) => !isFileOwnedFinanceId(m.id)),
   };
 }
@@ -475,6 +478,7 @@ export function expectedSchedulesForProject(
       id: `expect-exp-${projectId}-${a.dueDate}-${i}`,
       amount: a.amount,
       dueDate: a.dueDate,
+      category: inferExpenseCategory(a.label),
       ...(a.label ? { label: a.label } : {}),
       createdAt: data.importedAt,
     }));

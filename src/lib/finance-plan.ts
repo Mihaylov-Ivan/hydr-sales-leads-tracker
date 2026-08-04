@@ -1,9 +1,13 @@
 import {
+  CASH_EXPENSE_CATEGORIES,
   CompanyFinanceSettings,
   DEFAULT_STAGE_PROBABILITIES,
   Project,
+  ProjectExpenseCategory,
   ProjectPayment,
   Stage,
+  normalizeCompanyMonthlyExpense,
+  normalizeProjectExpense,
   todayDate,
 } from "./types";
 import { resolveLinkedDeadlineDate } from "./gantt-finance";
@@ -62,6 +66,7 @@ type CashKind = "inflow" | "outflow";
 
 type CashEvent = {
   projectId: string;
+  projectName: string;
   stage: Stage;
   kind: CashKind;
   amount: number;
@@ -69,6 +74,11 @@ type CashEvent = {
   actualMonth: string | null;
   dueDate: string;
   actualDate?: string;
+  /** Set for cash-affecting project outflows */
+  expenseCategory?: Extract<
+    ProjectExpenseCategory,
+    "materials" | "installation"
+  >;
 };
 
 function collectEvents(project: Project): CashEvent[] {
@@ -79,6 +89,7 @@ function collectEvents(project: Project): CashEvent[] {
     const due = effectiveScheduleDate(p, project);
     events.push({
       projectId: project.id,
+      projectName: project.name,
       stage: project.stage,
       kind: "inflow",
       amount: p.amount,
@@ -88,10 +99,16 @@ function collectEvents(project: Project): CashEvent[] {
       ...(p.actualDate ? { actualDate: p.actualDate } : {}),
     });
   }
-  for (const e of f.expenseSchedule ?? []) {
+  for (const raw of f.expenseSchedule ?? []) {
+    const e = normalizeProjectExpense(raw);
+    const category = e.category ?? "materials";
+    // man-hr is allocated labour already covered by company salary — skip cash
+    if (!CASH_EXPENSE_CATEGORIES.has(category)) continue;
+
     const due = effectiveScheduleDate(e, project);
     events.push({
       projectId: project.id,
+      projectName: project.name,
       stage: project.stage,
       kind: "outflow",
       amount: e.amount,
@@ -99,34 +116,37 @@ function collectEvents(project: Project): CashEvent[] {
       actualMonth: e.actualDate ? monthKey(e.actualDate) : null,
       dueDate: due,
       ...(e.actualDate ? { actualDate: e.actualDate } : {}),
+      expenseCategory: category as "materials" | "installation",
     });
   }
   return events;
 }
+
+export type MonthlyProjectBreakdown = {
+  projectId: string;
+  projectName: string;
+  amount: number;
+};
 
 export type MonthlyPlanRow = {
   month: string;
   label: string;
   period: "past" | "current" | "future";
   openingCash: number;
-  actualInflows: number;
-  actualOutflows: number;
-  actualNet: number;
-  contractedInflows: number;
-  contractedOutflows: number;
-  contractedNet: number;
-  companyOpexActual: number;
-  companyOpexProjected: number;
-  confirmedClosing: number;
-  weightedInflows: number;
-  weightedOutflows: number;
-  weightedNet: number;
-  expectedCash: number;
-  unweightedInflows: number;
-  unweightedOutflows: number;
-  unweightedNet: number;
+  /** All project payment inflows in this month (actual date or scheduled) */
+  projectIn: number;
+  salary: number;
+  other: number;
+  materialsOut: number;
+  installationOut: number;
+  projectInByProject: MonthlyProjectBreakdown[];
+  materialsByProject: MonthlyProjectBreakdown[];
+  installationByProject: MonthlyProjectBreakdown[];
+  /** projectIn − materials − install − salary − other */
+  net: number;
+  /** Opening + net */
+  closingCash: number;
   belowMinWorkingCapital: boolean;
-  expectedBelowMinWorkingCapital: boolean;
 };
 
 export type BuildMonthlyPlanOptions = {
@@ -178,7 +198,9 @@ function monthKeysBetween(fromKey: string, toKey: string): string[] {
 
 /**
  * Baseline (`openingCash` at `openingCashAsOf`) is cash at that month's open.
- * All later in/out comes from projects + company opex.
+ * Firm cash out = company salary + unexpected other + project materials + installation.
+ * Project man-hr is excluded (covered by salary).
+ * Pipeline project cash is included at face value (no win-probability weighting).
  * `fromMonth`/`toMonth` only control which months are visible — independent of baseline.
  */
 export function buildMonthlyPlan(
@@ -209,29 +231,25 @@ export function buildMonthlyPlan(
     .flatMap(collectEvents);
 
   type Bucket = {
-    actualIn: number;
-    actualOut: number;
-    contractedIn: number;
-    contractedOut: number;
-    weightedIn: number;
-    weightedOut: number;
-    unweightedIn: number;
-    unweightedOut: number;
-    companyOpexActual: number;
-    companyOpexProjected: number;
+    projectIn: number;
+    salary: number;
+    other: number;
+    materialsOut: number;
+    installationOut: number;
+    projectInById: Map<string, MonthlyProjectBreakdown>;
+    materialsById: Map<string, MonthlyProjectBreakdown>;
+    installationById: Map<string, MonthlyProjectBreakdown>;
   };
 
   const emptyBucket = (): Bucket => ({
-    actualIn: 0,
-    actualOut: 0,
-    contractedIn: 0,
-    contractedOut: 0,
-    weightedIn: 0,
-    weightedOut: 0,
-    unweightedIn: 0,
-    unweightedOut: 0,
-    companyOpexActual: 0,
-    companyOpexProjected: 0,
+    projectIn: 0,
+    salary: 0,
+    other: 0,
+    materialsOut: 0,
+    installationOut: 0,
+    projectInById: new Map(),
+    materialsById: new Map(),
+    installationById: new Map(),
   });
 
   const buckets = new Map<string, Bucket>();
@@ -242,44 +260,107 @@ export function buildMonthlyPlan(
     if (!monthSet.has(key)) return;
     const b = buckets.get(key);
     if (!b) return;
+    if (
+      field === "projectInById" ||
+      field === "materialsById" ||
+      field === "installationById"
+    ) {
+      return;
+    }
     b[field] += amount;
   }
 
+  function addProject(
+    key: string,
+    map: Map<string, MonthlyProjectBreakdown>,
+    projectId: string,
+    projectName: string,
+    amount: number,
+  ) {
+    if (key < asOf) return;
+    if (!monthSet.has(key)) return;
+    const existing = map.get(projectId);
+    if (existing) {
+      existing.amount += amount;
+    } else {
+      map.set(projectId, { projectId, projectName, amount });
+    }
+  }
+
+  function sortedBreakdown(
+    map: Map<string, MonthlyProjectBreakdown>,
+  ): MonthlyProjectBreakdown[] {
+    return [...map.values()].sort(
+      (a, b) =>
+        b.amount - a.amount || a.projectName.localeCompare(b.projectName),
+    );
+  }
+
   for (const ev of events) {
-    if (ev.actualMonth) {
-      if (ev.kind === "inflow") add(ev.actualMonth, "actualIn", ev.amount);
-      else add(ev.actualMonth, "actualOut", ev.amount);
+    // Face-value firm plan: contracted + pipeline schedules, plus anything already actualized
+    if (
+      !ev.actualMonth &&
+      !isContracted(ev.stage) &&
+      !isPipeline(ev.stage)
+    ) {
       continue;
     }
-    if (isContracted(ev.stage)) {
-      if (ev.kind === "inflow") add(ev.expectedMonth, "contractedIn", ev.amount);
-      else add(ev.expectedMonth, "contractedOut", ev.amount);
-    } else if (isPipeline(ev.stage)) {
-      const p = probabilityFor(ev.stage, settings) / 100;
-      if (ev.kind === "inflow") {
-        add(ev.expectedMonth, "unweightedIn", ev.amount);
-        add(ev.expectedMonth, "weightedIn", ev.amount * p);
-      } else {
-        add(ev.expectedMonth, "unweightedOut", ev.amount);
-        add(ev.expectedMonth, "weightedOut", ev.amount * p);
+    const month = ev.actualMonth ?? ev.expectedMonth;
+    const b = buckets.get(month);
+    if (ev.kind === "inflow") {
+      add(month, "projectIn", ev.amount);
+      if (b) {
+        addProject(
+          month,
+          b.projectInById,
+          ev.projectId,
+          ev.projectName,
+          ev.amount,
+        );
+      }
+      continue;
+    }
+    if (ev.expenseCategory === "materials") {
+      add(month, "materialsOut", ev.amount);
+      if (b) {
+        addProject(
+          month,
+          b.materialsById,
+          ev.projectId,
+          ev.projectName,
+          ev.amount,
+        );
+      }
+    } else if (ev.expenseCategory === "installation") {
+      add(month, "installationOut", ev.amount);
+      if (b) {
+        addProject(
+          month,
+          b.installationById,
+          ev.projectId,
+          ev.projectName,
+          ev.amount,
+        );
       }
     }
   }
 
-  for (const opex of settings.monthlyExpenses ?? []) {
-    if (opex.amount <= 0) continue;
-    if (opex.status === "actual") {
-      add(opex.month, "companyOpexActual", opex.amount);
-      add(opex.month, "actualOut", opex.amount);
-    } else {
-      add(opex.month, "companyOpexProjected", opex.amount);
-      add(opex.month, "contractedOut", opex.amount);
-    }
+  for (const raw of settings.monthlyExpenses ?? []) {
+    const opex = normalizeCompanyMonthlyExpense(raw);
+    if (!opex) continue;
+    if (opex.salary > 0) add(opex.month, "salary", opex.salary);
+    if (opex.other > 0) add(opex.month, "other", opex.other);
   }
 
   if (options.companyIncomesByMonth) {
     for (const [month, amount] of options.companyIncomesByMonth) {
-      if (amount > 0) add(month, "actualIn", amount);
+      if (amount > 0) {
+        add(month, "projectIn", amount);
+        const b = buckets.get(month);
+        if (b) {
+          addProject(month, b.projectInById, "__company__", "Company", amount);
+        }
+      }
     }
   }
 
@@ -295,36 +376,26 @@ export function buildMonthlyPlan(
           label: formatMonthLabel(key),
           period: monthPeriod(key, currentKey),
           openingCash: opening,
-          actualInflows: 0,
-          actualOutflows: 0,
-          actualNet: 0,
-          contractedInflows: 0,
-          contractedOutflows: 0,
-          contractedNet: 0,
-          companyOpexActual: 0,
-          companyOpexProjected: 0,
-          confirmedClosing: opening,
-          weightedInflows: 0,
-          weightedOutflows: 0,
-          weightedNet: 0,
-          expectedCash: opening,
-          unweightedInflows: 0,
-          unweightedOutflows: 0,
-          unweightedNet: 0,
+          projectIn: 0,
+          salary: 0,
+          other: 0,
+          materialsOut: 0,
+          installationOut: 0,
+          projectInByProject: [],
+          materialsByProject: [],
+          installationByProject: [],
+          net: 0,
+          closingCash: opening,
           belowMinWorkingCapital: opening < minWc,
-          expectedBelowMinWorkingCapital: opening < minWc,
         });
       }
       continue;
     }
 
     const b = buckets.get(key) ?? emptyBucket();
-    const actualNet = b.actualIn - b.actualOut;
-    const contractedNet = b.contractedIn - b.contractedOut;
-    const weightedNet = b.weightedIn - b.weightedOut;
-    const unweightedNet = b.unweightedIn - b.unweightedOut;
-    const confirmedClosing = opening + actualNet + contractedNet;
-    const expectedCash = confirmedClosing + weightedNet;
+    const out = b.materialsOut + b.installationOut + b.salary + b.other;
+    const net = b.projectIn - out;
+    const closingCash = opening + net;
 
     if (key >= viewFrom && key <= viewTo) {
       rows.push({
@@ -332,28 +403,21 @@ export function buildMonthlyPlan(
         label: formatMonthLabel(key),
         period: monthPeriod(key, currentKey),
         openingCash: opening,
-        actualInflows: b.actualIn,
-        actualOutflows: b.actualOut,
-        actualNet,
-        contractedInflows: b.contractedIn,
-        contractedOutflows: b.contractedOut,
-        contractedNet,
-        companyOpexActual: b.companyOpexActual,
-        companyOpexProjected: b.companyOpexProjected,
-        confirmedClosing,
-        weightedInflows: b.weightedIn,
-        weightedOutflows: b.weightedOut,
-        weightedNet,
-        expectedCash,
-        unweightedInflows: b.unweightedIn,
-        unweightedOutflows: b.unweightedOut,
-        unweightedNet,
-        belowMinWorkingCapital: confirmedClosing < minWc,
-        expectedBelowMinWorkingCapital: expectedCash < minWc,
+        projectIn: b.projectIn,
+        salary: b.salary,
+        other: b.other,
+        materialsOut: b.materialsOut,
+        installationOut: b.installationOut,
+        projectInByProject: sortedBreakdown(b.projectInById),
+        materialsByProject: sortedBreakdown(b.materialsById),
+        installationByProject: sortedBreakdown(b.installationById),
+        net,
+        closingCash,
+        belowMinWorkingCapital: closingCash < minWc,
       });
     }
 
-    opening = confirmedClosing;
+    opening = closingCash;
   }
 
   return rows;
@@ -393,7 +457,8 @@ export function contractedProjectKpis(
     .filter((p) => p.actualDate)
     .reduce((s, p) => s + p.amount, 0);
   const actualOut = expenses
-    .filter((e) => e.actualDate)
+    .map(normalizeProjectExpense)
+    .filter((e) => e.actualDate && CASH_EXPENSE_CATEGORIES.has(e.category!))
     .reduce((s, e) => s + e.amount, 0);
 
   const contractValue = f.contractValue ?? null;

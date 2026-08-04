@@ -13,6 +13,7 @@ import {
   Project,
   ProjectComment,
   ProjectContact,
+  ProjectExpenseCategory,
   ProjectExpenseItem,
   ProjectFile,
   ProjectFileKind,
@@ -36,6 +37,8 @@ import {
   emptySchedule,
   defaultFinanceSettings,
   defaultMetricsSettings,
+  normalizeCompanyMonthlyExpense,
+  normalizeProjectExpense,
   normalizeStage,
   todayDate,
   addDays,
@@ -321,8 +324,10 @@ export interface PaymentInput {
   actualDate?: string | null;
 }
 
-/** Same shape as a payment — dated cash outflow */
-export type ExpenseInput = PaymentInput;
+/** Dated project outflow; category drives cash vs margin-only handling */
+export interface ExpenseInput extends PaymentInput {
+  category: ProjectExpenseCategory;
+}
 
 export interface FinanceSettingsPatch {
   openingCash?: number;
@@ -654,6 +659,8 @@ function loadLocalFinanceSettings(): CompanyFinanceSettings {
       },
       monthlyExpenses: Array.isArray(parsed.monthlyExpenses)
         ? parsed.monthlyExpenses
+            .map(normalizeCompanyMonthlyExpense)
+            .filter((e): e is NonNullable<typeof e> => e != null)
         : base.monthlyExpenses,
       ...(typeof parsed.openingCashAsOf === "string"
         ? { openingCashAsOf: parsed.openingCashAsOf.slice(0, 7) }
@@ -1044,6 +1051,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         monthlyExpenses:
           patch.monthlyExpenses !== undefined
             ? patch.monthlyExpenses
+                .map(normalizeCompanyMonthlyExpense)
+                .filter((e): e is NonNullable<typeof e> => e != null)
             : prev.monthlyExpenses,
       };
       if (patch.openingCashAsOf !== undefined) {
@@ -2100,6 +2109,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const expense: ProjectExpenseItem = {
         id: crypto.randomUUID(),
         amount: input.amount,
+        category: input.category,
         ...(input.percent != null ? { percent: input.percent } : {}),
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
@@ -2129,6 +2139,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           const next: ProjectExpenseItem = {
             id: e.id,
             amount: patch.amount,
+            category: patch.category,
             dueDate,
             createdAt: e.createdAt,
           };

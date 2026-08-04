@@ -8,9 +8,14 @@ import {
   projectLinkableDeadlines,
 } from "@/lib/gantt-finance";
 import {
+  PROJECT_EXPENSE_CATEGORIES,
+  PROJECT_EXPENSE_CATEGORY_LABELS,
+  ProjectExpenseCategory,
   ProjectExpenseItem,
   ProjectFinancials,
   ProjectPayment,
+  inferExpenseCategory,
+  normalizeProjectExpense,
   todayDate,
 } from "@/lib/types";
 
@@ -85,6 +90,10 @@ function CashItemRow({
     updateExpense,
     deleteExpense,
   } = useProjects();
+  const expenseItem =
+    kind === "expense"
+      ? normalizeProjectExpense(item as ProjectExpenseItem)
+      : null;
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(String(item.amount));
   const [percent, setPercent] = useState(
@@ -94,6 +103,9 @@ function CashItemRow({
   const [actualDate, setActualDate] = useState(item.actualDate ?? "");
   const [label, setLabel] = useState(item.label ?? "");
   const [linkId, setLinkId] = useState(item.milestoneId ?? "");
+  const [category, setCategory] = useState<ProjectExpenseCategory>(
+    expenseItem?.category ?? "materials",
+  );
 
   const linked = findLinkableDeadline(linkId, events);
   const accent =
@@ -107,6 +119,12 @@ function CashItemRow({
     setActualDate(item.actualDate ?? "");
     setLabel(item.label ?? "");
     setLinkId(item.milestoneId ?? "");
+    if (kind === "expense") {
+      setCategory(
+        normalizeProjectExpense(item as ProjectExpenseItem).category ??
+          "materials",
+      );
+    }
     setEditing(true);
   }
 
@@ -134,16 +152,26 @@ function CashItemRow({
     }
     const date = linked?.date ?? dueDate;
     if (amt == null || amt <= 0 || !date) return;
-    const patch = {
-      amount: amt,
-      ...(pct != null ? { percent: pct } : {}),
-      dueDate: date,
-      label,
-      ...(linked ? { milestoneId: linked.id } : {}),
-      actualDate: actualDate.trim() ? actualDate.trim() : null,
-    };
-    if (kind === "payment") updatePayment(projectId, item.id, patch);
-    else updateExpense(projectId, item.id, patch);
+    if (kind === "payment") {
+      updatePayment(projectId, item.id, {
+        amount: amt,
+        ...(pct != null ? { percent: pct } : {}),
+        dueDate: date,
+        label,
+        ...(linked ? { milestoneId: linked.id } : {}),
+        actualDate: actualDate.trim() ? actualDate.trim() : null,
+      });
+    } else {
+      updateExpense(projectId, item.id, {
+        amount: amt,
+        ...(pct != null ? { percent: pct } : {}),
+        dueDate: date,
+        label,
+        category,
+        ...(linked ? { milestoneId: linked.id } : {}),
+        actualDate: actualDate.trim() ? actualDate.trim() : null,
+      });
+    }
     setEditing(false);
   }
 
@@ -194,6 +222,24 @@ function CashItemRow({
               </option>
             ))}
           </select>
+          {kind === "expense" && (
+            <div>
+              <span className={labelTiny}>Type</span>
+              <select
+                value={category}
+                onChange={(e) =>
+                  setCategory(e.target.value as ProjectExpenseCategory)
+                }
+                className={inputCls}
+              >
+                {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -227,33 +273,59 @@ function CashItemRow({
   const isDelayed = !isActual && expectedDate < todayDate();
   const fromImport = isImportedId(item.id);
   const pct = resolveContractPercent(item.amount, contractValue, item.percent);
+  const displayCategory =
+    kind === "expense"
+      ? (expenseItem?.category ?? inferExpenseCategory(item.label))
+      : null;
 
   function markDone() {
     if (fromImport) return;
-    const patch = {
-      amount: item.amount,
-      ...(item.percent != null ? { percent: item.percent } : {}),
-      dueDate: item.dueDate,
-      label: item.label ?? "",
-      ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
+    if (kind === "payment") {
+      updatePayment(projectId, item.id, {
+        amount: item.amount,
+        ...(item.percent != null ? { percent: item.percent } : {}),
+        dueDate: item.dueDate,
+        label: item.label ?? "",
+        ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
+        actualDate: todayDate(),
+      });
+      return;
+    }
+    const exp = normalizeProjectExpense(item as ProjectExpenseItem);
+    updateExpense(projectId, item.id, {
+      amount: exp.amount,
+      ...(exp.percent != null ? { percent: exp.percent } : {}),
+      dueDate: exp.dueDate,
+      label: exp.label ?? "",
+      category: exp.category ?? "materials",
+      ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
       actualDate: todayDate(),
-    };
-    if (kind === "payment") updatePayment(projectId, item.id, patch);
-    else updateExpense(projectId, item.id, patch);
+    });
   }
 
   function clearActual() {
     if (fromImport) return;
-    const patch = {
-      amount: item.amount,
-      ...(item.percent != null ? { percent: item.percent } : {}),
-      dueDate: item.dueDate,
-      label: item.label ?? "",
-      ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
-      actualDate: null as string | null,
-    };
-    if (kind === "payment") updatePayment(projectId, item.id, patch);
-    else updateExpense(projectId, item.id, patch);
+    if (kind === "payment") {
+      updatePayment(projectId, item.id, {
+        amount: item.amount,
+        ...(item.percent != null ? { percent: item.percent } : {}),
+        dueDate: item.dueDate,
+        label: item.label ?? "",
+        ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
+        actualDate: null,
+      });
+      return;
+    }
+    const exp = normalizeProjectExpense(item as ProjectExpenseItem);
+    updateExpense(projectId, item.id, {
+      amount: exp.amount,
+      ...(exp.percent != null ? { percent: exp.percent } : {}),
+      dueDate: exp.dueDate,
+      label: exp.label ?? "",
+      category: exp.category ?? "materials",
+      ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
+      actualDate: null,
+    });
   }
 
   return (
@@ -270,6 +342,24 @@ function CashItemRow({
           </span>
         )}
       </span>
+      {displayCategory && (
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+            displayCategory === "man-hr"
+              ? "bg-muted/20 text-muted"
+              : displayCategory === "installation"
+                ? "bg-amber-accent/15 text-amber-accent"
+                : "bg-deep/10 text-deep"
+          }`}
+          title={
+            displayCategory === "man-hr"
+              ? "Allocated labour — not added to company cash (covered by salary)"
+              : "Hits company cashflow"
+          }
+        >
+          {PROJECT_EXPENSE_CATEGORY_LABELS[displayCategory]}
+        </span>
+      )}
       <span className="text-muted">expected {formatDate(expectedDate)}</span>
       {isActual && (
         <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
@@ -365,6 +455,8 @@ function AddCashForm({
   const [actualDate, setActualDate] = useState("");
   const [label, setLabel] = useState("");
   const [linkId, setLinkId] = useState("");
+  const [category, setCategory] =
+    useState<ProjectExpenseCategory>("materials");
   const [error, setError] = useState<string | null>(null);
 
   const linked = findLinkableDeadline(linkId, events);
@@ -420,22 +512,33 @@ function AddCashForm({
       setError("Pick an expected date, or link to a schedule event.");
       return;
     }
-    const input = {
-      amount: amt,
-      ...(pct != null ? { percent: pct } : {}),
-      dueDate,
-      label,
-      ...(linked ? { milestoneId: linked.id } : {}),
-      ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
-    };
-    if (kind === "payment") addPayment(projectId, input);
-    else addExpense(projectId, input);
+    if (kind === "payment") {
+      addPayment(projectId, {
+        amount: amt,
+        ...(pct != null ? { percent: pct } : {}),
+        dueDate,
+        label,
+        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
+      });
+    } else {
+      addExpense(projectId, {
+        amount: amt,
+        ...(pct != null ? { percent: pct } : {}),
+        dueDate,
+        label,
+        category,
+        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
+      });
+    }
     setAmount("");
     setPercent("");
     setDate("");
     setActualDate("");
     setLabel("");
     setLinkId("");
+    setCategory("materials");
     setError(null);
   }
 
@@ -507,6 +610,25 @@ function AddCashForm({
           </option>
         ))}
       </select>
+      {kind === "expense" && (
+        <div>
+          <span className={labelTiny}>Type</span>
+          <select
+            value={category}
+            onChange={(e) =>
+              setCategory(e.target.value as ProjectExpenseCategory)
+            }
+            className={inputCls}
+            title="Man-hr is for project analysis only; materials & installation hit cashflow"
+          >
+            {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
@@ -617,6 +739,10 @@ export default function GanttFinancials({
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-accent">
             Expenses
           </h4>
+          <p className="mb-2 text-[10px] text-muted">
+            Materials &amp; installation hit company cash. Man-hr is for project
+            analysis only (salary covers payroll).
+          </p>
           <AddCashForm
             kind="expense"
             projectId={projectId}
