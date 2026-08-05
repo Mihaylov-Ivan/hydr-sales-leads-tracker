@@ -690,6 +690,9 @@ function loadLocalFinanceImport(): FinanceImportData | null {
       projectMilestones: Array.isArray(parsed.projectMilestones)
         ? parsed.projectMilestones
         : [],
+      ...(Array.isArray(parsed.companyMonthlyExpenses)
+        ? { companyMonthlyExpenses: parsed.companyMonthlyExpenses }
+        : {}),
     };
   } catch {
     return null;

@@ -631,6 +631,7 @@ export default function FinancePage() {
                     projects,
                     financeImport,
                     `finance2-${today}.xlsx`,
+                    financeSettings,
                   );
                   setImportError(null);
                   if (rowCount === 0) {

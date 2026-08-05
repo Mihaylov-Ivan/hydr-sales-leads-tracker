@@ -1,8 +1,13 @@
 /**
- * Finance import from a single Excel sheet (finance2.xlsx style).
+ * Finance import from Excel (finance2.xlsx style).
  *
- * Sheet "Data" columns:
- *   Project | Date | Income | Expense | Deadline
+ * Sheet "Data":
+ *   Project | Date | Income | Expense | Deadline | Category
+ *   Category (optional, expenses): man-hr | materials | installation
+ *   Missing category → inferred from Deadline/label.
+ *
+ * Sheet "Company" (optional):
+ *   Month | Salary | Other | Status
  *
  * Date ≤ today → actual (past cash).
  * Date > today → expected (from file; merged at read time, not stored in project financials).
@@ -12,14 +17,18 @@ import * as XLSX from "xlsx";
 import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
+  CompanyMonthlyExpenseStatus,
   MilestoneKind,
   MILESTONE_KINDS,
   MILESTONE_LABELS,
+  ProjectExpenseCategory,
   ProjectExpenseItem,
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
   inferExpenseCategory,
+  isProjectExpenseCategory,
+  normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   todayDate,
 } from "./types";
@@ -43,6 +52,8 @@ export type ImportedProjectActual = {
   percent?: number;
   /** Deadline tag from Excel (FAT / SAT / …) */
   deadline?: string;
+  /** Expense category from Excel Category column */
+  category?: ProjectExpenseCategory;
 };
 
 export type ImportedProjectMilestone = {
@@ -62,6 +73,8 @@ export type FinanceImportData = {
   /** Future expected rows from Excel (no actualDate) */
   projectExpected: ImportedProjectActual[];
   projectMilestones: ImportedProjectMilestone[];
+  /** Company salary + other by month (from Company sheet) */
+  companyMonthlyExpenses?: CompanyMonthlyExpense[];
   openingCash?: number;
   openingCashAsOf?: string;
 };
@@ -210,6 +223,7 @@ export function parseFinanceDataRows(
     "expense_amount",
   );
   const iDeadline = headerIndex(headers, "deadline", "milestone", "label");
+  const iCategory = headerIndex(headers, "category", "type", "expense_type");
 
   if (iProject < 0 || iDate < 0) {
     return {
@@ -240,6 +254,7 @@ export function parseFinanceDataRows(
     date: string,
     deadline: string | undefined,
     isActual: boolean,
+    category?: ProjectExpenseCategory,
   ) {
     const line: ImportedProjectActual = {
       projectName,
@@ -248,6 +263,12 @@ export function parseFinanceDataRows(
       dueDate: date,
       ...(isActual ? { actualDate: date } : {}),
       ...(deadline ? { label: deadline, deadline } : {}),
+      ...(type === "expense"
+        ? {
+            category:
+              category ?? inferExpenseCategory(deadline),
+          }
+        : {}),
     };
     if (isActual) actuals.push(line);
     else expected.push(line);
@@ -262,13 +283,26 @@ export function parseFinanceDataRows(
     const expense = iExpense >= 0 ? Math.max(0, num(r[iExpense])) : 0;
     const deadline =
       iDeadline >= 0 && r[iDeadline] ? r[iDeadline].trim() : undefined;
+    const categoryRaw =
+      iCategory >= 0 && r[iCategory] ? r[iCategory].trim().toLowerCase() : "";
+    const category = isProjectExpenseCategory(categoryRaw)
+      ? categoryRaw
+      : undefined;
     const isActual = date <= today;
 
     if (income > 0) {
       pushLine(projectName, "income", income, date, deadline, isActual);
     }
     if (expense > 0) {
-      pushLine(projectName, "expense", expense, date, deadline, isActual);
+      pushLine(
+        projectName,
+        "expense",
+        expense,
+        date,
+        deadline,
+        isActual,
+        category,
+      );
     }
 
     if (deadline) {
@@ -291,6 +325,76 @@ export function parseFinanceDataRows(
   return { actuals, expected, milestones };
 }
 
+export function parseCompanySheetRows(
+  rows: string[][],
+): CompanyMonthlyExpense[] {
+  if (rows.length < 2) return [];
+  const headers = rows[0];
+  const iMonth = headerIndex(headers, "month", "date");
+  const iSalary = headerIndex(headers, "salary", "salaries", "payroll");
+  const iOther = headerIndex(headers, "other", "unexpected");
+  const iStatus = headerIndex(headers, "status");
+  // Legacy single amount column
+  const iAmount = headerIndex(headers, "amount", "expense", "opex");
+
+  if (iMonth < 0) return [];
+
+  const out: CompanyMonthlyExpense[] = [];
+  for (const r of rows.slice(1)) {
+    const monthRaw = (r[iMonth] ?? "").trim();
+    const monthIso = parseToIsoDate(monthRaw);
+    const month = monthIso
+      ? monthIso.slice(0, 7)
+      : /^\d{4}-\d{2}$/.test(monthRaw)
+        ? monthRaw
+        : "";
+    if (!month) continue;
+
+    const statusRaw = iStatus >= 0 ? (r[iStatus] ?? "").trim().toLowerCase() : "";
+    const status: CompanyMonthlyExpenseStatus =
+      statusRaw === "actual" ? "actual" : "projected";
+
+    const salary =
+      iSalary >= 0
+        ? Math.max(0, num(r[iSalary]))
+        : iAmount >= 0
+          ? Math.max(0, num(r[iAmount]))
+          : 0;
+    const other = iOther >= 0 ? Math.max(0, num(r[iOther])) : 0;
+
+    const normalized = normalizeCompanyMonthlyExpense({
+      month,
+      salary,
+      other,
+      status,
+    });
+    if (normalized) out.push(normalized);
+  }
+  return out.sort((a, b) => a.month.localeCompare(b.month));
+}
+
+function findCompanySheet(wb: XLSX.WorkBook): XLSX.WorkSheet | null {
+  const exact = wb.SheetNames.find((n) => {
+    const t = n.trim().toLowerCase();
+    return t === "company" || t === "company_opex" || t === "opex";
+  });
+  if (exact) return wb.Sheets[exact] ?? null;
+
+  for (const name of wb.SheetNames) {
+    const rows = sheetToRows(wb.Sheets[name]!);
+    if (rows.length < 1) continue;
+    const headers = rows[0];
+    const hasMonth = headerIndex(headers, "month", "date") >= 0;
+    const hasSalary =
+      headerIndex(headers, "salary", "salaries", "payroll") >= 0;
+    const hasOther = headerIndex(headers, "other") >= 0;
+    if (hasMonth && (hasSalary || hasOther)) {
+      return wb.Sheets[name] ?? null;
+    }
+  }
+  return null;
+}
+
 export function parseFinanceWorkbook(
   buffer: ArrayBuffer,
   sourceLabel: string,
@@ -310,13 +414,27 @@ export function parseFinanceWorkbook(
 
   const parsed = parseFinanceDataRows(sheetToRows(sheet), today);
   if (parsed.error) return { ok: false, error: parsed.error };
-  if (parsed.actuals.length === 0 && parsed.expected.length === 0) {
+
+  const companySheet = findCompanySheet(wb);
+  const companyMonthlyExpenses = companySheet
+    ? parseCompanySheetRows(sheetToRows(companySheet))
+    : [];
+
+  if (
+    parsed.actuals.length === 0 &&
+    parsed.expected.length === 0 &&
+    companyMonthlyExpenses.length === 0
+  ) {
     return { ok: false, error: "No income/expense rows found in the sheet" };
   }
 
   const months = [
     ...new Set(
-      [...parsed.actuals, ...parsed.expected].map((a) => a.dueDate.slice(0, 7)),
+      [
+        ...parsed.actuals.map((a) => a.dueDate.slice(0, 7)),
+        ...parsed.expected.map((a) => a.dueDate.slice(0, 7)),
+        ...companyMonthlyExpenses.map((e) => e.month),
+      ].filter(Boolean),
     ),
   ].sort();
 
@@ -329,6 +447,9 @@ export function parseFinanceWorkbook(
       projectActuals: parsed.actuals,
       projectExpected: parsed.expected,
       projectMilestones: parsed.milestones,
+      ...(companyMonthlyExpenses.length > 0
+        ? { companyMonthlyExpenses }
+        : {}),
       ...(months[0] ? { openingCashAsOf: months[0] } : {}),
     },
   };
@@ -346,9 +467,11 @@ export function buildFinanceImport(
 }
 
 export function companyExpensesFromImport(
-  _data: FinanceImportData,
+  data: FinanceImportData,
 ): CompanyMonthlyExpense[] {
-  return [];
+  return (data.companyMonthlyExpenses ?? [])
+    .map(normalizeCompanyMonthlyExpense)
+    .filter((e): e is NonNullable<typeof e> => e != null);
 }
 
 export function companyIncomesFromImport(
@@ -405,7 +528,7 @@ export function projectActualExpensesFromImport(
       id: `import-exp-${projectId}-${a.dueDate}-${i}`,
       amount: a.amount,
       dueDate: a.dueDate,
-      category: inferExpenseCategory(a.label),
+      category: a.category ?? inferExpenseCategory(a.label),
       ...(a.actualDate ? { actualDate: a.actualDate } : {}),
       ...(a.label ? { label: a.label } : {}),
       ...(a.percent != null ? { percent: a.percent } : {}),
@@ -478,7 +601,7 @@ export function expectedSchedulesForProject(
       id: `expect-exp-${projectId}-${a.dueDate}-${i}`,
       amount: a.amount,
       dueDate: a.dueDate,
-      category: inferExpenseCategory(a.label),
+      category: a.category ?? inferExpenseCategory(a.label),
       ...(a.label ? { label: a.label } : {}),
       createdAt: data.importedAt,
     }));
@@ -486,8 +609,9 @@ export function expectedSchedulesForProject(
 }
 
 /**
- * After import: clear company projected opex to 0 (manual entry only),
- * set opening as-of to earliest month in the file.
+ * After import: apply Company sheet salary/other when present,
+ * otherwise clear company opex (manual entry until next export/import).
+ * Set opening as-of to earliest month in the file.
  */
 export function settingsAfterImport(
   prev: CompanyFinanceSettings,
@@ -497,16 +621,21 @@ export function settingsAfterImport(
     ...data.projectActuals.map((a) => a.dueDate.slice(0, 7)),
     ...(data.projectExpected ?? []).map((a) => a.dueDate.slice(0, 7)),
     ...data.companyMonths.map((m) => m.month),
+    ...(data.companyMonthlyExpenses ?? []).map((e) => e.month),
   ]
     .filter(Boolean)
     .sort();
   const earliest = data.openingCashAsOf ?? months[0];
 
+  const fromFile = (data.companyMonthlyExpenses ?? [])
+    .map(normalizeCompanyMonthlyExpense)
+    .filter((e): e is NonNullable<typeof e> => e != null);
+
   return {
     ...prev,
     openingCash: data.openingCash ?? prev.openingCash,
     ...(earliest ? { openingCashAsOf: earliest } : {}),
-    monthlyExpenses: [],
+    monthlyExpenses: fromFile.length > 0 ? fromFile : [],
   };
 }
 
