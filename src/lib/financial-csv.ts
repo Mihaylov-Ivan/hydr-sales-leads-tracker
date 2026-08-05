@@ -47,6 +47,8 @@ export const FINANCIAL_CSV_HEADERS = [
   "contract_signed_date",
   "expenses",
   "expected_profit",
+  "max_materials_expense",
+  "max_man_hr_expense",
   "milestone_kind",
   "milestone_note",
   "month",
@@ -142,6 +144,8 @@ export function buildFinancialCsv(
     base.contract_signed_date = f.contractSignedDate ?? "";
     base.expenses = numStr(f.expenses);
     base.expected_profit = numStr(f.expectedProfit);
+    base.max_materials_expense = numStr(f.maxMaterialsExpense);
+    base.max_man_hr_expense = numStr(f.maxManHrExpense);
     lines.push(rowLine(base));
 
     for (const pay of f.payments) {
@@ -408,11 +412,15 @@ export function parseFinancialCsv(text: string):
       const ex = parseOptionalNumber(cell(row, "expenses"));
       const ep = parseOptionalNumber(cell(row, "expected_profit"));
       const signed = cell(row, "contract_signed_date");
+      const maxMat = parseOptionalNumber(cell(row, "max_materials_expense"));
+      const maxMan = parseOptionalNumber(cell(row, "max_man_hr_expense"));
       if (cv !== undefined) f.contractValue = cv;
       if (ex !== undefined) f.expenses = ex;
       if (ep !== undefined) f.expectedProfit = ep;
       else if (cv !== undefined && ex !== undefined) f.expectedProfit = cv - ex;
       if (signed) f.contractSignedDate = signed;
+      if (maxMat !== undefined) f.maxMaterialsExpense = maxMat;
+      if (maxMan !== undefined) f.maxManHrExpense = maxMan;
       continue;
     }
 

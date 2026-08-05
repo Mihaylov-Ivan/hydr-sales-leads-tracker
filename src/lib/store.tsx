@@ -316,6 +316,8 @@ export interface FinancialsPatch {
   contractSignedDate?: string | null;
   expenses?: number | null;
   expectedProfit?: number | null;
+  maxMaterialsExpense?: number | null;
+  maxManHrExpense?: number | null;
 }
 
 export interface PaymentInput {
@@ -706,6 +708,9 @@ function loadLocalFinanceImport(): FinanceImportData | null {
         : [],
       ...(Array.isArray(parsed.companyMonthlyExpenses)
         ? { companyMonthlyExpenses: parsed.companyMonthlyExpenses }
+        : {}),
+      ...(Array.isArray(parsed.projectCaps)
+        ? { projectCaps: parsed.projectCaps }
         : {}),
     };
   } catch {
@@ -1116,17 +1121,33 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     setFinanceImport(data);
     setFinanceSettings((prev) => settingsAfterImport(prev, data));
     // Drop local payment/expense schedules while Excel is the source of truth.
-    // Keep contract summary fields only.
+    // Keep contract summary fields; apply max expense caps from Projects sheet.
+    const capsByName = new Map(
+      (data.projectCaps ?? []).map((c) => [
+        c.projectName.trim().toLowerCase(),
+        c,
+      ]),
+    );
     setProjects((prev) =>
       prev.map((p) => {
         const f = sanitizeAppFinancials(p.financials);
+        const caps = capsByName.get(p.name.trim().toLowerCase());
+        const next = {
+          ...f,
+          payments: [],
+          expenseSchedule: [],
+        };
+        if (caps) {
+          if (caps.maxMaterialsExpense != null && caps.maxMaterialsExpense > 0) {
+            next.maxMaterialsExpense = caps.maxMaterialsExpense;
+          }
+          if (caps.maxManHrExpense != null && caps.maxManHrExpense > 0) {
+            next.maxManHrExpense = caps.maxManHrExpense;
+          }
+        }
         return {
           ...p,
-          financials: {
-            ...f,
-            payments: [],
-            expenseSchedule: [],
-          },
+          financials: next,
         };
       }),
     );
@@ -2039,6 +2060,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.expenses !== undefined) {
           if (patch.expenses === null) delete next.expenses;
           else next.expenses = patch.expenses;
+        }
+        if (patch.maxMaterialsExpense !== undefined) {
+          if (patch.maxMaterialsExpense === null) delete next.maxMaterialsExpense;
+          else next.maxMaterialsExpense = patch.maxMaterialsExpense;
+        }
+        if (patch.maxManHrExpense !== undefined) {
+          if (patch.maxManHrExpense === null) delete next.maxManHrExpense;
+          else next.maxManHrExpense = patch.maxManHrExpense;
         }
         if (next.contractValue != null && next.expenses != null) {
           next.expectedProfit = next.contractValue - next.expenses;

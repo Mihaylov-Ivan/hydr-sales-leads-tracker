@@ -11,6 +11,7 @@ import {
   CompanyFinanceSettings,
   Project,
   companyMonthlyCashTotal,
+  expensePercentBase,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
 } from "@/lib/types";
@@ -167,7 +168,11 @@ function collectFlows(
       if (!CASH_EXPENSE_CATEGORIES.has(category)) continue;
 
       const linked = findLinkableDeadline(exp.milestoneId, deadlines);
-      const percent = resolveContractPercent(exp.amount, cv, exp.percent);
+      const percent = resolveContractPercent(
+        exp.amount,
+        expensePercentBase(category, f),
+        exp.percent,
+      );
       const expectedDate = linked?.date ?? exp.dueDate;
       const received = Boolean(exp.actualDate);
       const typeLabel =

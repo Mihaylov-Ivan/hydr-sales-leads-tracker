@@ -244,6 +244,34 @@ export function isProjectExpenseCategory(
   );
 }
 
+/**
+ * Base amount for expense % → € conversion.
+ * Materials / Man-hr use their project max caps; installation falls back to contract value.
+ */
+export function expensePercentBase(
+  category: ProjectExpenseCategory | undefined,
+  financials: Pick<
+    ProjectFinancials,
+    "maxMaterialsExpense" | "maxManHrExpense" | "contractValue"
+  >,
+): number | undefined {
+  const cat = category ?? "materials";
+  if (cat === "materials") {
+    return financials.maxMaterialsExpense != null &&
+      financials.maxMaterialsExpense > 0
+      ? financials.maxMaterialsExpense
+      : undefined;
+  }
+  if (cat === "man-hr") {
+    return financials.maxManHrExpense != null && financials.maxManHrExpense > 0
+      ? financials.maxManHrExpense
+      : undefined;
+  }
+  return financials.contractValue != null && financials.contractValue > 0
+    ? financials.contractValue
+    : undefined;
+}
+
 /** Best-effort category from free-text labels (imports / legacy rows). */
 export function inferExpenseCategory(
   label?: string | null,
@@ -422,6 +450,10 @@ export interface ProjectFinancials {
    * Kept in sync whenever those two fields change.
    */
   expectedProfit?: number;
+  /** Cap used when Materials expense lines are entered as a % */
+  maxMaterialsExpense?: number;
+  /** Cap used when Man-hr expense lines are entered as a % */
+  maxManHrExpense?: number;
   payments: ProjectPayment[];
   /** Dated cost outflows used on the portfolio cash chart */
   expenseSchedule: ProjectExpenseItem[];

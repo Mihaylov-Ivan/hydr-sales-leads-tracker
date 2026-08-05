@@ -7,6 +7,9 @@
  * Sheet "Company":
  *   Month | Fixed monthly | Status
  *
+ * Sheet "Projects":
+ *   Project | Max Materials | Max Man-hr
+ *
  * Category applies to expense rows: man-hr | materials | installation
  */
 
@@ -36,6 +39,12 @@ export type FinanceExportRow = {
   deadline: string;
   /** Expense type; empty for income-only rows */
   category: string;
+};
+
+export type ProjectCapsExportRow = {
+  project: string;
+  maxMaterials: number | "";
+  maxManHr: number | "";
 };
 
 /**
@@ -139,9 +148,36 @@ export function buildCompanyExportRows(
     }));
 }
 
+/** One row per project that has max Materials and/or max Man-hr set. */
+export function buildProjectCapsExportRows(
+  projects: Project[],
+): ProjectCapsExportRow[] {
+  return projects
+    .map((p) => {
+      const f = p.financials;
+      const maxMaterials =
+        f.maxMaterialsExpense != null && f.maxMaterialsExpense > 0
+          ? f.maxMaterialsExpense
+          : ("" as const);
+      const maxManHr =
+        f.maxManHrExpense != null && f.maxManHrExpense > 0
+          ? f.maxManHrExpense
+          : ("" as const);
+      if (maxMaterials === "" && maxManHr === "") return null;
+      return {
+        project: p.name,
+        maxMaterials,
+        maxManHr,
+      };
+    })
+    .filter((r): r is ProjectCapsExportRow => r != null)
+    .sort((a, b) => a.project.localeCompare(b.project));
+}
+
 export function buildFinanceWorkbook(
   rows: FinanceExportRow[],
   companyRows: { month: string; fixedMonthly: number; status: string }[] = [],
+  projectCapsRows: ProjectCapsExportRow[] = [],
 ): XLSX.WorkBook {
   const dataAoa: (string | number | Date)[][] = [
     ["Project", "Date", "Income", "Expense", "Deadline", "Category"],
@@ -170,9 +206,16 @@ export function buildFinanceWorkbook(
   ];
   const companySheet = XLSX.utils.aoa_to_sheet(companyAoa);
 
+  const projectsAoa: (string | number)[][] = [
+    ["Project", "Max Materials", "Max Man-hr"],
+    ...projectCapsRows.map((r) => [r.project, r.maxMaterials, r.maxManHr]),
+  ];
+  const projectsSheet = XLSX.utils.aoa_to_sheet(projectsAoa);
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, dataSheet, "Data");
   XLSX.utils.book_append_sheet(wb, companySheet, "Company");
+  XLSX.utils.book_append_sheet(wb, projectsSheet, "Projects");
   return wb;
 }
 
@@ -187,7 +230,10 @@ export function downloadFinanceWorkbook(
   const companyRows = financeSettings
     ? buildCompanyExportRows(financeSettings)
     : [];
-  const wb = buildFinanceWorkbook(rows, companyRows);
+  const projectCapsRows = buildProjectCapsExportRows(projects);
+  const wb = buildFinanceWorkbook(rows, companyRows, projectCapsRows);
   XLSX.writeFile(wb, filename);
-  return { rowCount: rows.length + companyRows.length };
+  return {
+    rowCount: rows.length + companyRows.length + projectCapsRows.length,
+  };
 }

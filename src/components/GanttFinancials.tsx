@@ -14,6 +14,7 @@ import {
   ProjectExpenseItem,
   ProjectFinancials,
   ProjectPayment,
+  expensePercentBase,
   inferExpenseCategory,
   normalizeProjectExpense,
   todayDate,
@@ -47,20 +48,36 @@ function parseOptionalNumber(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function amountFromPercent(contractValue: number, percent: number): number {
-  return Math.round(((contractValue * percent) / 100) * 100) / 100;
+function amountFromPercent(base: number, percent: number): number {
+  return Math.round(((base * percent) / 100) * 100) / 100;
 }
 
-function resolveContractPercent(
+function resolvePercentOfBase(
   amount: number,
-  contractValue: number | null | undefined,
+  base: number | null | undefined,
   stored?: number,
 ): number | undefined {
   if (stored != null && Number.isFinite(stored)) return stored;
-  if (contractValue == null || !(contractValue > 0) || !(amount > 0)) {
+  if (base == null || !(base > 0) || !(amount > 0)) {
     return undefined;
   }
-  return Math.round((amount / contractValue) * 1000) / 10;
+  return Math.round((amount / base) * 1000) / 10;
+}
+
+function expensePercentPlaceholder(category: ProjectExpenseCategory): string {
+  if (category === "materials") return "% of max materials";
+  if (category === "man-hr") return "% of max man-hr";
+  return "% of contract";
+}
+
+function expensePercentMissingMessage(category: ProjectExpenseCategory): string {
+  if (category === "materials") {
+    return "Set max Materials expense above, or enter an amount in €.";
+  }
+  if (category === "man-hr") {
+    return "Set max Man-hr expense above, or enter an amount in €.";
+  }
+  return "Set a contract value above, or enter an amount in €.";
 }
 
 function formatPercentLabel(pct: number): string {
@@ -75,13 +92,16 @@ function CashItemRow({
   kind,
   projectId,
   item,
-  contractValue,
+  percentBase,
+  financials,
   events,
 }: {
   kind: "payment" | "expense";
   projectId: string;
   item: ProjectPayment | ProjectExpenseItem;
-  contractValue: number | null | undefined;
+  /** Base for % → amount (contract value for income) */
+  percentBase: number | null | undefined;
+  financials?: ProjectFinancials;
   events: LinkableDeadline[];
 }) {
   const {
@@ -112,6 +132,11 @@ function CashItemRow({
     kind === "payment" ? "border-teal-accent/40" : "border-amber-accent/40";
   const actualLabel = kind === "payment" ? "Received on" : "Paid on";
 
+  const activePercentBase =
+    kind === "expense" && financials
+      ? expensePercentBase(category, financials)
+      : percentBase;
+
   function startEdit() {
     setAmount(String(item.amount));
     setPercent(item.percent != null ? String(item.percent) : "");
@@ -131,8 +156,19 @@ function CashItemRow({
   function handlePercentChange(raw: string) {
     setPercent(raw);
     const pct = parseOptionalNumber(raw);
-    if (pct != null && contractValue != null) {
-      setAmount(String(amountFromPercent(contractValue, pct)));
+    if (pct != null && activePercentBase != null && activePercentBase > 0) {
+      setAmount(String(amountFromPercent(activePercentBase, pct)));
+    }
+  }
+
+  function handleCategoryChange(next: ProjectExpenseCategory) {
+    setCategory(next);
+    const pct = parseOptionalNumber(percent);
+    if (pct != null && financials) {
+      const base = expensePercentBase(next, financials);
+      if (base != null && base > 0) {
+        setAmount(String(amountFromPercent(base, pct)));
+      }
     }
   }
 
@@ -147,8 +183,13 @@ function CashItemRow({
   function save() {
     const pct = parseOptionalNumber(percent);
     let amt = parseOptionalNumber(amount);
-    if (amt == null && pct != null && contractValue != null) {
-      amt = amountFromPercent(contractValue, pct);
+    if (
+      amt == null &&
+      pct != null &&
+      activePercentBase != null &&
+      activePercentBase > 0
+    ) {
+      amt = amountFromPercent(activePercentBase, pct);
     }
     const date = linked?.date ?? dueDate;
     if (amt == null || amt <= 0 || !date) return;
@@ -182,7 +223,11 @@ function CashItemRow({
           <input
             value={percent}
             onChange={(e) => handlePercentChange(e.target.value)}
-            placeholder="% of contract"
+            placeholder={
+              kind === "expense"
+                ? expensePercentPlaceholder(category)
+                : "% of contract"
+            }
             className={inputCls}
           />
           <input
@@ -228,7 +273,9 @@ function CashItemRow({
               <select
                 value={category}
                 onChange={(e) =>
-                  setCategory(e.target.value as ProjectExpenseCategory)
+                  handleCategoryChange(
+                    e.target.value as ProjectExpenseCategory,
+                  )
                 }
                 className={inputCls}
               >
@@ -272,11 +319,15 @@ function CashItemRow({
   const isActual = Boolean(item.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
   const fromImport = isImportedId(item.id);
-  const pct = resolveContractPercent(item.amount, contractValue, item.percent);
   const displayCategory =
     kind === "expense"
       ? (expenseItem?.category ?? inferExpenseCategory(item.label))
       : null;
+  const displayBase =
+    kind === "expense" && financials
+      ? expensePercentBase(displayCategory ?? "materials", financials)
+      : percentBase;
+  const pct = resolvePercentOfBase(item.amount, displayBase, item.percent);
 
   function markDone() {
     if (fromImport) return;
@@ -440,12 +491,15 @@ function CashItemRow({
 function AddCashForm({
   kind,
   projectId,
-  contractValue,
+  percentBase,
+  financials,
   events,
 }: {
   kind: "payment" | "expense";
   projectId: string;
-  contractValue: number | null | undefined;
+  /** Contract value for income % */
+  percentBase: number | null | undefined;
+  financials?: ProjectFinancials;
   events: LinkableDeadline[];
 }) {
   const { addPayment, addExpense } = useProjects();
@@ -462,24 +516,41 @@ function AddCashForm({
   const linked = findLinkableDeadline(linkId, events);
   const actualLabel = kind === "payment" ? "Received on" : "Paid on";
 
+  const activePercentBase =
+    kind === "expense" && financials
+      ? expensePercentBase(category, financials)
+      : percentBase;
+
   useEffect(() => {
     if (linked) setDate(linked.date);
   }, [linked?.date, linked]);
 
   useEffect(() => {
     const pct = parseOptionalNumber(percent);
-    if (pct != null && contractValue != null) {
-      setAmount(String(amountFromPercent(contractValue, pct)));
+    if (pct != null && activePercentBase != null && activePercentBase > 0) {
+      setAmount(String(amountFromPercent(activePercentBase, pct)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contractValue]);
+  }, [activePercentBase]);
 
   function handlePercentChange(raw: string) {
     setPercent(raw);
     setError(null);
     const pct = parseOptionalNumber(raw);
-    if (pct != null && contractValue != null) {
-      setAmount(String(amountFromPercent(contractValue, pct)));
+    if (pct != null && activePercentBase != null && activePercentBase > 0) {
+      setAmount(String(amountFromPercent(activePercentBase, pct)));
+    }
+  }
+
+  function handleCategoryChange(next: ProjectExpenseCategory) {
+    setCategory(next);
+    setError(null);
+    const pct = parseOptionalNumber(percent);
+    if (pct != null && financials) {
+      const base = expensePercentBase(next, financials);
+      if (base != null && base > 0) {
+        setAmount(String(amountFromPercent(base, pct)));
+      }
     }
   }
 
@@ -497,14 +568,23 @@ function AddCashForm({
     const dueDate = (linked?.date || date || "").trim();
     const pct = parseOptionalNumber(percent);
     let amt = parseOptionalNumber(amount);
-    if (amt == null && pct != null && contractValue != null) {
-      amt = amountFromPercent(contractValue, pct);
+    if (
+      amt == null &&
+      pct != null &&
+      activePercentBase != null &&
+      activePercentBase > 0
+    ) {
+      amt = amountFromPercent(activePercentBase, pct);
     }
     if (amt == null || amt <= 0) {
       setError(
-        pct != null && contractValue == null
-          ? "Set a contract value above, or enter an amount in €."
-          : "Enter an amount (or % of contract).",
+        pct != null && (activePercentBase == null || !(activePercentBase > 0))
+          ? kind === "expense"
+            ? expensePercentMissingMessage(category)
+            : "Set a contract value above, or enter an amount in €."
+          : kind === "expense"
+            ? "Enter an amount (or % of the category max)."
+            : "Enter an amount (or % of contract).",
       );
       return;
     }
@@ -545,7 +625,9 @@ function AddCashForm({
   const dueReady = Boolean(linked?.date || date);
   const amountReady =
     Boolean(amount.trim()) ||
-    (Boolean(percent.trim()) && contractValue != null);
+    (Boolean(percent.trim()) &&
+      activePercentBase != null &&
+      activePercentBase > 0);
   const canAdd = dueReady && amountReady;
 
   return (
@@ -557,7 +639,11 @@ function AddCashForm({
       <input
         value={percent}
         onChange={(e) => handlePercentChange(e.target.value)}
-        placeholder="% of contract"
+        placeholder={
+          kind === "expense"
+            ? expensePercentPlaceholder(category)
+            : "% of contract"
+        }
         className={inputCls}
       />
       <input
@@ -616,7 +702,7 @@ function AddCashForm({
           <select
             value={category}
             onChange={(e) =>
-              setCategory(e.target.value as ProjectExpenseCategory)
+              handleCategoryChange(e.target.value as ProjectExpenseCategory)
             }
             className={inputCls}
             title="Man-hr is for project analysis only; materials & installation hit cashflow"
@@ -663,7 +749,7 @@ export default function GanttFinancials({
   projectId: string;
   financials: ProjectFinancials;
 }) {
-  const { financeImport, projects } = useProjects();
+  const { financeImport, projects, updateFinancials } = useProjects();
   const project = projects.find((p) => p.id === projectId);
 
   // Edit against live project financials so new lines show immediately.
@@ -684,6 +770,21 @@ export default function GanttFinancials({
     .sort(
       (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
     );
+
+  function saveMaxExpense(
+    field: "maxMaterialsExpense" | "maxManHrExpense",
+    raw: string,
+  ) {
+    const t = raw.trim().replace(/,/g, "");
+    if (!t) {
+      updateFinancials(projectId, { [field]: null });
+      return;
+    }
+    const n = Number(t);
+    if (Number.isFinite(n) && n >= 0) {
+      updateFinancials(projectId, { [field]: n });
+    }
+  }
 
   return (
     <div className="mt-5 rounded-xl border border-line bg-surface p-4">
@@ -715,7 +816,7 @@ export default function GanttFinancials({
           <AddCashForm
             kind="payment"
             projectId={projectId}
-            contractValue={financials.contractValue}
+            percentBase={financials.contractValue}
             events={events}
           />
           {payments.length === 0 ? (
@@ -728,7 +829,7 @@ export default function GanttFinancials({
                   kind="payment"
                   projectId={projectId}
                   item={p}
-                  contractValue={financials.contractValue}
+                  percentBase={financials.contractValue}
                   events={events}
                 />
               ))}
@@ -741,12 +842,54 @@ export default function GanttFinancials({
           </h4>
           <p className="mb-2 text-[10px] text-muted">
             Materials &amp; installation hit company cash. Man-hr is for project
-            analysis only (salary covers payroll).
+            analysis only (salary covers payroll). Expense % uses the max
+            Materials / Man-hr caps below (installation % uses contract value).
           </p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className={labelTiny}>Max Materials €</span>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                defaultValue={
+                  financials.maxMaterialsExpense != null
+                    ? String(financials.maxMaterialsExpense)
+                    : ""
+                }
+                key={`max-mat-${financials.maxMaterialsExpense ?? "empty"}`}
+                onBlur={(e) =>
+                  saveMaxExpense("maxMaterialsExpense", e.target.value)
+                }
+                placeholder="e.g. 400000"
+                className={inputCls}
+              />
+            </label>
+            <label className="block">
+              <span className={labelTiny}>Max Man-hr €</span>
+              <input
+                type="number"
+                min={0}
+                step="any"
+                defaultValue={
+                  financials.maxManHrExpense != null
+                    ? String(financials.maxManHrExpense)
+                    : ""
+                }
+                key={`max-man-${financials.maxManHrExpense ?? "empty"}`}
+                onBlur={(e) =>
+                  saveMaxExpense("maxManHrExpense", e.target.value)
+                }
+                placeholder="e.g. 120000"
+                className={inputCls}
+              />
+            </label>
+          </div>
           <AddCashForm
             kind="expense"
             projectId={projectId}
-            contractValue={financials.contractValue}
+            percentBase={financials.contractValue}
+            financials={financials}
             events={events}
           />
           {expenses.length === 0 ? (
@@ -759,7 +902,8 @@ export default function GanttFinancials({
                   kind="expense"
                   projectId={projectId}
                   item={e}
-                  contractValue={financials.contractValue}
+                  percentBase={financials.contractValue}
+                  financials={financials}
                   events={events}
                 />
               ))}

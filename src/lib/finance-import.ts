@@ -10,6 +10,9 @@
  *   Month | Fixed monthly | Status
  *   Legacy Salary + Other columns are summed into Fixed monthly on import.
  *
+ * Sheet "Projects" (optional):
+ *   Project | Max Materials | Max Man-hr
+ *
  * Date ≤ today → actual (past cash).
  * Date > today → expected (from file; merged at read time, not stored in project financials).
  */
@@ -64,6 +67,12 @@ export type ImportedProjectMilestone = {
   label?: string;
 };
 
+export type ImportedProjectCaps = {
+  projectName: string;
+  maxMaterialsExpense?: number;
+  maxManHrExpense?: number;
+};
+
 export type FinanceImportData = {
   importedAt: string;
   sourceLabel: string;
@@ -76,6 +85,8 @@ export type FinanceImportData = {
   projectMilestones: ImportedProjectMilestone[];
   /** Company fixed monthly by month (from Company sheet) */
   companyMonthlyExpenses?: CompanyMonthlyExpense[];
+  /** Per-project max expense caps (from Projects sheet) */
+  projectCaps?: ImportedProjectCaps[];
   openingCash?: number;
   openingCashAsOf?: string;
 };
@@ -412,6 +423,92 @@ function findCompanySheet(wb: XLSX.WorkBook): XLSX.WorkSheet | null {
   return null;
 }
 
+export function parseProjectCapsSheetRows(
+  rows: string[][],
+): ImportedProjectCaps[] {
+  if (rows.length < 2) return [];
+  const headers = rows[0];
+  const iProject = headerIndex(headers, "project", "project_name", "name");
+  const iMaxMat = headerIndex(
+    headers,
+    "max materials",
+    "max_materials",
+    "maxmaterialsexpense",
+    "materials max",
+    "max_materials_expense",
+  );
+  const iMaxMan = headerIndex(
+    headers,
+    "max man-hr",
+    "max man hr",
+    "max_man_hr",
+    "maxmanhrexpense",
+    "man-hr max",
+    "max_man_hr_expense",
+  );
+
+  if (iProject < 0 || (iMaxMat < 0 && iMaxMan < 0)) return [];
+
+  const out: ImportedProjectCaps[] = [];
+  for (const r of rows.slice(1)) {
+    const projectName = (r[iProject] ?? "").trim();
+    if (!projectName) continue;
+
+    const maxMat =
+      iMaxMat >= 0 ? Math.max(0, num(r[iMaxMat])) : 0;
+    const maxMan =
+      iMaxMan >= 0 ? Math.max(0, num(r[iMaxMan])) : 0;
+    if (maxMat <= 0 && maxMan <= 0) continue;
+
+    const caps: ImportedProjectCaps = { projectName };
+    if (maxMat > 0) caps.maxMaterialsExpense = maxMat;
+    if (maxMan > 0) caps.maxManHrExpense = maxMan;
+    out.push(caps);
+  }
+  return out.sort((a, b) => a.projectName.localeCompare(b.projectName));
+}
+
+function findProjectsSheet(wb: XLSX.WorkBook): XLSX.WorkSheet | null {
+  const exact = wb.SheetNames.find((n) => {
+    const t = n.trim().toLowerCase();
+    return (
+      t === "projects" ||
+      t === "project" ||
+      t === "project_caps" ||
+      t === "caps"
+    );
+  });
+  if (exact) return wb.Sheets[exact] ?? null;
+
+  for (const name of wb.SheetNames) {
+    const rows = sheetToRows(wb.Sheets[name]!);
+    if (rows.length < 1) continue;
+    const headers = rows[0];
+    const hasProject = headerIndex(headers, "project", "project_name") >= 0;
+    const hasMaxMat =
+      headerIndex(
+        headers,
+        "max materials",
+        "max_materials",
+        "max_materials_expense",
+      ) >= 0;
+    const hasMaxMan =
+      headerIndex(
+        headers,
+        "max man-hr",
+        "max_man_hr",
+        "max_man_hr_expense",
+      ) >= 0;
+    // Avoid mistaking the Data sheet (which also has Project)
+    const hasDate = headerIndex(headers, "date") >= 0;
+    const hasIncome = headerIndex(headers, "income") >= 0;
+    if (hasProject && (hasMaxMat || hasMaxMan) && !hasDate && !hasIncome) {
+      return wb.Sheets[name] ?? null;
+    }
+  }
+  return null;
+}
+
 export function parseFinanceWorkbook(
   buffer: ArrayBuffer,
   sourceLabel: string,
@@ -437,10 +534,16 @@ export function parseFinanceWorkbook(
     ? parseCompanySheetRows(sheetToRows(companySheet))
     : [];
 
+  const projectsSheet = findProjectsSheet(wb);
+  const projectCaps = projectsSheet
+    ? parseProjectCapsSheetRows(sheetToRows(projectsSheet))
+    : [];
+
   if (
     parsed.actuals.length === 0 &&
     parsed.expected.length === 0 &&
-    companyMonthlyExpenses.length === 0
+    companyMonthlyExpenses.length === 0 &&
+    projectCaps.length === 0
   ) {
     return { ok: false, error: "No income/expense rows found in the sheet" };
   }
@@ -467,6 +570,7 @@ export function parseFinanceWorkbook(
       ...(companyMonthlyExpenses.length > 0
         ? { companyMonthlyExpenses }
         : {}),
+      ...(projectCaps.length > 0 ? { projectCaps } : {}),
       ...(months[0] ? { openingCashAsOf: months[0] } : {}),
     },
   };
