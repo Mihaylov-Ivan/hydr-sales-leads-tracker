@@ -307,16 +307,14 @@ export const DEFAULT_STAGE_PROBABILITIES: Record<
   commissioned: 100,
 };
 
-/** Company overhead for one calendar month (salaries + unexpected other). */
+/** Company overhead for one calendar month (fixed monthly outgoings). */
 export type CompanyMonthlyExpenseStatus = "actual" | "projected";
 
 export interface CompanyMonthlyExpense {
   /** yyyy-mm */
   month: string;
-  /** Payroll / fixed headcount cost for the month */
-  salary: number;
-  /** Unexpected company spend for the month (not from projects) */
-  other: number;
+  /** Fixed company monthly cost (payroll + overhead) */
+  fixedMonthly: number;
   /**
    * actual = money already spent (past / closed months)
    * projected = planned company spend (current / future)
@@ -325,13 +323,13 @@ export interface CompanyMonthlyExpense {
 }
 
 export function companyMonthlyCashTotal(
-  entry: Pick<CompanyMonthlyExpense, "salary" | "other">,
+  entry: Pick<CompanyMonthlyExpense, "fixedMonthly">,
 ): number {
-  return Math.max(0, entry.salary || 0) + Math.max(0, entry.other || 0);
+  return Math.max(0, entry.fixedMonthly || 0);
 }
 
 /**
- * Accepts current `{ salary, other }` or legacy `{ amount }` rows from localStorage/CSV.
+ * Accepts `{ fixedMonthly }` or legacy `{ salary, other }` / `{ amount }` rows.
  */
 export function normalizeCompanyMonthlyExpense(
   raw: unknown,
@@ -343,27 +341,36 @@ export function normalizeCompanyMonthlyExpense(
   const status: CompanyMonthlyExpenseStatus =
     r.status === "actual" ? "actual" : "projected";
 
-  let salary =
-    typeof r.salary === "number" && Number.isFinite(r.salary) ? r.salary : 0;
-  let other =
-    typeof r.other === "number" && Number.isFinite(r.other) ? r.other : 0;
+  let fixedMonthly =
+    typeof r.fixedMonthly === "number" && Number.isFinite(r.fixedMonthly)
+      ? r.fixedMonthly
+      : 0;
 
-  // Legacy single-amount opex → salary
+  // Legacy salary + other → combined fixed monthly
+  if (fixedMonthly <= 0) {
+    const salary =
+      typeof r.salary === "number" && Number.isFinite(r.salary) ? r.salary : 0;
+    const other =
+      typeof r.other === "number" && Number.isFinite(r.other) ? r.other : 0;
+    if (salary > 0 || other > 0) {
+      fixedMonthly = Math.max(0, salary) + Math.max(0, other);
+    }
+  }
+
+  // Legacy single-amount opex
   if (
-    salary <= 0 &&
-    other <= 0 &&
+    fixedMonthly <= 0 &&
     typeof r.amount === "number" &&
     Number.isFinite(r.amount) &&
     r.amount > 0
   ) {
-    salary = r.amount;
+    fixedMonthly = r.amount;
   }
 
-  if (salary < 0) salary = 0;
-  if (other < 0) other = 0;
-  if (salary <= 0 && other <= 0) return null;
+  if (fixedMonthly < 0) fixedMonthly = 0;
+  if (fixedMonthly <= 0) return null;
 
-  return { month, salary, other, status };
+  return { month, fixedMonthly, status };
 }
 
 /** Company-level cash plan settings (singleton) */
@@ -380,7 +387,7 @@ export interface CompanyFinanceSettings {
   openingCashAsOf?: string;
   minWorkingCapital: number;
   stageProbabilities: StageProbabilities;
-  /** Per-month company salary + unexpected other (not project-linked) */
+  /** Per-month fixed company cost (not project-linked) */
   monthlyExpenses: CompanyMonthlyExpense[];
 }
 

@@ -135,14 +135,14 @@ export type MonthlyPlanRow = {
   openingCash: number;
   /** All project payment inflows in this month (actual date or scheduled) */
   projectIn: number;
-  salary: number;
-  other: number;
+  /** Company fixed monthly outgoings */
+  fixedMonthly: number;
   materialsOut: number;
   installationOut: number;
   projectInByProject: MonthlyProjectBreakdown[];
   materialsByProject: MonthlyProjectBreakdown[];
   installationByProject: MonthlyProjectBreakdown[];
-  /** projectIn − materials − install − salary − other */
+  /** projectIn − materials − install − fixedMonthly */
   net: number;
   /** Opening + net */
   closingCash: number;
@@ -198,8 +198,8 @@ function monthKeysBetween(fromKey: string, toKey: string): string[] {
 
 /**
  * Baseline (`openingCash` at `openingCashAsOf`) is cash at that month's open.
- * Firm cash out = company salary + unexpected other + project materials + installation.
- * Project man-hr is excluded (covered by salary).
+ * Firm cash out = company fixed monthly + project materials + installation.
+ * Project man-hr is excluded (covered by company fixed monthly / payroll).
  * Pipeline project cash is included at face value (no win-probability weighting).
  * `fromMonth`/`toMonth` only control which months are visible — independent of baseline.
  */
@@ -232,8 +232,7 @@ export function buildMonthlyPlan(
 
   type Bucket = {
     projectIn: number;
-    salary: number;
-    other: number;
+    fixedMonthly: number;
     materialsOut: number;
     installationOut: number;
     projectInById: Map<string, MonthlyProjectBreakdown>;
@@ -243,8 +242,7 @@ export function buildMonthlyPlan(
 
   const emptyBucket = (): Bucket => ({
     projectIn: 0,
-    salary: 0,
-    other: 0,
+    fixedMonthly: 0,
     materialsOut: 0,
     installationOut: 0,
     projectInById: new Map(),
@@ -348,8 +346,9 @@ export function buildMonthlyPlan(
   for (const raw of settings.monthlyExpenses ?? []) {
     const opex = normalizeCompanyMonthlyExpense(raw);
     if (!opex) continue;
-    if (opex.salary > 0) add(opex.month, "salary", opex.salary);
-    if (opex.other > 0) add(opex.month, "other", opex.other);
+    if (opex.fixedMonthly > 0) {
+      add(opex.month, "fixedMonthly", opex.fixedMonthly);
+    }
   }
 
   if (options.companyIncomesByMonth) {
@@ -377,8 +376,7 @@ export function buildMonthlyPlan(
           period: monthPeriod(key, currentKey),
           openingCash: opening,
           projectIn: 0,
-          salary: 0,
-          other: 0,
+          fixedMonthly: 0,
           materialsOut: 0,
           installationOut: 0,
           projectInByProject: [],
@@ -393,7 +391,7 @@ export function buildMonthlyPlan(
     }
 
     const b = buckets.get(key) ?? emptyBucket();
-    const out = b.materialsOut + b.installationOut + b.salary + b.other;
+    const out = b.materialsOut + b.installationOut + b.fixedMonthly;
     const net = b.projectIn - out;
     const closingCash = opening + net;
 
@@ -404,8 +402,7 @@ export function buildMonthlyPlan(
         period: monthPeriod(key, currentKey),
         openingCash: opening,
         projectIn: b.projectIn,
-        salary: b.salary,
-        other: b.other,
+        fixedMonthly: b.fixedMonthly,
         materialsOut: b.materialsOut,
         installationOut: b.installationOut,
         projectInByProject: sortedBreakdown(b.projectInById),

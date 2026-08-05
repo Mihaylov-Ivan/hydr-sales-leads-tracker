@@ -188,8 +188,9 @@ export default function FinancePage() {
 
   const [openingDraft, setOpeningDraft] = useState<string | null>(null);
   const [minWcDraft, setMinWcDraft] = useState<string | null>(null);
-  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
-  const [otherDrafts, setOtherDrafts] = useState<Record<string, string>>({});
+  const [fixedMonthlyDrafts, setFixedMonthlyDrafts] = useState<
+    Record<string, string>
+  >({});
   const [importError, setImportError] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -454,8 +455,7 @@ export default function FinancePage() {
   function upsertMonthlyCompany(
     month: string,
     patch: {
-      salary?: number | null;
-      other?: number | null;
+      fixedMonthly?: number | null;
       status?: CompanyMonthlyExpenseStatus;
     },
   ) {
@@ -463,58 +463,41 @@ export default function FinancePage() {
     const defaultStatus: CompanyMonthlyExpenseStatus =
       month < today.slice(0, 7) ? "actual" : "projected";
     const nextStatus = patch.status ?? existing?.status ?? defaultStatus;
-    const nextSalary =
-      patch.salary !== undefined ? patch.salary : (existing?.salary ?? 0);
-    const nextOther =
-      patch.other !== undefined ? patch.other : (existing?.other ?? 0);
+    const nextFixed =
+      patch.fixedMonthly !== undefined
+        ? patch.fixedMonthly
+        : (existing?.fixedMonthly ?? 0);
 
     const rest = (financeSettings.monthlyExpenses ?? []).filter(
       (e) => e.month !== month,
     );
-    const salary = Math.max(0, nextSalary ?? 0);
-    const other = Math.max(0, nextOther ?? 0);
-    if (salary <= 0 && other <= 0) {
+    const fixedMonthly = Math.max(0, nextFixed ?? 0);
+    if (fixedMonthly <= 0) {
       updateFinanceSettings({ monthlyExpenses: rest });
       return;
     }
     updateFinanceSettings({
       monthlyExpenses: [
         ...rest,
-        { month, salary, other, status: nextStatus },
+        { month, fixedMonthly, status: nextStatus },
       ].sort((a, b) => a.month.localeCompare(b.month)),
     });
   }
 
-  function saveSalary(month: string) {
-    const raw = salaryDrafts[month];
+  function saveFixedMonthly(month: string) {
+    const raw = fixedMonthlyDrafts[month];
     if (raw === undefined) return;
     const n = parseNum(raw);
-    setSalaryDrafts((d) => {
+    setFixedMonthlyDrafts((d) => {
       const next = { ...d };
       delete next[month];
       return next;
     });
     if (raw.trim() === "" || n == null || n < 0) {
-      upsertMonthlyCompany(month, { salary: 0 });
+      upsertMonthlyCompany(month, { fixedMonthly: 0 });
       return;
     }
-    upsertMonthlyCompany(month, { salary: n });
-  }
-
-  function saveOther(month: string) {
-    const raw = otherDrafts[month];
-    if (raw === undefined) return;
-    const n = parseNum(raw);
-    setOtherDrafts((d) => {
-      const next = { ...d };
-      delete next[month];
-      return next;
-    });
-    if (raw.trim() === "" || n == null || n < 0) {
-      upsertMonthlyCompany(month, { other: 0 });
-      return;
-    }
-    upsertMonthlyCompany(month, { other: n });
+    upsertMonthlyCompany(month, { fixedMonthly: n });
   }
 
   if (!ready) {
@@ -718,10 +701,9 @@ export default function FinancePage() {
               Monthly cashflow
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] text-muted">
-              Filter projects like the chart (All / Clear / pick). Company
-              salary/other always stay; project income, materials, and
-              installation follow the selection. Man-hr stays on projects for
-              analysis only.
+              Filter projects like the chart (All / Clear / pick). Company fixed
+              monthly always stays; project income, materials, and installation
+              follow the selection. Man-hr stays on projects for analysis only.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -790,7 +772,6 @@ export default function FinancePage() {
                 </th>
                 <th
                   className="border-l border-line bg-muted/10 px-2 py-1.5 text-right text-muted"
-                  colSpan={2}
                 >
                   Company out
                 </th>
@@ -814,9 +795,8 @@ export default function FinancePage() {
                   Install
                 </th>
                 <th className="border-l border-line bg-muted/10 px-2 py-1 text-right">
-                  Salary
+                  Fixed monthly
                 </th>
-                <th className="bg-muted/10 px-2 py-1 text-right">Other</th>
                 <th className="border-l border-line px-2 py-1 text-right">€</th>
                 <th className="border-l border-line px-2 py-1 text-right">€</th>
               </tr>
@@ -884,38 +864,20 @@ export default function FinancePage() {
                         inputMode="decimal"
                         placeholder="—"
                         disabled={inputsDisabled}
-                        title="Monthly payroll / salary"
+                        title="Fixed monthly company cost"
                         value={
-                          salaryDrafts[row.month] ??
-                          (entry?.salary ? String(entry.salary) : "")
+                          fixedMonthlyDrafts[row.month] ??
+                          (entry?.fixedMonthly
+                            ? String(entry.fixedMonthly)
+                            : "")
                         }
                         onChange={(e) =>
-                          setSalaryDrafts((d) => ({
+                          setFixedMonthlyDrafts((d) => ({
                             ...d,
                             [row.month]: e.target.value,
                           }))
                         }
-                        onBlur={() => saveSalary(row.month)}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        className={opexInputCls}
-                        inputMode="decimal"
-                        placeholder="—"
-                        disabled={inputsDisabled}
-                        title="Unexpected company spend (not from projects)"
-                        value={
-                          otherDrafts[row.month] ??
-                          (entry?.other ? String(entry.other) : "")
-                        }
-                        onChange={(e) =>
-                          setOtherDrafts((d) => ({
-                            ...d,
-                            [row.month]: e.target.value,
-                          }))
-                        }
-                        onBlur={() => saveOther(row.month)}
+                        onBlur={() => saveFixedMonthly(row.month)}
                       />
                     </td>
                     <td

@@ -5,7 +5,7 @@
  *   Project | Date | Income | Expense | Deadline | Category
  *
  * Sheet "Company":
- *   Month | Salary | Other | Status
+ *   Month | Fixed monthly | Status
  *
  * Category applies to expense rows: man-hr | materials | installation
  */
@@ -126,7 +126,7 @@ function isoToLocalDate(iso: string): Date {
 
 export function buildCompanyExportRows(
   financeSettings: CompanyFinanceSettings,
-): { month: string; salary: number; other: number; status: string }[] {
+): { month: string; fixedMonthly: number; status: string }[] {
   return (financeSettings.monthlyExpenses ?? [])
     .map(normalizeCompanyMonthlyExpense)
     .filter((e): e is NonNullable<typeof e> => e != null)
@@ -134,15 +134,14 @@ export function buildCompanyExportRows(
     .sort((a, b) => a.month.localeCompare(b.month))
     .map((e) => ({
       month: e.month,
-      salary: e.salary,
-      other: e.other,
+      fixedMonthly: e.fixedMonthly,
       status: e.status,
     }));
 }
 
 export function buildFinanceWorkbook(
   rows: FinanceExportRow[],
-  companyRows: { month: string; salary: number; other: number; status: string }[] = [],
+  companyRows: { month: string; fixedMonthly: number; status: string }[] = [],
 ): XLSX.WorkBook {
   const dataAoa: (string | number | Date)[][] = [
     ["Project", "Date", "Income", "Expense", "Deadline", "Category"],
@@ -166,8 +165,8 @@ export function buildFinanceWorkbook(
   }
 
   const companyAoa: (string | number)[][] = [
-    ["Month", "Salary", "Other", "Status"],
-    ...companyRows.map((r) => [r.month, r.salary, r.other, r.status]),
+    ["Month", "Fixed monthly", "Status"],
+    ...companyRows.map((r) => [r.month, r.fixedMonthly, r.status]),
   ];
   const companySheet = XLSX.utils.aoa_to_sheet(companyAoa);
 

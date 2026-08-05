@@ -199,8 +199,9 @@ function collectFlows(
       const total = companyMonthlyCashTotal(opex);
       if (total <= 0) continue;
       const parts: string[] = [];
-      if (opex.salary > 0) parts.push(`Salary ${formatMoney(opex.salary)}`);
-      if (opex.other > 0) parts.push(`Other ${formatMoney(opex.other)}`);
+      if (opex.fixedMonthly > 0) {
+        parts.push(`Fixed monthly ${formatMoney(opex.fixedMonthly)}`);
+      }
       // Mid-month so company costs sit visibly in the month on the chart
       const date = `${opex.month}-15`;
       list.push({
@@ -727,7 +728,7 @@ export default function OverviewTimeline({
   projects: Project[];
   /** Skip outer card chrome when nested in a parent panel. */
   embedded?: boolean;
-  /** When set, company salary + other are included as cash outflows. */
+  /** When set, company fixed monthly costs are included as cash outflows. */
   financeSettings?: CompanyFinanceSettings | null;
 }) {
   const withFlows = useMemo(

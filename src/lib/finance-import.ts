@@ -7,7 +7,8 @@
  *   Missing category → inferred from Deadline/label.
  *
  * Sheet "Company" (optional):
- *   Month | Salary | Other | Status
+ *   Month | Fixed monthly | Status
+ *   Legacy Salary + Other columns are summed into Fixed monthly on import.
  *
  * Date ≤ today → actual (past cash).
  * Date > today → expected (from file; merged at read time, not stored in project financials).
@@ -73,7 +74,7 @@ export type FinanceImportData = {
   /** Future expected rows from Excel (no actualDate) */
   projectExpected: ImportedProjectActual[];
   projectMilestones: ImportedProjectMilestone[];
-  /** Company salary + other by month (from Company sheet) */
+  /** Company fixed monthly by month (from Company sheet) */
   companyMonthlyExpenses?: CompanyMonthlyExpense[];
   openingCash?: number;
   openingCashAsOf?: string;
@@ -331,6 +332,12 @@ export function parseCompanySheetRows(
   if (rows.length < 2) return [];
   const headers = rows[0];
   const iMonth = headerIndex(headers, "month", "date");
+  const iFixed = headerIndex(
+    headers,
+    "fixed monthly",
+    "fixed_monthly",
+    "fixedmonthly",
+  );
   const iSalary = headerIndex(headers, "salary", "salaries", "payroll");
   const iOther = headerIndex(headers, "other", "unexpected");
   const iStatus = headerIndex(headers, "status");
@@ -354,18 +361,20 @@ export function parseCompanySheetRows(
     const status: CompanyMonthlyExpenseStatus =
       statusRaw === "actual" ? "actual" : "projected";
 
-    const salary =
-      iSalary >= 0
-        ? Math.max(0, num(r[iSalary]))
-        : iAmount >= 0
-          ? Math.max(0, num(r[iAmount]))
-          : 0;
-    const other = iOther >= 0 ? Math.max(0, num(r[iOther])) : 0;
+    let fixedMonthly = 0;
+    if (iFixed >= 0) {
+      fixedMonthly = Math.max(0, num(r[iFixed]));
+    } else if (iSalary >= 0 || iOther >= 0) {
+      const salary = iSalary >= 0 ? Math.max(0, num(r[iSalary])) : 0;
+      const other = iOther >= 0 ? Math.max(0, num(r[iOther])) : 0;
+      fixedMonthly = salary + other;
+    } else if (iAmount >= 0) {
+      fixedMonthly = Math.max(0, num(r[iAmount]));
+    }
 
     const normalized = normalizeCompanyMonthlyExpense({
       month,
-      salary,
-      other,
+      fixedMonthly,
       status,
     });
     if (normalized) out.push(normalized);
@@ -385,10 +394,18 @@ function findCompanySheet(wb: XLSX.WorkBook): XLSX.WorkSheet | null {
     if (rows.length < 1) continue;
     const headers = rows[0];
     const hasMonth = headerIndex(headers, "month", "date") >= 0;
+    const hasFixed =
+      headerIndex(
+        headers,
+        "fixed monthly",
+        "fixed_monthly",
+        "fixedmonthly",
+      ) >= 0;
     const hasSalary =
       headerIndex(headers, "salary", "salaries", "payroll") >= 0;
     const hasOther = headerIndex(headers, "other") >= 0;
-    if (hasMonth && (hasSalary || hasOther)) {
+    const hasAmount = headerIndex(headers, "amount", "expense", "opex") >= 0;
+    if (hasMonth && (hasFixed || hasSalary || hasOther || hasAmount)) {
       return wb.Sheets[name] ?? null;
     }
   }
@@ -609,7 +626,7 @@ export function expectedSchedulesForProject(
 }
 
 /**
- * After import: apply Company sheet salary/other when present,
+ * After import: apply Company sheet fixed monthly when present,
  * otherwise clear company opex (manual entry until next export/import).
  * Set opening as-of to earliest month in the file.
  */

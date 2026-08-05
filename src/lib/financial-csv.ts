@@ -8,7 +8,7 @@
  *   - expense       — expense schedule line
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
- *   - company_opex  — company monthly salary + unexpected other
+ *   - company_opex  — company fixed monthly cost
  */
 
 import { sanitizeAppFinancials } from "./finance-import";
@@ -58,8 +58,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "prob_hot_lead",
   "prob_under_development",
   "prob_commissioned",
-  "salary",
-  "other",
+  "fixed_monthly",
   "category",
 ] as const;
 
@@ -127,8 +126,7 @@ export function buildFinancialCsv(
     const r = emptyRow();
     r.type = "company_opex";
     r.month = opex.month;
-    r.salary = numStr(opex.salary);
-    r.other = numStr(opex.other);
+    r.fixed_monthly = numStr(opex.fixedMonthly);
     r.amount = numStr(companyMonthlyCashTotal(opex));
     r.status = opex.status;
     lines.push(rowLine(r));
@@ -371,17 +369,31 @@ export function parseFinancialCsv(text: string):
       const statusRaw = cell(row, "status") || "projected";
       const status: CompanyMonthlyExpenseStatus =
         statusRaw === "actual" ? "actual" : "projected";
-      const salary =
-        parseOptionalNumber(cell(row, "salary")) ??
-        parseOptionalNumber(cell(row, "amount"));
-      const other = parseOptionalNumber(cell(row, "other")) ?? 0;
+
+      let fixedMonthly = parseOptionalNumber(cell(row, "fixed_monthly"));
+      if (fixedMonthly == null) {
+        const salaryIdx = header.indexOf("salary");
+        const otherIdx = header.indexOf("other");
+        const salary =
+          salaryIdx >= 0
+            ? parseOptionalNumber(row[salaryIdx] ?? "")
+            : undefined;
+        const other =
+          otherIdx >= 0
+            ? (parseOptionalNumber(row[otherIdx] ?? "") ?? 0)
+            : 0;
+        if (salary != null || other > 0) {
+          fixedMonthly = (salary ?? 0) + other;
+        } else {
+          fixedMonthly = parseOptionalNumber(cell(row, "amount"));
+        }
+      }
+
       const normalized = normalizeCompanyMonthlyExpense({
         month,
-        salary: salary ?? 0,
-        other,
+        fixedMonthly: fixedMonthly ?? 0,
         status,
-        // legacy fallback if only amount was present without salary column
-        ...(salary == null
+        ...(fixedMonthly == null
           ? { amount: parseOptionalNumber(cell(row, "amount")) ?? 0 }
           : {}),
       });
