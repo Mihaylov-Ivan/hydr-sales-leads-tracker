@@ -636,6 +636,37 @@ export function addDays(isoDate: string, days: number): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Shift a calendar date by whole months, clamping day-of-month (e.g. Jan 31 → Feb 28). */
+export function addCalendarMonths(isoDate: string, months: number): string {
+  const d = new Date(isoDate + "T12:00:00");
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(
+    d.getFullYear(),
+    d.getMonth() + 1,
+    0,
+  ).getDate();
+  d.setDate(Math.min(day, lastDay));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+export type ScheduleShiftUnit = "days" | "weeks" | "months";
+
+/** Fixed day count for days/weeks; for months uses a sample date via addCalendarMonths. */
+export function scheduleShiftDeltaDays(
+  amount: number,
+  unit: ScheduleShiftUnit,
+  sampleDate = "2024-01-15",
+): number {
+  if (unit === "days") return amount;
+  if (unit === "weeks") return amount * 7;
+  return daysBetween(sampleDate, addCalendarMonths(sampleDate, amount));
+}
+
 export function daysBetween(from: string, to: string): number {
   const a = new Date(from + "T12:00:00").getTime();
   const b = new Date(to + "T12:00:00").getTime();

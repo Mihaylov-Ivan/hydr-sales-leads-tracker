@@ -9,6 +9,7 @@ import {
   ProjectGanttDeadline,
   ProjectGanttPhase,
   ProjectSchedule,
+  ScheduleShiftUnit,
   addDays,
   daysBetween,
   phaseEndDate,
@@ -1182,6 +1183,124 @@ function DeadlineForm({
   );
 }
 
+function shiftUnitLabel(unit: ScheduleShiftUnit, amount: number): string {
+  const abs = Math.abs(amount);
+  if (unit === "days") return abs === 1 ? "day" : "days";
+  if (unit === "weeks") return abs === 1 ? "week" : "weeks";
+  return abs === 1 ? "month" : "months";
+}
+
+function ShiftScheduleForm({
+  projectId,
+  hasSchedule,
+  onDone,
+}: {
+  projectId: string;
+  hasSchedule: boolean;
+  onDone: () => void;
+}) {
+  const { shiftProjectSchedule } = useProjects();
+  const [amount, setAmount] = useState("14");
+  const [unit, setUnit] = useState<ScheduleShiftUnit>("days");
+  const [includeActuals, setIncludeActuals] = useState(false);
+
+  const parsedAmount = Math.trunc(Number(amount));
+  const valid =
+    hasSchedule &&
+    Number.isFinite(parsedAmount) &&
+    parsedAmount !== 0 &&
+    amount.trim() !== "";
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    shiftProjectSchedule(projectId, {
+      amount: parsedAmount,
+      unit,
+      includeActuals,
+    });
+    onDone();
+  }
+
+  const direction =
+    Number.isFinite(parsedAmount) && parsedAmount < 0 ? "earlier" : "later";
+  const absAmount = Number.isFinite(parsedAmount)
+    ? Math.abs(parsedAmount)
+    : 0;
+
+  return (
+    <form
+      onSubmit={submit}
+      className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
+    >
+      <p className="sm:col-span-2 lg:col-span-4 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Shift schedule
+      </p>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Amount
+        </span>
+        <input
+          type="number"
+          autoFocus
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="14"
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Unit
+        </span>
+        <select
+          value={unit}
+          onChange={(e) => setUnit(e.target.value as ScheduleShiftUnit)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        >
+          <option value="days">Days</option>
+          <option value="weeks">Weeks</option>
+          <option value="months">Months</option>
+        </select>
+      </label>
+      <label className="flex items-end gap-2 pb-2 sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={includeActuals}
+          onChange={(e) => setIncludeActuals(e.target.checked)}
+          className="rounded border-line"
+        />
+        <span className="text-xs font-semibold text-deep">
+          Also shift actual dates
+        </span>
+      </label>
+      <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
+        {valid
+          ? `Moves all phases, activities, milestones, and income/expenses ${absAmount} ${shiftUnitLabel(unit, absAmount)} ${direction}. Linked due dates stay in sync.`
+          : hasSchedule
+            ? "Enter a non-zero amount (negative = earlier)."
+            : "Add phases or milestones before shifting."}
+      </p>
+      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
+        <button
+          type="submit"
+          disabled={!valid}
+          className="rounded-lg bg-olive px-4 py-2 text-xs font-bold uppercase tracking-wide text-olive-ink disabled:opacity-40"
+        >
+          Apply shift
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="px-3 py-2 text-xs font-semibold text-muted hover:text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export default function ProjectGantt({
   projectId,
   schedule,
@@ -1200,7 +1319,7 @@ export default function ProjectGantt({
   const [sectionOpen, setSectionOpen] = useState(true);
   const [editListOpen, setEditListOpen] = useState(false);
   const [form, setForm] = useState<
-    null | "phase" | "activity" | "deadline"
+    null | "phase" | "activity" | "deadline" | "shift"
   >(null);
   const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(
@@ -1221,6 +1340,8 @@ export default function ProjectGantt({
   );
   const activities = schedule.activities ?? [];
   const deadlines = schedule.deadlines ?? [];
+  const hasSchedule =
+    phases.length > 0 || activities.length > 0 || deadlines.length > 0;
 
   function closeForms() {
     setForm(null);
@@ -1300,6 +1421,17 @@ export default function ProjectGantt({
               className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
             >
               + Milestone
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
+                setForm("shift");
+              }}
+              disabled={!hasSchedule}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40 disabled:opacity-40"
+            >
+              Shift schedule
             </button>
           </div>
 
@@ -1383,6 +1515,15 @@ export default function ProjectGantt({
                     ? deadlines.find((d) => d.id === editingDeadlineId)
                     : undefined
                 }
+                onDone={closeForms}
+              />
+            </div>
+          )}
+          {form === "shift" && (
+            <div className="mt-4">
+              <ShiftScheduleForm
+                projectId={projectId}
+                hasSchedule={hasSchedule}
                 onDone={closeForms}
               />
             </div>

@@ -43,6 +43,7 @@ import {
   todayDate,
   addDays,
   phaseEndDate,
+  ScheduleShiftUnit,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import {
@@ -90,6 +91,11 @@ import {
   munichBusFleetSchedule,
 } from "./gantt-munich";
 import { resolveLinkedDeadlineDate } from "./gantt-finance";
+import {
+  shiftProjectFinancials,
+  shiftProjectSchedule as applyScheduleShift,
+  type ScheduleShiftOpts,
+} from "./schedule-shift";
 import {
   applyFinancialCsvBundle,
   parseFinancialCsv,
@@ -482,6 +488,14 @@ interface ProjectsApi {
     patch: GanttDeadlineInput,
   ) => void;
   deleteGanttDeadline: (projectId: string, deadlineId: string) => void;
+  shiftProjectSchedule: (
+    projectId: string,
+    opts: {
+      amount: number;
+      unit: ScheduleShiftUnit;
+      includeActuals?: boolean;
+    },
+  ) => void;
 }
 
 const ProjectsContext = createContext<ProjectsApi | null>(null);
@@ -2782,6 +2796,88 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateSchedule, mutateFinancials, supportsGanttTables],
   );
 
+  const shiftProjectSchedule = useCallback(
+    (
+      projectId: string,
+      opts: {
+        amount: number;
+        unit: ScheduleShiftUnit;
+        includeActuals?: boolean;
+      },
+    ) => {
+      const amount = Math.trunc(opts.amount);
+      if (!Number.isFinite(amount) || amount === 0) return;
+
+      const shiftOpts: ScheduleShiftOpts = {
+        amount,
+        unit: opts.unit,
+        includeActuals: Boolean(opts.includeActuals),
+      };
+
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      if (!current) return;
+
+      const nextSchedule = applyScheduleShift(current.schedule, shiftOpts);
+      const nextFinancials = shiftProjectFinancials(
+        current.financials,
+        nextSchedule,
+        shiftOpts,
+      );
+
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, schedule: nextSchedule, financials: nextFinancials }
+            : p,
+        ),
+      );
+
+      if (supabase && supportsGanttTables) {
+        const includeActuals = shiftOpts.includeActuals;
+        for (const phase of nextSchedule.phases) {
+          const row: Record<string, string | null> = {
+            start_date: phase.startDate,
+          };
+          if (includeActuals) {
+            row.actual_start_date = phase.actualStartDate ?? null;
+          }
+          void supabase
+            .from("project_gantt_phases")
+            .update(row)
+            .eq("id", phase.id)
+            .then(logDbError("gantt phase shift"));
+        }
+        for (const activity of nextSchedule.activities ?? []) {
+          const row: Record<string, string | null> = {
+            start_date: activity.startDate,
+          };
+          if (includeActuals) {
+            row.actual_start_date = activity.actualStartDate ?? null;
+          }
+          void supabase
+            .from("project_gantt_activities")
+            .update(row)
+            .eq("id", activity.id)
+            .then(logDbError("gantt activity shift"));
+        }
+        for (const deadline of nextSchedule.deadlines) {
+          const row: Record<string, string | null> = {
+            date: deadline.date,
+          };
+          if (includeActuals) {
+            row.actual_date = deadline.actualDate ?? null;
+          }
+          void supabase
+            .from("project_gantt_deadlines")
+            .update(row)
+            .eq("id", deadline.id)
+            .then(logDbError("gantt deadline shift"));
+        }
+      }
+    },
+    [supportsGanttTables],
+  );
+
   const deleteProject = useCallback((projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (supabase) {
@@ -2852,6 +2948,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addGanttDeadline,
         updateGanttDeadline,
         deleteGanttDeadline,
+        shiftProjectSchedule,
       }}
     >
       {children}
