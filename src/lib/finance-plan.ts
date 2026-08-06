@@ -186,7 +186,7 @@ function monthPeriod(
   return "current";
 }
 
-function monthKeysBetween(fromKey: string, toKey: string): string[] {
+export function monthKeysBetween(fromKey: string, toKey: string): string[] {
   if (toKey < fromKey) return [];
   const { year, monthIndex } = parseMonthKey(fromKey);
   const keys: string[] = [];
@@ -196,6 +196,64 @@ function monthKeysBetween(fromKey: string, toKey: string): string[] {
     if (key >= toKey) break;
   }
   return keys;
+}
+
+export type FixedMonthlyEstimate = {
+  /** Rounded average of positive lookback months */
+  average: number;
+  /** Months that contributed to the average */
+  sampleMonths: string[];
+  /** First month the estimate would apply to (current calendar month) */
+  applyFrom: string;
+};
+
+/**
+ * Suggest future Fixed monthly from the average of the prior `lookbackMonths`
+ * (default 6). Skips zeros / missing months and anything before `asOfMonth`.
+ */
+export function estimateFixedMonthlyAverage(
+  monthlyExpenses: { month: string; fixedMonthly?: number }[],
+  options: {
+    currentMonth: string;
+    asOfMonth?: string | null;
+    lookbackMonths?: number;
+  },
+): FixedMonthlyEstimate | null {
+  const currentMonth = options.currentMonth.slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(currentMonth)) return null;
+  const lookback = options.lookbackMonths ?? 6;
+  const asOf = (options.asOfMonth ?? "").slice(0, 7);
+
+  const { year, monthIndex } = parseMonthKey(currentMonth);
+  const byMonth = new Map<string, number>();
+  for (const raw of monthlyExpenses) {
+    const e = normalizeCompanyMonthlyExpense(raw);
+    if (!e || !(e.fixedMonthly > 0)) continue;
+    byMonth.set(e.month, e.fixedMonthly);
+  }
+
+  const samples: { month: string; amount: number }[] = [];
+  for (let i = 1; i <= lookback; i++) {
+    const key = addMonths(year, monthIndex, -i).key;
+    if (asOf && key < asOf) continue;
+    const amount = byMonth.get(key);
+    if (amount != null && amount > 0) {
+      samples.push({ month: key, amount });
+    }
+  }
+
+  if (samples.length === 0) return null;
+  const sum = samples.reduce((acc, s) => acc + s.amount, 0);
+  const average = Math.round((sum / samples.length) * 100) / 100;
+  if (!(average > 0)) return null;
+
+  return {
+    average,
+    sampleMonths: samples
+      .map((s) => s.month)
+      .sort((a, b) => a.localeCompare(b)),
+    applyFrom: currentMonth,
+  };
 }
 
 /**

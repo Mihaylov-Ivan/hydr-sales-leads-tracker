@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useProjects } from "@/lib/store";
 import {
   buildMonthlyPlan,
+  estimateFixedMonthlyAverage,
+  monthKeysBetween,
   type MonthlyProjectBreakdown,
 } from "@/lib/finance-plan";
 import { parseFinanceWorkbook } from "@/lib/finance-import";
@@ -364,6 +366,21 @@ export default function FinancePage() {
     return map;
   }, [financeSettings.monthlyExpenses]);
 
+  const currentMonthKey = today.slice(0, 7);
+  const fixedMonthlyEstimate = useMemo(
+    () =>
+      estimateFixedMonthlyAverage(financeSettings.monthlyExpenses ?? [], {
+        currentMonth: currentMonthKey,
+        asOfMonth: financeSettings.openingCashAsOf ?? null,
+        lookbackMonths: 6,
+      }),
+    [
+      financeSettings.monthlyExpenses,
+      financeSettings.openingCashAsOf,
+      currentMonthKey,
+    ],
+  );
+
   async function onImportFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setImportBusy(true);
@@ -498,6 +515,35 @@ export default function FinancePage() {
       return;
     }
     upsertMonthlyCompany(month, { fixedMonthly: n });
+  }
+
+  function applyFixedMonthlyEstimate() {
+    if (!fixedMonthlyEstimate) return;
+    const from = fixedMonthlyEstimate.applyFrom;
+    const to = viewTo >= from ? viewTo : from;
+    const targetMonths = monthKeysBetween(from, to);
+    if (targetMonths.length === 0) return;
+
+    const amount = fixedMonthlyEstimate.average;
+    const targetSet = new Set(targetMonths);
+    const kept = (financeSettings.monthlyExpenses ?? []).filter(
+      (e) => !targetSet.has(e.month),
+    );
+    const nextRows: CompanyMonthlyExpense[] = [
+      ...kept,
+      ...targetMonths.map((month) => ({
+        month,
+        fixedMonthly: amount,
+        status: "projected" as CompanyMonthlyExpenseStatus,
+      })),
+    ].sort((a, b) => a.month.localeCompare(b.month));
+
+    updateFinanceSettings({ monthlyExpenses: nextRows });
+    setFixedMonthlyDrafts((d) => {
+      const next = { ...d };
+      for (const month of targetMonths) delete next[month];
+      return next;
+    });
   }
 
   if (!ready) {
@@ -799,7 +845,20 @@ export default function FinancePage() {
                   Maintain
                 </th>
                 <th className="border-l border-line bg-muted/10 px-2 py-1 text-right">
-                  Fixed monthly
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span>Fixed monthly</span>
+                    {fixedMonthlyEstimate && (
+                      <button
+                        type="button"
+                        onClick={applyFixedMonthlyEstimate}
+                        title={`Average of ${fixedMonthlyEstimate.sampleMonths.length} prior month${fixedMonthlyEstimate.sampleMonths.length === 1 ? "" : "s"} (zeros & months before As of ignored). Applies ${fixedMonthlyEstimate.applyFrom} through ${viewTo}.`}
+                        className="max-w-[9rem] truncate text-[9px] font-medium normal-case tracking-normal text-teal-accent/80 transition hover:text-teal-accent hover:underline"
+                      >
+                        ≈ {formatMoneyCompact(fixedMonthlyEstimate.average)} ·
+                        apply →
+                      </button>
+                    )}
+                  </div>
                 </th>
                 <th className="border-l border-line px-2 py-1 text-right">€</th>
                 <th className="border-l border-line px-2 py-1 text-right">€</th>
