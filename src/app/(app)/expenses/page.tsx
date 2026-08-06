@@ -51,6 +51,7 @@ type FlatRow = {
   milestoneId?: string;
   amount: number;
   amountExVat: number;
+  warehouseLotId?: string;
 };
 
 function parseNum(raw: string): number | null {
@@ -100,6 +101,7 @@ export default function ExpensesPage() {
   const [draftExVat, setDraftExVat] = useState("");
   const [draftIncVat, setDraftIncVat] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(15);
 
   useEffect(() => {
@@ -151,6 +153,9 @@ export default function ExpensesPage() {
             exp.amountExVat != null && exp.amountExVat > 0
               ? exp.amountExVat
               : amountExFromInc(exp.amount),
+          ...(exp.warehouseLotId
+            ? { warehouseLotId: exp.warehouseLotId }
+            : {}),
         });
       }
     }
@@ -235,6 +240,7 @@ export default function ExpensesPage() {
       amountExVat: number;
     }>,
   ) {
+    setRowError(null);
     const nextProjectId = patch.projectId ?? row.projectId;
     const amount = patch.amount ?? row.amount;
     const amountExVat = patch.amountExVat ?? row.amountExVat;
@@ -261,13 +267,26 @@ export default function ExpensesPage() {
     };
 
     if (nextProjectId === row.projectId) {
-      updateExpense(row.projectId, row.expenseId, expensePatch);
+      updateExpense(row.projectId, row.expenseId, {
+        ...expensePatch,
+        ...(row.warehouseLotId
+          ? { warehouseLotId: row.warehouseLotId }
+          : {}),
+      });
+      return;
+    }
+
+    if (row.warehouseLotId) {
+      setRowError(
+        "This expense is linked to warehouse stock. Move parts in Warehouse (cost follows), or delete the lot from Warehouse / Remove here to delete the whole lot.",
+      );
       return;
     }
 
     // Move to another project: recreate then delete
     addExpense(nextProjectId, expensePatch);
-    deleteExpense(row.projectId, row.expenseId);
+    const del = deleteExpense(row.projectId, row.expenseId);
+    if (!del.ok) setRowError(del.error);
   }
 
   function onExVatChange(row: FlatRow, raw: string) {
@@ -755,17 +774,28 @@ export default function ExpensesPage() {
                       </div>
                     </td>
                     <td className="px-2 py-1">
-                      <input
-                        defaultValue={row.label}
-                        key={`label-${row.expenseId}-${row.label}`}
-                        onBlur={(e) => {
-                          if (e.target.value !== row.label) {
-                            saveRow(row, { label: e.target.value });
-                          }
-                        }}
-                        placeholder="Description"
-                        className={inputCls}
-                      />
+                      <div className="flex items-center gap-1">
+                        {row.warehouseLotId && (
+                          <span
+                            className="shrink-0 rounded bg-teal-soft px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-teal-accent"
+                            title="Linked to warehouse lot — edits sync unit cost & metadata"
+                          >
+                            WH
+                          </span>
+                        )}
+                        <input
+                          defaultValue={row.label}
+                          key={`label-${row.expenseId}-${row.label}`}
+                          onBlur={(e) => {
+                            if (e.target.value !== row.label) {
+                              setRowError(null);
+                              saveRow(row, { label: e.target.value });
+                            }
+                          }}
+                          placeholder="Description"
+                          className={inputCls}
+                        />
+                      </div>
                     </td>
                     <td className="px-2 py-1">
                       <select
@@ -825,10 +855,20 @@ export default function ExpensesPage() {
                     <td className="px-2 py-1">
                       <button
                         type="button"
-                        onClick={() =>
-                          deleteExpense(row.projectId, row.expenseId)
-                        }
+                        onClick={() => {
+                          const res = deleteExpense(
+                            row.projectId,
+                            row.expenseId,
+                          );
+                          if (!res.ok) setRowError(res.error);
+                          else setRowError(null);
+                        }}
                         className="text-[10px] font-semibold text-muted hover:text-red-500"
+                        title={
+                          row.warehouseLotId
+                            ? "Deletes this warehouse lot and linked expenses"
+                            : "Remove expense"
+                        }
                       >
                         Remove
                       </button>
@@ -839,6 +879,11 @@ export default function ExpensesPage() {
             </tbody>
           </table>
         </div>
+        {rowError && (
+          <p className="border-t border-line px-3 py-2 text-[11px] text-amber-accent">
+            {rowError}
+          </p>
+        )}
         {draftError && (
           <p className="border-t border-line px-3 py-2 text-[11px] text-amber-accent">
             {draftError}

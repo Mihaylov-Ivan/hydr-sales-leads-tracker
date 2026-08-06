@@ -31,13 +31,17 @@ Rules
   and company opex is cleared until you enter or re-export it.
 - No project finance is stored in the database.
 - Portable financial CSV also supports type=history rows (before/after
-  amounts). Latest full data export with history columns:
-  financial-data-2026-08-06 (6)_updated.csv
+  amounts) and type=warehouse_lot (unit costs linked by lot id). Latest:
+  financial-data-2026-08-06 (6)_updated_updated_updated.csv
   Minimal history example: financial-data-history-columns_updated.csv
   History is merged by event_id on import; amounts never go to Postgres.
+- Expense rows may include warehouse_lot_id (link to warehouse lot). Older
+  CSVs without that column still import; missing values stay unlinked.
 - Header “Download history” exports type=history rows only.
 - Older CSVs without history columns still import; missing columns are
   treated as empty. Re-export (or use *_updated.csv) to get the full header.
+- Financials always persist in browser localStorage (and CSV). Warehouse
+  catalog / stock / movements sync to Supabase (migration-023).
 
 Sample projects:
   Sofia District Heating H2 Blend

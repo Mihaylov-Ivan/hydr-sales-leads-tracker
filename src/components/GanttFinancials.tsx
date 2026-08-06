@@ -651,11 +651,14 @@ function CashItemRow({
           </button>
           <button
             type="button"
-            onClick={() =>
-              kind === "payment"
-                ? deletePayment(projectId, item.id)
-                : deleteExpense(projectId, item.id)
-            }
+            onClick={() => {
+              if (kind === "payment") {
+                deletePayment(projectId, item.id);
+                return;
+              }
+              const res = deleteExpense(projectId, item.id);
+              if (!res.ok) window.alert(res.error);
+            }}
             className="text-xs text-muted hover:text-red-500"
           >
             Remove

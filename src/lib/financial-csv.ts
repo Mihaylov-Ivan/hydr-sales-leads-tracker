@@ -5,7 +5,8 @@
  * `type` discriminates rows:
  *   - project       — contract totals for one project
  *   - payment       — income line
- *   - expense       — expense schedule line
+ *   - expense       — expense schedule line (optional warehouse_lot_id)
+ *   - warehouse_lot — lot unit costs / receipt meta (links to expenses via id)
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
  *   - company_opex  — company fixed monthly cost
@@ -25,6 +26,8 @@ import {
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
+  WarehouseLot,
+  WarehouseState,
   amountExFromInc,
   amountIncFromEx,
   companyMonthlyCashTotal,
@@ -38,6 +41,7 @@ import {
   parseInstallationSubcategory,
   parseIsMaintenanceFlag,
   parseProjectExpenseCategory,
+  parseProjectExpenseSubcategory,
 } from "./types";
 
 export const FINANCIAL_CSV_HEADERS = [
@@ -74,6 +78,9 @@ export const FINANCIAL_CSV_HEADERS = [
   "fixed_monthly",
   "category",
   "subcategory",
+  "warehouse_lot_id",
+  "warehouse_item_id",
+  "qty",
   "is_maintenance",
   // History rows (type=history); empty on snapshot rows
   "event_id",
@@ -101,6 +108,24 @@ export type FinancialCsvBundle = {
   financeSettings: CompanyFinanceSettings | null;
   /** Append-only financial change snapshots from type=history rows */
   history: FinancialHistoryEntry[];
+  /** Lot unit costs / receipt meta from type=warehouse_lot rows */
+  warehouseLots: WarehouseLotCsvRow[];
+};
+
+/** Portable warehouse lot financial snapshot (CSV). */
+export type WarehouseLotCsvRow = {
+  lotId: string;
+  itemId?: string;
+  projectId?: string;
+  expenseId?: string;
+  unitCostIncVat: number;
+  unitCostExVat: number;
+  qtyReceived?: number;
+  receivedAt?: string;
+  category?: string;
+  subcategory?: string;
+  label?: string;
+  createdAt?: string;
 };
 
 function escCell(value: string | number | null | undefined): string {
@@ -125,12 +150,13 @@ function numStr(n: number | null | undefined): string {
 }
 
 /**
- * Build CSV text from live projects + company finance settings + history.
+ * Build CSV text from live projects + company finance settings + history + warehouse lots.
  */
 export function buildFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
   history: FinancialHistoryEntry[] = [],
+  warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
 ): string {
   const lines: string[] = [FINANCIAL_CSV_HEADERS.join(",")];
 
@@ -221,6 +247,7 @@ export function buildFinancialCsv(
         exp.subcategory
           ? exp.subcategory
           : "";
+      r.warehouse_lot_id = exp.warehouseLotId ?? "";
       lines.push(rowLine(r));
     }
 
@@ -236,6 +263,28 @@ export function buildFinancialCsv(
       r.milestone_note = m.note ?? "";
       lines.push(rowLine(r));
     }
+  }
+
+  for (const lot of warehouse?.lots ?? []) {
+    const r = emptyRow();
+    r.type = "warehouse_lot";
+    r.id = lot.id;
+    r.warehouse_lot_id = lot.id;
+    r.warehouse_item_id = lot.itemId;
+    r.project_id = lot.purchaseProjectId;
+    const proj = projects.find((p) => p.id === lot.purchaseProjectId);
+    r.project_name = proj?.name ?? "";
+    r.entity_id = lot.expenseId;
+    r.amount = numStr(lot.unitCostIncVat);
+    r.amount_ex_vat = numStr(lot.unitCostExVat);
+    r.vat_rate = numStr(DEFAULT_VAT_RATE);
+    r.qty = numStr(lot.qtyReceived);
+    r.due_date = lot.receivedAt;
+    r.created_at = lot.createdAt;
+    r.category = lot.category;
+    r.subcategory = lot.subcategory ?? "";
+    r.label = lot.label ?? "";
+    lines.push(rowLine(r));
   }
 
   const sortedHistory = [...history].sort((a, b) =>
@@ -269,9 +318,10 @@ export function downloadFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
   history: FinancialHistoryEntry[] = [],
+  warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
   filename = `financial-data-${new Date().toISOString().slice(0, 10)}.csv`,
 ): void {
-  const csv = buildFinancialCsv(projects, financeSettings, history);
+  const csv = buildFinancialCsv(projects, financeSettings, history, warehouse);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -408,6 +458,7 @@ export function parseFinancialCsv(text: string):
   let financeSettings: CompanyFinanceSettings | null = null;
   const opex: CompanyMonthlyExpense[] = [];
   const history: FinancialHistoryEntry[] = [];
+  const warehouseLots: WarehouseLotCsvRow[] = [];
 
   function touch(row: string[]): ProjectFinancials | null {
     const id = cell(row, "project_id");
@@ -626,7 +677,48 @@ export function parseFinancialCsv(text: string):
           parseInstallationSubcategory(categoryRaw);
         if (sub) expense.subcategory = sub;
       }
+      const lotId = cell(row, "warehouse_lot_id");
+      if (lotId) expense.warehouseLotId = lotId;
       f.expenseSchedule.push(expense);
+      continue;
+    }
+
+    if (type === "warehouse_lot") {
+      const lotId = cell(row, "id") || cell(row, "warehouse_lot_id");
+      let unitInc = parseOptionalNumber(cell(row, "amount"));
+      let unitEx = parseOptionalNumber(cell(row, "amount_ex_vat"));
+      const vatRate =
+        parseOptionalNumber(cell(row, "vat_rate")) ?? DEFAULT_VAT_RATE;
+      if (unitInc == null && unitEx != null) {
+        unitInc = amountIncFromEx(unitEx, vatRate);
+      } else if (unitEx == null && unitInc != null) {
+        unitEx = amountExFromInc(unitInc, vatRate);
+      }
+      if (!lotId || unitInc == null) continue;
+      const snap: WarehouseLotCsvRow = {
+        lotId,
+        unitCostIncVat: unitInc,
+        unitCostExVat: unitEx ?? amountExFromInc(unitInc, vatRate),
+      };
+      const itemId = cell(row, "warehouse_item_id");
+      if (itemId) snap.itemId = itemId;
+      const projectId = cell(row, "project_id");
+      if (projectId) snap.projectId = projectId;
+      const expenseId = cell(row, "entity_id");
+      if (expenseId) snap.expenseId = expenseId;
+      const qty = parseOptionalNumber(cell(row, "qty"));
+      if (qty != null) snap.qtyReceived = qty;
+      const receivedAt = cell(row, "due_date");
+      if (receivedAt) snap.receivedAt = receivedAt;
+      const cat = cell(row, "category");
+      if (cat) snap.category = cat;
+      const sub = cell(row, "subcategory");
+      if (sub) snap.subcategory = sub;
+      const label = cell(row, "label");
+      if (label) snap.label = label;
+      const createdAt = cell(row, "created_at");
+      if (createdAt) snap.createdAt = createdAt;
+      warehouseLots.push(snap);
       continue;
     }
 
@@ -672,7 +764,53 @@ export function parseFinancialCsv(text: string):
 
   return {
     ok: true,
-    data: { byProjectId, byProjectName, financeSettings, history },
+    data: {
+      byProjectId,
+      byProjectName,
+      financeSettings,
+      history,
+      warehouseLots,
+    },
+  };
+}
+
+/**
+ * Apply type=warehouse_lot CSV rows onto in-memory warehouse lots (unit costs / meta).
+ * Physical balances stay in Supabase; this only patches financial fields.
+ */
+export function applyWarehouseLotCsvRows(
+  state: WarehouseState,
+  rows: WarehouseLotCsvRow[],
+): WarehouseState {
+  if (!rows.length) return state;
+  const byId = new Map(rows.map((r) => [r.lotId, r]));
+  return {
+    ...state,
+    lots: state.lots.map((lot) => {
+      const snap = byId.get(lot.id);
+      if (!snap) return lot;
+      const next: WarehouseLot = {
+        ...lot,
+        unitCostIncVat: snap.unitCostIncVat,
+        unitCostExVat: snap.unitCostExVat,
+      };
+      if (snap.receivedAt) next.receivedAt = snap.receivedAt;
+      if (snap.qtyReceived != null && snap.qtyReceived > 0) {
+        next.qtyReceived = snap.qtyReceived;
+      }
+      if (snap.label !== undefined) {
+        if (snap.label) next.label = snap.label;
+      }
+      if (snap.expenseId) next.expenseId = snap.expenseId;
+      if (snap.category && isProjectExpenseCategory(snap.category)) {
+        next.category = snap.category;
+      }
+      if (snap.subcategory) {
+        const sub = parseProjectExpenseSubcategory(snap.subcategory);
+        if (sub) next.subcategory = sub;
+      }
+      return next;
+    }),
   };
 }
 

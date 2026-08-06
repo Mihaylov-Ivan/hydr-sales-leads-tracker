@@ -33,12 +33,21 @@ import {
   CompanyMetricsSettings,
   ChangeEvent,
   FinancialHistoryEntry,
+  WarehouseItem,
+  WarehouseLocation,
+  WarehouseLot,
+  WarehouseMaterialKind,
+  WarehouseMovement,
+  WarehouseBalance,
+  WarehouseState,
+  WAREHOUSE_HOLDING_PROJECT_NAME,
   STAGE_LABELS,
   TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
   GANTT_PHASE_COLORS,
   emptyFinancials,
   emptySchedule,
+  emptyWarehouseState,
   defaultFinanceSettings,
   defaultMetricsSettings,
   categoryHasSubcategories,
@@ -118,9 +127,27 @@ import {
 } from "./schedule-shift";
 import {
   applyFinancialCsvBundle,
+  applyWarehouseLotCsvRows,
   parseFinancialCsv,
 } from "./financial-csv";
-import { useStoredFinancialData } from "./financial-data-mode";
+import {
+  loadRemoteWarehouseState,
+  mergeLocalWarehouseFallback,
+  persistRemoteWarehouseState,
+} from "./warehouse-db";
+import {
+  expenseProjectIdForLocation,
+  findBalance,
+  applyBalanceDelta,
+  loadWarehouseState,
+  locationLabel,
+  locationsEqual,
+  materialKindToExpense,
+  movementSummary,
+  roundMoney,
+  saveWarehouseState,
+  unitCostExFromInc,
+} from "./warehouse";
 
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
@@ -250,15 +277,6 @@ function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
 }
 
 function withLocalFinancials(projects: Project[]): Project[] {
-  // When USE_DATABASE is false, leave financials empty until CSV import.
-  if (!useStoredFinancialData) {
-    return projects.map((p) =>
-      ensureProjectMetricsDefaults({
-        ...p,
-        financials: emptyFinancials(),
-      }),
-    );
-  }
   const local = loadLocalProjectFinancials();
   return projects.map((p) =>
     ensureProjectMetricsDefaults({
@@ -414,6 +432,63 @@ export interface ExpenseInput extends PaymentInput {
   subcategory?: InstallationSubcategory | null;
   /** Amount without VAT; pass `null` to clear on update */
   amountExVat?: number | null;
+  /** Link to warehouse lot; pass `null` to clear on update */
+  warehouseLotId?: string | null;
+}
+
+export interface WarehouseReceiveInput {
+  itemId?: string;
+  newItem?: {
+    name: string;
+    sku?: string;
+    unit?: string;
+    defaultMaterialKind?: WarehouseMaterialKind;
+  };
+  qty: number;
+  unitCostIncVat: number;
+  unitCostExVat?: number | null;
+  receivedAt: string;
+  materialKind: WarehouseMaterialKind;
+  destination: WarehouseLocation;
+  expenseMode: "create" | "link";
+  linkExpense?: { projectId: string; expenseId: string };
+  label?: string;
+  supplier?: string;
+  notes?: string;
+  actualDate?: string;
+}
+
+export interface WarehouseTransferInput {
+  lotId: string;
+  qty: number;
+  from: WarehouseLocation;
+  to: WarehouseLocation;
+  note?: string;
+}
+
+export interface WarehouseConsumeInput {
+  lotId: string;
+  qty: number;
+  from: WarehouseLocation;
+  note?: string;
+}
+
+export interface WarehouseAdjustInput {
+  lotId: string;
+  location: WarehouseLocation;
+  newQty: number;
+  note?: string;
+}
+
+export interface WarehouseLotUpdateInput {
+  lotId: string;
+  receivedAt?: string;
+  unitCostIncVat?: number;
+  unitCostExVat?: number | null;
+  label?: string | null;
+  supplier?: string | null;
+  notes?: string | null;
+  materialKind?: WarehouseMaterialKind;
 }
 
 export interface FinanceSettingsPatch {
@@ -552,7 +627,37 @@ interface ProjectsApi {
   deletePayment: (projectId: string, paymentId: string) => void;
   addExpense: (projectId: string, input: ExpenseInput) => void;
   updateExpense: (projectId: string, expenseId: string, patch: ExpenseInput) => void;
-  deleteExpense: (projectId: string, expenseId: string) => void;
+  deleteExpense: (
+    projectId: string,
+    expenseId: string,
+  ) => { ok: true } | { ok: false; error: string };
+  warehouse: WarehouseState;
+  ensureWarehouseHoldingProject: () => string;
+  receiveStock: (
+    input: WarehouseReceiveInput,
+  ) => { ok: true; lotId: string } | { ok: false; error: string };
+  transferStock: (
+    input: WarehouseTransferInput,
+  ) => { ok: true } | { ok: false; error: string };
+  consumeStock: (
+    input: WarehouseConsumeInput,
+  ) => { ok: true } | { ok: false; error: string };
+  adjustStock: (
+    input: WarehouseAdjustInput,
+  ) => { ok: true } | { ok: false; error: string };
+  updateWarehouseLot: (
+    input: WarehouseLotUpdateInput,
+  ) => { ok: true } | { ok: false; error: string };
+  deleteWarehouseLot: (
+    lotId: string,
+  ) => { ok: true } | { ok: false; error: string };
+  upsertWarehouseItem: (input: {
+    id?: string;
+    name: string;
+    sku?: string;
+    unit?: string;
+    defaultMaterialKind?: WarehouseMaterialKind;
+  }) => string;
   addMilestone: (projectId: string, input: MilestoneInput) => void;
   updateMilestone: (
     projectId: string,
@@ -603,6 +708,7 @@ function loadLocal(): Project[] {
         ...p,
         stage: normalizeStage(p.stage),
         market: p.market ?? "Clean H2",
+        ...(p.isWarehouseHolding ? { isWarehouseHolding: true as const } : {}),
         lastClientContactAt:
           p.lastClientContactAt ?? p.createdAt.slice(0, 10),
         emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
@@ -626,7 +732,9 @@ function loadLocal(): Project[] {
           ...emptyFinancials(),
           ...p.financials,
           payments: p.financials?.payments ?? [],
-          expenseSchedule: p.financials?.expenseSchedule ?? [],
+          expenseSchedule: (p.financials?.expenseSchedule ?? []).map((e) =>
+            normalizeProjectExpense(e),
+          ),
           milestones: p.financials?.milestones ?? [],
         },
         schedule: ensureScheduleShape(p.schedule),
@@ -962,6 +1070,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [financeImport, setFinanceImport] = useState<FinanceImportData | null>(
     null,
   );
+  const [warehouse, setWarehouse] = useState<WarehouseState>(emptyWarehouseState);
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
@@ -970,6 +1079,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [supportsMetricsSettingsTable, setSupportsMetricsSettingsTable] =
     useState(false);
   const [supportsGanttTables, setSupportsGanttTables] = useState(false);
+  const [supportsWarehouseHolding, setSupportsWarehouseHolding] = useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
   projectsRef.current = projects;
@@ -983,9 +1093,32 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   changeEventsRef.current = changeEvents;
   const financialHistoryRef = useRef<FinancialHistoryEntry[]>(financialHistory);
   financialHistoryRef.current = financialHistory;
+  const warehouseRef = useRef<WarehouseState>(warehouse);
+  warehouseRef.current = warehouse;
+  const deleteWarehouseLotRef = useRef<
+    (lotId: string) => { ok: true } | { ok: false; error: string }
+  >(() => ({ ok: false, error: "Warehouse not ready" }));
+
+  function tagHoldingProjects(
+    list: Project[],
+    holdingId: string | null,
+  ): Project[] {
+    if (!holdingId) {
+      return list.map((p) =>
+        p.isWarehouseHolding ? { ...p, isWarehouseHolding: true } : p,
+      );
+    }
+    return list.map((p) =>
+      p.id === holdingId || p.isWarehouseHolding
+        ? { ...p, isWarehouseHolding: true }
+        : p,
+    );
+  }
 
   useEffect(() => {
     async function boot() {
+      const wh = loadWarehouseState();
+      setWarehouse(wh);
       if (supabase) {
         const [members, remoteProjects, remoteMetrics] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
@@ -1000,16 +1133,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ]);
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(withLocalSchedule(withLocalFinancials(remoteProjects)));
-        setFinanceSettings(
-          useStoredFinancialData
-            ? loadLocalFinanceSettings()
-            : defaultFinanceSettings(),
+        setProjects(
+          tagHoldingProjects(
+            withLocalSchedule(withLocalFinancials(remoteProjects)),
+            wh.holdingProjectId,
+          ),
         );
+        setFinanceSettings(loadLocalFinanceSettings());
         setMetricsSettings(remoteMetrics);
-        setFinanceImport(
-          useStoredFinancialData ? loadLocalFinanceImport() : null,
-        );
+        setFinanceImport(loadLocalFinanceImport());
         setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
         setFinancialHistory(loadLocalFinancialHistory());
         let remoteEvents = await loadRemoteChangeEvents().catch(() =>
@@ -1060,21 +1192,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
 
         setChangeEvents(remoteEvents);
+
+        const remoteWh = await loadRemoteWarehouseState(
+          wh.holdingProjectId,
+        ).catch(() => null);
+        const mergedWh = mergeLocalWarehouseFallback(remoteWh, wh);
+        setWarehouse(mergedWh);
+        // Seed remote from local cache when DB tables are empty
+        if (
+          supabase &&
+          remoteWh &&
+          remoteWh.lots.length === 0 &&
+          remoteWh.items.length === 0 &&
+          (mergedWh.lots.length > 0 || mergedWh.items.length > 0)
+        ) {
+          void persistRemoteWarehouseState(mergedWh).then((res) => {
+            if (!res.ok) console.error("Warehouse seed failed:", res.error);
+          });
+        }
+
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
         setCurrentUserIdState(loadLocalCurrentUserId(members));
-        setProjects(withLocalSchedule(withLocalFinancials(loadLocal())));
-        setFinanceSettings(
-          useStoredFinancialData
-            ? loadLocalFinanceSettings()
-            : defaultFinanceSettings(),
+        setProjects(
+          tagHoldingProjects(
+            withLocalSchedule(withLocalFinancials(loadLocal())),
+            wh.holdingProjectId,
+          ),
         );
+        setFinanceSettings(loadLocalFinanceSettings());
         setMetricsSettings(loadLocalMetricsSettings());
-        setFinanceImport(
-          useStoredFinancialData ? loadLocalFinanceImport() : null,
-        );
+        setFinanceImport(loadLocalFinanceImport());
         setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
         setFinancialHistory(loadLocalFinancialHistory());
         setChangeEvents(loadLocalChangeEvents());
@@ -1096,6 +1246,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("last_meaningful_activity_at").limit(1),
         supabase.from("company_metrics_settings").select("id").limit(1),
         supabase.from("project_gantt_phases").select("id").limit(1),
+        supabase.from("projects").select("is_warehouse_holding").limit(1),
       ])
         .then(
           ([
@@ -1105,6 +1256,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             metricsCols,
             settingsTable,
             ganttTable,
+            warehouseHoldingCol,
           ]) => {
             setSupportsOwnershipFields(
               !projectsCols.error && !todosCols.error,
@@ -1113,6 +1265,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             setSupportsMetricsFields(!metricsCols.error);
             setSupportsMetricsSettingsTable(!settingsTable.error);
             setSupportsGanttTables(!ganttTable.error);
+            setSupportsWarehouseHolding(!warehouseHoldingCol.error);
           },
         )
         .catch(() => {
@@ -1121,6 +1274,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           setSupportsMetricsFields(false);
           setSupportsMetricsSettingsTable(false);
           setSupportsGanttTables(false);
+          setSupportsWarehouseHolding(false);
         });
     }
   }, []);
@@ -1139,7 +1293,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [teamMembers, ready]);
 
   useEffect(() => {
-    if (ready && useStoredFinancialData) {
+    if (ready) {
       window.localStorage.setItem(
         FINANCE_SETTINGS_STORAGE_KEY,
         JSON.stringify(financeSettings),
@@ -1147,10 +1301,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [financeSettings, ready]);
 
-  // App-entered schedules only — never persist Excel import-/expect- ids.
-  // Skipped when USE_DATABASE=false (financials live only after CSV import).
+  // App-entered project financials (CSV portable “financial DB”).
   useEffect(() => {
-    if (!ready || !useStoredFinancialData) return;
+    if (!ready) return;
     const map: Record<string, ProjectFinancials> = {};
     for (const p of projects) {
       map[p.id] = sanitizeAppFinancials(p.financials);
@@ -1175,7 +1328,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [projects, ready]);
 
   useEffect(() => {
-    if (!ready || !useStoredFinancialData) return;
+    if (!ready) return;
     if (financeImport) {
       window.localStorage.setItem(
         FINANCE_IMPORT_STORAGE_KEY,
@@ -1218,6 +1371,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       JSON.stringify(financialHistory),
     );
   }, [financialHistory, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    saveWarehouseState(warehouse);
+    if (!supabase) return;
+    const t = window.setTimeout(() => {
+      void persistRemoteWarehouseState(warehouse).then((res) => {
+        if (!res.ok) console.error("Warehouse persist failed:", res.error);
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [warehouse, ready]);
 
   // If the selected user is removed/edited away, fall back to first member.
   useEffect(() => {
@@ -1572,7 +1737,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           mergeFinancialHistory(prev, data.history),
         );
       }
-      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"})`;
+      if (data.warehouseLots.length > 0) {
+        setWarehouse((prev) => applyWarehouseLotCsvRows(prev, data.warehouseLots));
+      }
+      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"}, ${data.warehouseLots.length} warehouse lot${data.warehouseLots.length === 1 ? "" : "s"})`;
       recordChangeEvent(
         {
           id: createEventId(),
@@ -2954,6 +3122,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...(input.milestoneId && linkedDate
           ? { milestoneId: input.milestoneId }
           : {}),
+        ...(input.warehouseLotId
+          ? { warehouseLotId: input.warehouseLotId }
+          : {}),
         createdAt: new Date().toISOString(),
       };
       mutateFinancials(projectId, (f) => ({
@@ -2995,56 +3166,175 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       );
       const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
       const dueDate = linkedDate ?? patch.dueDate;
-      mutateFinancials(projectId, (f) => ({
-        ...f,
-        expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
-          if (e.id !== expenseId) return e;
-          const next: ProjectExpenseItem = {
-            id: e.id,
-            amount: patch.amount,
-            category: patch.category,
-            dueDate,
-            createdAt: e.createdAt,
-          };
-          if (patch.percent != null) next.percent = patch.percent;
-          else if (e.percent != null) next.percent = e.percent;
+      const lotId =
+        (patch.warehouseLotId !== undefined
+          ? patch.warehouseLotId
+          : before?.warehouseLotId) || undefined;
 
-          if (patch.amountExVat != null && patch.amountExVat > 0) {
-            next.amountExVat = patch.amountExVat;
-          } else if (patch.amountExVat === null) {
-            // cleared intentionally
-          } else if (e.amountExVat != null) {
-            next.amountExVat = e.amountExVat;
+      const buildNext = (e: ProjectExpenseItem): ProjectExpenseItem => {
+        const next: ProjectExpenseItem = {
+          id: e.id,
+          amount: patch.amount,
+          category: patch.category,
+          dueDate,
+          createdAt: e.createdAt,
+        };
+        if (patch.percent != null) next.percent = patch.percent;
+        else if (e.percent != null) next.percent = e.percent;
+
+        if (patch.amountExVat != null && patch.amountExVat > 0) {
+          next.amountExVat = patch.amountExVat;
+        } else if (patch.amountExVat === null) {
+          // cleared intentionally
+        } else if (e.amountExVat != null) {
+          next.amountExVat = e.amountExVat;
+        }
+
+        if (patch.label !== undefined) {
+          if (patch.label.trim()) next.label = patch.label.trim();
+        } else if (e.label) {
+          next.label = e.label;
+        }
+
+        if (patch.milestoneId) {
+          if (linkedDate) next.milestoneId = patch.milestoneId;
+        }
+
+        if (patch.actualDate !== undefined) {
+          if (patch.actualDate) next.actualDate = patch.actualDate;
+        } else if (e.actualDate) {
+          next.actualDate = e.actualDate;
+        }
+
+        if (categoryHasSubcategories(patch.category)) {
+          if (patch.subcategory) next.subcategory = patch.subcategory;
+          else if (patch.subcategory === null) {
+            // cleared
+          } else if (e.subcategory) {
+            next.subcategory = e.subcategory;
           }
+        }
 
-          if (patch.label !== undefined) {
-            if (patch.label.trim()) next.label = patch.label.trim();
-          } else if (e.label) {
-            next.label = e.label;
-          }
+        if (patch.warehouseLotId !== undefined) {
+          if (patch.warehouseLotId) next.warehouseLotId = patch.warehouseLotId;
+        } else if (e.warehouseLotId) {
+          next.warehouseLotId = e.warehouseLotId;
+        }
 
-          if (patch.milestoneId) {
-            if (linkedDate) next.milestoneId = patch.milestoneId;
-          }
-          // falsy milestoneId clears the link
+        return next;
+      };
 
-          if (patch.actualDate !== undefined) {
-            if (patch.actualDate) next.actualDate = patch.actualDate;
-          } else if (e.actualDate) {
-            next.actualDate = e.actualDate;
-          }
+      const amountChanged = Boolean(before && before.amount !== patch.amount);
+      const scale =
+        before && before.amount > 0 && amountChanged
+          ? patch.amount / before.amount
+          : 1;
 
-          if (categoryHasSubcategories(patch.category)) {
-            if (patch.subcategory) next.subcategory = patch.subcategory;
-            else if (patch.subcategory === null) {
-              // cleared
-            } else if (e.subcategory) {
-              next.subcategory = e.subcategory;
+      // Warehouse-linked: update this row, rescale sibling slices, sync lot.
+      if (lotId && typeof lotId === "string") {
+        setProjects((prev) =>
+          prev.map((p) => {
+            const schedule = [...(p.financials.expenseSchedule ?? [])];
+            let changed = false;
+            for (let i = 0; i < schedule.length; i++) {
+              const e = schedule[i];
+              if (p.id === projectId && e.id === expenseId) {
+                schedule[i] = buildNext(e);
+                changed = true;
+                continue;
+              }
+              if (e.warehouseLotId !== lotId) continue;
+              // Sibling slices for the same lot: keep purchase dates / meta aligned
+              const sib: ProjectExpenseItem = {
+                ...e,
+                dueDate,
+                category: patch.category,
+              };
+              if (patch.actualDate !== undefined) {
+                if (patch.actualDate) sib.actualDate = patch.actualDate;
+                else delete sib.actualDate;
+              }
+              if (patch.label !== undefined) {
+                if (patch.label.trim()) sib.label = patch.label.trim();
+                else delete sib.label;
+              } else if (e.label) {
+                sib.label = e.label;
+              }
+              if (categoryHasSubcategories(patch.category)) {
+                if (patch.subcategory) sib.subcategory = patch.subcategory;
+                else if (patch.subcategory === null) delete sib.subcategory;
+                else if (e.subcategory) sib.subcategory = e.subcategory;
+              } else {
+                delete sib.subcategory;
+              }
+              if (scale !== 1) {
+                sib.amount = roundMoney(e.amount * scale);
+                if (e.amountExVat != null) {
+                  sib.amountExVat = roundMoney(e.amountExVat * scale);
+                } else if (patch.amountExVat != null && before) {
+                  sib.amountExVat = roundMoney(
+                    (patch.amountExVat / Math.max(before.amount, 0.01)) *
+                      e.amount,
+                  );
+                }
+              }
+              schedule[i] = sib;
+              changed = true;
             }
-          }
-          return next;
-        }),
-      }));
+            if (!changed) return p;
+            return {
+              ...p,
+              financials: { ...p.financials, expenseSchedule: schedule },
+            };
+          }),
+        );
+
+        setWarehouse((prev) => ({
+          ...prev,
+          lots: prev.lots.map((lot) => {
+            if (lot.id !== lotId) return lot;
+            const next = { ...lot };
+            next.receivedAt = dueDate;
+            if (patch.label !== undefined && patch.label.trim()) {
+              next.label = patch.label.trim();
+            }
+            next.category = patch.category;
+            if (categoryHasSubcategories(patch.category) && patch.subcategory) {
+              next.subcategory = patch.subcategory;
+            } else if (!categoryHasSubcategories(patch.category)) {
+              delete next.subcategory;
+            }
+            if (scale !== 1) {
+              next.unitCostIncVat = roundMoney(lot.unitCostIncVat * scale);
+              next.unitCostExVat = roundMoney(lot.unitCostExVat * scale);
+            }
+            return next;
+          }),
+        }));
+
+        recordChangeEvent({
+          domain: "warehouse",
+          entityType: "lot",
+          entityId: lotId,
+          projectId,
+          action: "update",
+          summary: amountChanged
+            ? `Synced warehouse lot from expense edit (cost scale ${scale.toFixed(4)})`
+            : `Synced warehouse lot metadata from expense edit`,
+          payloadJson: {
+            expenseId,
+            ...(amountChanged ? { costScaled: true } : {}),
+          },
+        });
+      } else {
+        mutateFinancials(projectId, (f) => ({
+          ...f,
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
+            e.id !== expenseId ? e : buildNext(e),
+          ),
+        }));
+      }
+
       if (before && before.amount !== patch.amount) {
         const projectName = current?.name ?? projectId;
         const summary = summarizeFinancialFieldChange(
@@ -3063,7 +3353,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             action: "update",
             field: "amount",
             summary,
-            payloadJson: { field: "amount" },
+            payloadJson: { field: "amount", ...(lotId ? { lotId } : {}) },
           },
           {
             projectId,
@@ -3083,11 +3373,17 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const deleteExpense = useCallback(
-    (projectId: string, expenseId: string) => {
+    (
+      projectId: string,
+      expenseId: string,
+    ): { ok: true } | { ok: false; error: string } => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       const before = (current?.financials?.expenseSchedule ?? []).find(
         (e) => e.id === expenseId,
       );
+      if (before?.warehouseLotId) {
+        return deleteWarehouseLotRef.current(before.warehouseLotId);
+      }
       mutateFinancials(projectId, (f) => ({
         ...f,
         expenseSchedule: (f.expenseSchedule ?? []).filter(
@@ -3119,6 +3415,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           },
         );
       }
+      return { ok: true };
     },
     [mutateFinancials, recordChangeEvent],
   );
@@ -4026,6 +4323,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const deleteProject = useCallback(
     (projectId: string) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
+      if (current?.isWarehouseHolding) {
+        console.warn("Cannot delete the warehouse holding project");
+        return;
+      }
       setProjects((prev) => prev.filter((p) => p.id !== projectId));
       if (current) {
         recordChangeEvent({
@@ -4049,6 +4350,990 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     },
     [recordChangeEvent],
   );
+
+  const projectNameById = useCallback((id: string) => {
+    return projectsRef.current.find((p) => p.id === id)?.name;
+  }, []);
+
+  const ensureWarehouseHoldingProject = useCallback((): string => {
+    const wh = warehouseRef.current;
+    if (wh.holdingProjectId) {
+      const existing = projectsRef.current.find(
+        (p) => p.id === wh.holdingProjectId,
+      );
+      if (existing) {
+        if (!existing.isWarehouseHolding) {
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === existing.id ? { ...p, isWarehouseHolding: true } : p,
+            ),
+          );
+        }
+        return existing.id;
+      }
+    }
+    const named = projectsRef.current.find(
+      (p) =>
+        p.isWarehouseHolding ||
+        p.name === WAREHOUSE_HOLDING_PROJECT_NAME,
+    );
+    if (named) {
+      setWarehouse((prev) => ({ ...prev, holdingProjectId: named.id }));
+      if (!named.isWarehouseHolding) {
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === named.id ? { ...p, isWarehouseHolding: true } : p,
+          ),
+        );
+      }
+      return named.id;
+    }
+
+    const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const project: Project = {
+      id,
+      name: WAREHOUSE_HOLDING_PROJECT_NAME,
+      client: "Internal",
+      country: "—",
+      city: "—",
+      series: "Custom",
+      market: "Clean H2",
+      sizeKw: 1,
+      stage: "to-contact",
+      isWarehouseHolding: true,
+      baseDescription:
+        "Internal holding project for spare and buffer warehouse stock. Hidden from the sales board.",
+      lastClientContactAt: createdAt.slice(0, 10),
+      emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
+      emailReminderEnabled: false,
+      ...initialMetricsFields({
+        stage: "to-contact",
+        createdDate: createdAt.slice(0, 10),
+      }),
+      comments: [],
+      todos: [],
+      contacts: [],
+      files: [],
+      financials: emptyFinancials(),
+      schedule: emptySchedule(),
+      createdAt,
+    };
+    setProjects((prev) => [project, ...prev]);
+    setWarehouse((prev) => ({ ...prev, holdingProjectId: id }));
+    if (supabase) {
+      void supabase
+        .from("projects")
+        .insert({
+          id: project.id,
+          name: project.name,
+          client: project.client,
+          country: project.country,
+          city: project.city,
+          series: project.series,
+          market: project.market,
+          size_kw: project.sizeKw,
+          stage: project.stage,
+          base_description: project.baseDescription,
+          ai_summary: null,
+          last_client_contact_at: project.lastClientContactAt,
+          email_reminder_days: project.emailReminderDays,
+          email_reminder_enabled: project.emailReminderEnabled,
+          created_at: project.createdAt,
+          ...(supportsWarehouseHolding
+            ? { is_warehouse_holding: true }
+            : {}),
+          ...(supportsMetricsFields
+            ? {
+                cold_lead_entered_at: project.coldLeadEnteredAt,
+                last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+              }
+            : {}),
+        })
+        .then(logDbError("warehouse holding project insert"));
+    }
+    recordChangeEvent({
+      domain: "warehouse",
+      entityType: "holding_project",
+      entityId: id,
+      projectId: id,
+      action: "create",
+      summary: `Created ${WAREHOUSE_HOLDING_PROJECT_NAME}`,
+    });
+    return id;
+  }, [recordChangeEvent, supportsMetricsFields, supportsWarehouseHolding]);
+
+  const upsertWarehouseItem = useCallback(
+    (input: {
+      id?: string;
+      name: string;
+      sku?: string;
+      unit?: string;
+      defaultMaterialKind?: WarehouseMaterialKind;
+    }): string => {
+      const name = input.name.trim();
+      if (!name) return input.id ?? "";
+      if (input.id) {
+        setWarehouse((prev) => ({
+          ...prev,
+          items: prev.items.map((it) =>
+            it.id === input.id
+              ? {
+                  ...it,
+                  name,
+                  ...(input.sku?.trim()
+                    ? { sku: input.sku.trim() }
+                    : it.sku
+                      ? { sku: it.sku }
+                      : {}),
+                  unit: input.unit?.trim() || it.unit || "pcs",
+                  defaultMaterialKind:
+                    input.defaultMaterialKind ?? it.defaultMaterialKind,
+                }
+              : it,
+          ),
+        }));
+        return input.id;
+      }
+      const id = crypto.randomUUID();
+      const item: WarehouseItem = {
+        id,
+        name,
+        ...(input.sku?.trim() ? { sku: input.sku.trim() } : {}),
+        unit: input.unit?.trim() || "pcs",
+        defaultMaterialKind: input.defaultMaterialKind ?? "materials",
+        createdAt: new Date().toISOString(),
+      };
+      setWarehouse((prev) => ({
+        ...prev,
+        items: [...prev.items, item],
+      }));
+      return id;
+    },
+    [],
+  );
+
+  /** Move proportional materials expense with stock between projects. */
+  const moveLotExpenseCost = useCallback(
+    (
+      lot: WarehouseLot,
+      fromProjectId: string,
+      toProjectId: string,
+      qty: number,
+    ) => {
+      if (fromProjectId === toProjectId || qty <= 0) return;
+      const amountInc = roundMoney(qty * lot.unitCostIncVat);
+      const amountEx = roundMoney(qty * lot.unitCostExVat);
+      if (amountInc <= 0) return;
+
+      const fromProj = projectsRef.current.find((p) => p.id === fromProjectId);
+      const toProj = projectsRef.current.find((p) => p.id === toProjectId);
+      if (!fromProj || !toProj) return;
+
+      const fromExp = (fromProj.financials.expenseSchedule ?? []).find(
+        (e) => e.warehouseLotId === lot.id,
+      );
+      const toExp = (toProj.financials.expenseSchedule ?? []).find(
+        (e) => e.warehouseLotId === lot.id,
+      );
+
+      const moveAmount = fromExp
+        ? Math.min(amountInc, fromExp.amount)
+        : amountInc;
+      const moveEx = fromExp?.amountExVat != null
+        ? roundMoney(
+            Math.min(
+              amountEx,
+              (fromExp.amountExVat / Math.max(fromExp.amount, 0.01)) *
+                moveAmount,
+            ),
+          )
+        : amountEx;
+
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id === fromProjectId) {
+            const schedule = [...(p.financials.expenseSchedule ?? [])];
+            const idx = schedule.findIndex((e) => e.warehouseLotId === lot.id);
+            if (idx >= 0) {
+              const e = schedule[idx];
+              const nextAmt = roundMoney(e.amount - moveAmount);
+              if (nextAmt <= 0.009) {
+                schedule.splice(idx, 1);
+              } else {
+                const next: ProjectExpenseItem = {
+                  ...e,
+                  amount: nextAmt,
+                };
+                if (e.amountExVat != null) {
+                  next.amountExVat = roundMoney(
+                    Math.max(0, e.amountExVat - moveEx),
+                  );
+                }
+                schedule[idx] = next;
+              }
+            }
+            return {
+              ...p,
+              financials: { ...p.financials, expenseSchedule: schedule },
+            };
+          }
+          if (p.id === toProjectId) {
+            const schedule = [...(p.financials.expenseSchedule ?? [])];
+            const idx = schedule.findIndex((e) => e.warehouseLotId === lot.id);
+            if (idx >= 0) {
+              const e = schedule[idx];
+              const next: ProjectExpenseItem = {
+                ...e,
+                amount: roundMoney(e.amount + moveAmount),
+              };
+              if (e.amountExVat != null || moveEx > 0) {
+                next.amountExVat = roundMoney((e.amountExVat ?? 0) + moveEx);
+              }
+              schedule[idx] = next;
+            } else {
+              const template = fromExp;
+              const created: ProjectExpenseItem = {
+                id: crypto.randomUUID(),
+                amount: moveAmount,
+                ...(moveEx > 0 ? { amountExVat: moveEx } : {}),
+                dueDate: template?.dueDate ?? lot.receivedAt,
+                ...(template?.actualDate
+                  ? { actualDate: template.actualDate }
+                  : lot.receivedAt
+                    ? { actualDate: lot.receivedAt }
+                    : {}),
+                label:
+                  template?.label ??
+                  lot.label ??
+                  `Warehouse lot ${lot.id.slice(0, 8)}`,
+                category: template?.category ?? lot.category,
+                ...(template?.subcategory || lot.subcategory
+                  ? {
+                      subcategory:
+                        template?.subcategory ?? lot.subcategory,
+                    }
+                  : {}),
+                warehouseLotId: lot.id,
+                createdAt: new Date().toISOString(),
+              };
+              schedule.push(created);
+            }
+            return {
+              ...p,
+              financials: { ...p.financials, expenseSchedule: schedule },
+            };
+          }
+          return p;
+        }),
+      );
+
+      const fromName = fromProj.name;
+      const toName = toProj.name;
+      const summary = `Moved materials cost ${formatValue(moveAmount)} from ${fromName} to ${toName} (lot stock transfer)`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "expense",
+          entityId: lot.id,
+          projectId: toProjectId,
+          action: "transfer",
+          field: "amount",
+          summary,
+          payloadJson: {
+            field: "warehouse_cost_transfer",
+            fromProjectId,
+            toProjectId,
+            lotId: lot.id,
+          },
+        },
+        {
+          projectId: toProjectId,
+          projectName: toName,
+          entityType: "expense",
+          entityId: lot.id,
+          action: "transfer",
+          field: "amount",
+          oldValue: `${fromName}: ${formatValue(fromExp?.amount ?? 0)}`,
+          newValue: formatValue(moveAmount),
+          summary,
+        },
+      );
+    },
+    [recordChangeEvent],
+  );
+
+  const receiveStock = useCallback(
+    (
+      input: WarehouseReceiveInput,
+    ): { ok: true; lotId: string } | { ok: false; error: string } => {
+      if (!(input.qty > 0) || !Number.isFinite(input.qty)) {
+        return { ok: false, error: "Quantity must be positive" };
+      }
+      if (!(input.unitCostIncVat >= 0) || !Number.isFinite(input.unitCostIncVat)) {
+        return { ok: false, error: "Unit cost is invalid" };
+      }
+      if (
+        input.destination.type === "project" &&
+        !input.destination.projectId
+      ) {
+        return { ok: false, error: "Select a destination project" };
+      }
+
+      let itemId = input.itemId;
+      if (!itemId) {
+        if (!input.newItem?.name?.trim()) {
+          return { ok: false, error: "Item name is required" };
+        }
+        itemId = upsertWarehouseItem({
+          name: input.newItem.name,
+          sku: input.newItem.sku,
+          unit: input.newItem.unit,
+          defaultMaterialKind:
+            input.newItem.defaultMaterialKind ?? input.materialKind,
+        });
+      }
+
+      const holdingId = ensureWarehouseHoldingProject();
+      const expenseProjectId = expenseProjectIdForLocation(
+        input.destination,
+        holdingId,
+      );
+      const { category, subcategory } = materialKindToExpense(
+        input.materialKind,
+      );
+      const unitEx = unitCostExFromInc(
+        input.unitCostIncVat,
+        input.unitCostExVat,
+      );
+      const totalInc = roundMoney(input.qty * input.unitCostIncVat);
+      const totalEx = roundMoney(input.qty * unitEx);
+      const lotId = crypto.randomUUID();
+      const existingItem = warehouseRef.current.items.find((i) => i.id === itemId);
+      const label =
+        input.label?.trim() ||
+        input.newItem?.name?.trim() ||
+        existingItem?.name ||
+        "Warehouse receipt";
+
+      let expenseId = "";
+      if (input.expenseMode === "link") {
+        const link = input.linkExpense;
+        if (!link?.expenseId || !link.projectId) {
+          return { ok: false, error: "Select an expense to link" };
+        }
+        if (link.projectId !== expenseProjectId) {
+          return {
+            ok: false,
+            error:
+              "Linked expense must be on the same project as the stock destination (use holding project for spares/buffer)",
+          };
+        }
+        const proj = projectsRef.current.find((p) => p.id === link.projectId);
+        const exp = (proj?.financials.expenseSchedule ?? []).find(
+          (e) => e.id === link.expenseId,
+        );
+        if (!exp) return { ok: false, error: "Linked expense not found" };
+        if (exp.warehouseLotId) {
+          return { ok: false, error: "That expense is already linked to a lot" };
+        }
+        expenseId = exp.id;
+        setProjects((prev) =>
+          prev.map((p) => {
+            if (p.id !== link.projectId) return p;
+            return {
+              ...p,
+              financials: {
+                ...p.financials,
+                expenseSchedule: (p.financials.expenseSchedule ?? []).map(
+                  (e) =>
+                    e.id === exp.id
+                      ? {
+                          ...e,
+                          warehouseLotId: lotId,
+                          amount: totalInc,
+                          amountExVat: totalEx,
+                          dueDate: input.receivedAt,
+                          ...(input.actualDate
+                            ? { actualDate: input.actualDate }
+                            : e.actualDate
+                              ? { actualDate: e.actualDate }
+                              : { actualDate: input.receivedAt }),
+                          category,
+                          ...(subcategory ? { subcategory } : {}),
+                          label: e.label?.trim() || label,
+                        }
+                      : e,
+                ),
+              },
+            };
+          }),
+        );
+        const summary = `${proj?.name ?? link.projectId}: linked expense to warehouse lot (${formatValue(totalInc)})`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: expenseId,
+            projectId: link.projectId,
+            action: "update",
+            field: "warehouseLotId",
+            summary,
+            payloadJson: { lotId },
+          },
+          {
+            projectId: link.projectId,
+            projectName: proj?.name,
+            entityType: "expense",
+            entityId: expenseId,
+            action: "update",
+            field: "amount",
+            oldValue: formatValue(exp.amount),
+            newValue: formatValue(totalInc),
+            summary,
+          },
+        );
+      } else {
+        expenseId = crypto.randomUUID();
+        const expense: ProjectExpenseItem = {
+          id: expenseId,
+          amount: totalInc,
+          amountExVat: totalEx,
+          dueDate: input.receivedAt,
+          actualDate: input.actualDate ?? input.receivedAt,
+          label,
+          category,
+          ...(subcategory ? { subcategory } : {}),
+          warehouseLotId: lotId,
+          createdAt: new Date().toISOString(),
+        };
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === expenseProjectId
+              ? {
+                  ...p,
+                  financials: {
+                    ...p.financials,
+                    expenseSchedule: [
+                      ...(p.financials.expenseSchedule ?? []),
+                      expense,
+                    ],
+                  },
+                }
+              : p,
+          ),
+        );
+        const projectName =
+          projectsRef.current.find((p) => p.id === expenseProjectId)?.name ??
+          expenseProjectId;
+        const summary = `${projectName}: added expense ${label} (${formatValue(totalInc)})`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: expenseId,
+            projectId: expenseProjectId,
+            action: "create",
+            summary,
+            payloadJson: { category, lotId },
+          },
+          {
+            projectId: expenseProjectId,
+            projectName,
+            entityType: "expense",
+            entityId: expenseId,
+            action: "create",
+            newValue: formatValue(totalInc),
+            summary,
+          },
+        );
+      }
+
+      const lot: WarehouseLot = {
+        id: lotId,
+        itemId: itemId!,
+        qtyReceived: input.qty,
+        unitCostIncVat: input.unitCostIncVat,
+        unitCostExVat: unitEx,
+        receivedAt: input.receivedAt,
+        purchaseProjectId: expenseProjectId,
+        expenseId,
+        category,
+        ...(subcategory ? { subcategory } : {}),
+        ...(input.supplier?.trim() ? { supplier: input.supplier.trim() } : {}),
+        ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
+        label,
+        createdAt: new Date().toISOString(),
+      };
+      const destLoc: WarehouseLocation =
+        input.destination.type === "project"
+          ? { type: "project", projectId: input.destination.projectId }
+          : { type: input.destination.type };
+      const balance: WarehouseBalance = {
+        id: crypto.randomUUID(),
+        lotId,
+        location: destLoc,
+        qty: input.qty,
+      };
+      const movement: WarehouseMovement = {
+        id: crypto.randomUUID(),
+        lotId,
+        action: "receive",
+        qty: input.qty,
+        to: destLoc,
+        occurredAt: new Date().toISOString(),
+        ...(input.notes?.trim() ? { note: input.notes.trim() } : {}),
+      };
+
+      setWarehouse((prev) => ({
+        ...prev,
+        lots: [...prev.lots, lot],
+        balances: [...prev.balances, balance],
+        movements: [movement, ...prev.movements],
+      }));
+
+      const toLabel = locationLabel(destLoc, projectNameById);
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: lotId,
+        projectId:
+          destLoc.type === "project" ? destLoc.projectId : holdingId,
+        action: "receive",
+        summary: movementSummary("receive", input.qty, undefined, toLabel),
+        payloadJson: {
+          itemId,
+          qty: input.qty,
+          to: destLoc.type,
+          ...(destLoc.projectId ? { projectId: destLoc.projectId } : {}),
+        },
+      });
+
+      return { ok: true, lotId };
+    },
+    [
+      ensureWarehouseHoldingProject,
+      upsertWarehouseItem,
+      recordChangeEvent,
+      projectNameById,
+    ],
+  );
+
+  const transferStock = useCallback(
+    (
+      input: WarehouseTransferInput,
+    ): { ok: true } | { ok: false; error: string } => {
+      if (!(input.qty > 0)) return { ok: false, error: "Quantity must be positive" };
+      if (locationsEqual(input.from, input.to)) {
+        return { ok: false, error: "Source and destination are the same" };
+      }
+      if (input.to.type === "project" && !input.to.projectId) {
+        return { ok: false, error: "Select a destination project" };
+      }
+      if (input.from.type === "project" && !input.from.projectId) {
+        return { ok: false, error: "Invalid source location" };
+      }
+
+      const wh = warehouseRef.current;
+      const lot = wh.lots.find((l) => l.id === input.lotId);
+      if (!lot) return { ok: false, error: "Lot not found" };
+      const bal = findBalance(wh.balances, input.lotId, input.from);
+      if (!bal || bal.qty + 1e-9 < input.qty) {
+        return { ok: false, error: "Insufficient quantity at source" };
+      }
+
+      const holdingId = ensureWarehouseHoldingProject();
+      const fromExpenseProject = expenseProjectIdForLocation(
+        input.from,
+        holdingId,
+      );
+      const toExpenseProject = expenseProjectIdForLocation(input.to, holdingId);
+
+      setWarehouse((prev) => {
+        let balances = applyBalanceDelta(
+          prev.balances,
+          input.lotId,
+          input.from,
+          -input.qty,
+        );
+        balances = applyBalanceDelta(balances, input.lotId, input.to, input.qty);
+        const movement: WarehouseMovement = {
+          id: crypto.randomUUID(),
+          lotId: input.lotId,
+          action: "transfer",
+          qty: input.qty,
+          from: input.from,
+          to: input.to,
+          occurredAt: new Date().toISOString(),
+          ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        };
+        return {
+          ...prev,
+          balances,
+          movements: [movement, ...prev.movements],
+        };
+      });
+
+      moveLotExpenseCost(
+        lot,
+        fromExpenseProject,
+        toExpenseProject,
+        input.qty,
+      );
+
+      const fromLabel = locationLabel(input.from, projectNameById);
+      const toLabel = locationLabel(input.to, projectNameById);
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: input.lotId,
+        projectId:
+          input.to.type === "project" ? input.to.projectId : holdingId,
+        action: "transfer",
+        summary: movementSummary("transfer", input.qty, fromLabel, toLabel),
+        payloadJson: {
+          qty: input.qty,
+          from: input.from.type,
+          to: input.to.type,
+          ...(input.from.projectId ? { fromProjectId: input.from.projectId } : {}),
+          ...(input.to.projectId ? { toProjectId: input.to.projectId } : {}),
+        },
+      });
+
+      return { ok: true };
+    },
+    [
+      ensureWarehouseHoldingProject,
+      moveLotExpenseCost,
+      recordChangeEvent,
+      projectNameById,
+    ],
+  );
+
+  const consumeStock = useCallback(
+    (
+      input: WarehouseConsumeInput,
+    ): { ok: true } | { ok: false; error: string } => {
+      if (!(input.qty > 0)) return { ok: false, error: "Quantity must be positive" };
+      if (input.from.type === "project" && !input.from.projectId) {
+        return { ok: false, error: "Invalid location" };
+      }
+      const wh = warehouseRef.current;
+      const lot = wh.lots.find((l) => l.id === input.lotId);
+      if (!lot) return { ok: false, error: "Lot not found" };
+      const bal = findBalance(wh.balances, input.lotId, input.from);
+      if (!bal || bal.qty + 1e-9 < input.qty) {
+        return { ok: false, error: "Insufficient quantity" };
+      }
+
+      setWarehouse((prev) => {
+        const balances = applyBalanceDelta(
+          prev.balances,
+          input.lotId,
+          input.from,
+          -input.qty,
+        );
+        const movement: WarehouseMovement = {
+          id: crypto.randomUUID(),
+          lotId: input.lotId,
+          action: "consume",
+          qty: input.qty,
+          from: input.from,
+          occurredAt: new Date().toISOString(),
+          ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+        };
+        return {
+          ...prev,
+          balances,
+          movements: [movement, ...prev.movements],
+        };
+      });
+
+      const fromLabel = locationLabel(input.from, projectNameById);
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: input.lotId,
+        projectId:
+          input.from.type === "project"
+            ? input.from.projectId
+            : warehouseRef.current.holdingProjectId ?? undefined,
+        action: "consume",
+        summary: movementSummary("consume", input.qty, fromLabel),
+        payloadJson: {
+          qty: input.qty,
+          from: input.from.type,
+          ...(input.from.projectId ? { projectId: input.from.projectId } : {}),
+        },
+      });
+
+      return { ok: true };
+    },
+    [recordChangeEvent, projectNameById],
+  );
+
+  const adjustStock = useCallback(
+    (
+      input: WarehouseAdjustInput,
+    ): { ok: true } | { ok: false; error: string } => {
+      if (!(input.newQty >= 0) || !Number.isFinite(input.newQty)) {
+        return { ok: false, error: "Quantity must be zero or positive" };
+      }
+      const wh = warehouseRef.current;
+      const lot = wh.lots.find((l) => l.id === input.lotId);
+      if (!lot) return { ok: false, error: "Lot not found" };
+      const bal = findBalance(wh.balances, input.lotId, input.location);
+      const currentQty = bal?.qty ?? 0;
+      const delta = roundMoney(input.newQty - currentQty);
+      if (Math.abs(delta) < 1e-9) return { ok: true };
+
+      // Adjustments that reduce stock without consume do not move expense
+      // (inventory write-off stays on current project's books).
+      setWarehouse((prev) => {
+        const balances = applyBalanceDelta(
+          prev.balances,
+          input.lotId,
+          input.location,
+          delta,
+        );
+        const movement: WarehouseMovement = {
+          id: crypto.randomUUID(),
+          lotId: input.lotId,
+          action: "adjust",
+          qty: Math.abs(delta),
+          from: input.location,
+          to: input.location,
+          occurredAt: new Date().toISOString(),
+          note:
+            input.note?.trim() ||
+            `Set qty ${currentQty} → ${input.newQty}`,
+        };
+        return {
+          ...prev,
+          balances,
+          movements: [movement, ...prev.movements],
+        };
+      });
+
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: input.lotId,
+        action: "adjust",
+        summary: `Adjusted stock at ${locationLabel(input.location, projectNameById)}: ${currentQty} → ${input.newQty}`,
+        payloadJson: {
+          fromQty: currentQty,
+          toQty: input.newQty,
+          location: input.location.type,
+        },
+      });
+
+      return { ok: true };
+    },
+    [recordChangeEvent, projectNameById],
+  );
+
+  const updateWarehouseLot = useCallback(
+    (
+      input: WarehouseLotUpdateInput,
+    ): { ok: true } | { ok: false; error: string } => {
+      const wh = warehouseRef.current;
+      const lot = wh.lots.find((l) => l.id === input.lotId);
+      if (!lot) return { ok: false, error: "Lot not found" };
+
+      const nextInc =
+        input.unitCostIncVat != null && Number.isFinite(input.unitCostIncVat)
+          ? input.unitCostIncVat
+          : lot.unitCostIncVat;
+      if (nextInc < 0) return { ok: false, error: "Unit cost is invalid" };
+      const nextEx =
+        input.unitCostExVat !== undefined
+          ? unitCostExFromInc(nextInc, input.unitCostExVat)
+          : input.unitCostIncVat != null
+            ? unitCostExFromInc(nextInc, null)
+            : lot.unitCostExVat;
+      const receivedAt = input.receivedAt?.trim() || lot.receivedAt;
+      const costScale =
+        lot.unitCostIncVat > 0 ? nextInc / lot.unitCostIncVat : 1;
+      const costChanged = Math.abs(costScale - 1) > 1e-9;
+      const cat =
+        input.materialKind != null
+          ? materialKindToExpense(input.materialKind)
+          : {
+              category: lot.category,
+              subcategory: lot.subcategory,
+            };
+
+      setWarehouse((prev) => ({
+        ...prev,
+        lots: prev.lots.map((l) => {
+          if (l.id !== input.lotId) return l;
+          const next = {
+            ...l,
+            unitCostIncVat: roundMoney(nextInc),
+            unitCostExVat: roundMoney(nextEx),
+            receivedAt,
+            category: cat.category,
+          };
+          if (cat.subcategory) next.subcategory = cat.subcategory;
+          else delete next.subcategory;
+          if (input.label !== undefined) {
+            if (input.label?.trim()) next.label = input.label.trim();
+            else delete next.label;
+          }
+          if (input.supplier !== undefined) {
+            if (input.supplier?.trim()) next.supplier = input.supplier.trim();
+            else delete next.supplier;
+          }
+          if (input.notes !== undefined) {
+            if (input.notes?.trim()) next.notes = input.notes.trim();
+            else delete next.notes;
+          }
+          return next;
+        }),
+      }));
+
+      setProjects((prev) =>
+        prev.map((p) => {
+          const schedule = (p.financials.expenseSchedule ?? []).map((e) => {
+            if (e.warehouseLotId !== input.lotId) return e;
+            const next = {
+              ...e,
+              dueDate: receivedAt,
+              category: cat.category,
+            };
+            if (e.actualDate) next.actualDate = receivedAt;
+            if (cat.subcategory) next.subcategory = cat.subcategory;
+            else delete next.subcategory;
+            if (input.label !== undefined) {
+              if (input.label?.trim()) next.label = input.label.trim();
+            }
+            if (costChanged) {
+              next.amount = roundMoney(e.amount * costScale);
+              if (e.amountExVat != null) {
+                next.amountExVat = roundMoney(e.amountExVat * costScale);
+              }
+            }
+            return next;
+          });
+          return {
+            ...p,
+            financials: { ...p.financials, expenseSchedule: schedule },
+          };
+        }),
+      );
+
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: input.lotId,
+        action: "update",
+        summary: `Updated warehouse lot ${input.lotId.slice(0, 8)}`,
+        payloadJson: {
+          ...(costChanged ? { unitCostUpdated: true } : {}),
+          ...(input.receivedAt ? { receivedAt } : {}),
+        },
+      });
+      if (costChanged) {
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: input.lotId,
+            action: "update",
+            field: "amount",
+            summary: `Rescaled expenses for warehouse lot ${input.lotId.slice(0, 8)}`,
+            payloadJson: { lotId: input.lotId },
+          },
+          {
+            entityType: "expense",
+            entityId: input.lotId,
+            action: "update",
+            field: "amount",
+            oldValue: formatValue(lot.unitCostIncVat),
+            newValue: formatValue(nextInc),
+            summary: `Lot unit cost ${formatValue(lot.unitCostIncVat)} → ${formatValue(nextInc)}`,
+          },
+        );
+      }
+
+      return { ok: true };
+    },
+    [recordChangeEvent],
+  );
+
+  const deleteWarehouseLot = useCallback(
+    (lotId: string): { ok: true } | { ok: false; error: string } => {
+      const wh = warehouseRef.current;
+      const lot = wh.lots.find((l) => l.id === lotId);
+      if (!lot) return { ok: false, error: "Lot not found" };
+
+      const removedAmounts: { projectId: string; amount: number; label?: string }[] =
+        [];
+      setProjects((prev) =>
+        prev.map((p) => {
+          const keep: typeof p.financials.expenseSchedule = [];
+          for (const e of p.financials.expenseSchedule ?? []) {
+            if (e.warehouseLotId === lotId) {
+              removedAmounts.push({
+                projectId: p.id,
+                amount: e.amount,
+                ...(e.label ? { label: e.label } : {}),
+              });
+            } else {
+              keep.push(e);
+            }
+          }
+          if (keep.length === (p.financials.expenseSchedule ?? []).length) {
+            return p;
+          }
+          return {
+            ...p,
+            financials: { ...p.financials, expenseSchedule: keep },
+          };
+        }),
+      );
+
+      setWarehouse((prev) => ({
+        ...prev,
+        lots: prev.lots.filter((l) => l.id !== lotId),
+        balances: prev.balances.filter((b) => b.lotId !== lotId),
+        movements: prev.movements.filter((m) => m.lotId !== lotId),
+      }));
+
+      const totalRemoved = removedAmounts.reduce((s, r) => s + r.amount, 0);
+      const summary = `Deleted warehouse lot ${lot.label ?? lotId.slice(0, 8)} (removed ${formatValue(totalRemoved)} from expenses)`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "warehouse",
+          entityType: "lot",
+          entityId: lotId,
+          projectId: lot.purchaseProjectId,
+          action: "delete",
+          summary,
+          payloadJson: { itemId: lot.itemId },
+        },
+        {
+          projectId: lot.purchaseProjectId,
+          entityType: "expense",
+          entityId: lotId,
+          action: "delete",
+          oldValue: formatValue(totalRemoved),
+          summary,
+        },
+      );
+
+      return { ok: true };
+    },
+    [recordChangeEvent],
+  );
+
+  deleteWarehouseLotRef.current = deleteWarehouseLot;
 
   return (
     <ProjectsContext.Provider
@@ -4100,6 +5385,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addExpense,
         updateExpense,
         deleteExpense,
+        warehouse,
+        ensureWarehouseHoldingProject,
+        receiveStock,
+        transferStock,
+        consumeStock,
+        adjustStock,
+        updateWarehouseLot,
+        deleteWarehouseLot,
+        upsertWarehouseItem,
         addMilestone,
         updateMilestone,
         deleteMilestone,

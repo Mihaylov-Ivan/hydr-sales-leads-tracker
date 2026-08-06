@@ -575,7 +575,117 @@ export interface ProjectExpenseItem {
   /** Only when category is installation or maintenance */
   subcategory?: ProjectExpenseSubcategory;
   milestoneId?: string;
+  /** Links this expense slice to a warehouse receipt lot (materials cost follows stock). */
+  warehouseLotId?: string;
   createdAt: string; // ISO
+}
+
+/** Warehouse catalog material kind → expense category (+ subcategory for parts). */
+export type WarehouseMaterialKind =
+  | "materials"
+  | "installation"
+  | "maintenance";
+
+export const WAREHOUSE_MATERIAL_KINDS: WarehouseMaterialKind[] = [
+  "materials",
+  "installation",
+  "maintenance",
+];
+
+export const WAREHOUSE_MATERIAL_KIND_LABELS: Record<
+  WarehouseMaterialKind,
+  string
+> = {
+  materials: "Manufacture materials",
+  installation: "Installation materials",
+  maintenance: "Maintenance parts",
+};
+
+export type WarehouseLocationType =
+  | "project"
+  | "spare"
+  | "buffer"
+  | "unallocated";
+
+export interface WarehouseLocation {
+  type: WarehouseLocationType;
+  /** Required when type is "project" */
+  projectId?: string;
+}
+
+export interface WarehouseItem {
+  id: string;
+  name: string;
+  sku?: string;
+  /** e.g. pcs, kg, m */
+  unit: string;
+  defaultMaterialKind: WarehouseMaterialKind;
+  createdAt: string;
+}
+
+export interface WarehouseLot {
+  id: string;
+  itemId: string;
+  qtyReceived: number;
+  unitCostIncVat: number;
+  unitCostExVat: number;
+  /** Purchase / receipt date (yyyy-mm-dd) — preserved on expense slices */
+  receivedAt: string;
+  /** Project where the purchase was originally booked */
+  purchaseProjectId: string;
+  /** Expense id created or linked at receipt (may later be split across projects) */
+  expenseId: string;
+  category: ProjectExpenseCategory;
+  subcategory?: ProjectExpenseSubcategory;
+  supplier?: string;
+  notes?: string;
+  label?: string;
+  createdAt: string;
+}
+
+export interface WarehouseBalance {
+  id: string;
+  lotId: string;
+  location: WarehouseLocation;
+  qty: number;
+}
+
+export type WarehouseMovementAction =
+  | "receive"
+  | "allocate"
+  | "transfer"
+  | "consume"
+  | "adjust";
+
+export interface WarehouseMovement {
+  id: string;
+  lotId: string;
+  action: WarehouseMovementAction;
+  qty: number;
+  from?: WarehouseLocation;
+  to?: WarehouseLocation;
+  occurredAt: string;
+  note?: string;
+}
+
+export interface WarehouseState {
+  items: WarehouseItem[];
+  lots: WarehouseLot[];
+  balances: WarehouseBalance[];
+  movements: WarehouseMovement[];
+  holdingProjectId: string | null;
+}
+
+export const WAREHOUSE_HOLDING_PROJECT_NAME = "Warehouse / Central stock";
+
+export function emptyWarehouseState(): WarehouseState {
+  return {
+    items: [],
+    lots: [],
+    balances: [],
+    movements: [],
+    holdingProjectId: null,
+  };
 }
 
 /** Default VAT rate used to convert between ex-VAT and with-VAT amounts. */
@@ -603,6 +713,7 @@ export function normalizeProjectExpense(
     ? item.category
     : inferExpenseCategory(item.label);
   const next: ProjectExpenseItem = { ...item, category };
+  if (item.warehouseLotId) next.warehouseLotId = item.warehouseLotId;
   if (categoryHasSubcategories(category)) {
     const allowed = new Set(subcategoriesForCategory(category));
     let sub = isProjectExpenseSubcategory(item.subcategory)
@@ -900,6 +1011,11 @@ export interface Project {
   /** Electrolyser system size in kW */
   sizeKw: number;
   stage: Stage;
+  /**
+   * Internal holding project for spare/buffer stock expenses.
+   * Hidden from the sales Board; visible in Warehouse / Expenses pickers.
+   */
+  isWarehouseHolding?: boolean;
   /** The original description written when the project was created */
   baseDescription: string;
   /** AI-generated living summary, refreshed after each new comment */

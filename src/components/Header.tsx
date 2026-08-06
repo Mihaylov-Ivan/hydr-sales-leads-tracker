@@ -20,6 +20,7 @@ export default function Header() {
     ready,
     projects,
     financeSettings,
+    warehouse,
     importFinancialCsvText,
   } = useProjects();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -100,6 +101,7 @@ export default function Header() {
           <nav className="flex items-center gap-1">
             {navLink("/", "Board")}
             {navLink("/expenses", "Expenses")}
+            {navLink("/warehouse", "Warehouse")}
             {navLink("/production", "Production")}
             {navLink("/finance", "Finance")}
             {navLink("/metrics", "Metrics")}
@@ -165,7 +167,12 @@ export default function Header() {
             type="button"
             disabled={!ready}
             onClick={() =>
-              downloadFinancialCsv(projects, financeSettings, financialHistory)
+              downloadFinancialCsv(
+                projects,
+                financeSettings,
+                financialHistory,
+                warehouse,
+              )
             }
             title="Download financial data CSV (includes history rows)"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"

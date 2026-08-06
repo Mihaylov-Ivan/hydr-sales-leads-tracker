@@ -414,6 +414,7 @@ export default function Dashboard() {
     const bucket = SIZE_BUCKETS.find((b) => b.id === sizeFilter)!;
     return projects.filter(
       (p) =>
+        !p.isWarehouseHolding &&
         (countryFilter === "all" || p.country === countryFilter) &&
         marketFilter.has(p.market) &&
         bucket.match(p.sizeKw) &&

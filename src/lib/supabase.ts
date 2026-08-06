@@ -59,6 +59,8 @@ export interface ProjectRow {
   cancelled_at?: string | null;
   last_meaningful_activity_at?: string | null;
   cancellation_reason?: string | null;
+  /** Warehouse holding project (migration-022); may be absent before migration */
+  is_warehouse_holding?: boolean | null;
 }
 
 /** Shape of company_metrics_settings singleton (migration-015) */
@@ -370,6 +372,7 @@ export function projectFromRow(
     ...(row.cancellation_reason?.trim()
       ? { cancellationReason: row.cancellation_reason.trim() }
       : {}),
+    ...(row.is_warehouse_holding ? { isWarehouseHolding: true } : {}),
     comments,
     todos,
     contacts,
@@ -405,6 +408,7 @@ export function projectToRow(p: Project): ProjectRow {
     cancelled_at: p.cancelledAt ?? null,
     last_meaningful_activity_at: p.lastMeaningfulActivityAt,
     cancellation_reason: p.cancellationReason ?? null,
+    is_warehouse_holding: p.isWarehouseHolding === true,
   };
 }
 

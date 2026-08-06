@@ -30,6 +30,10 @@ Rules
 - Old files without Category / Company still import; category is inferred
   and company opex is cleared until you enter or re-export it.
 - No project finance is stored in the database.
+- Portable financial CSV (Header download/import) latest template:
+  templates/finance-import/financial-data-2026-08-06 (6)_updated_updated_updated.csv
+  Includes history columns, warehouse_lot_id on expenses, type=warehouse_lot
+  unit-cost rows, warehouse_item_id, qty.
 
 Sample projects:
   Sofia District Heating H2 Blend
