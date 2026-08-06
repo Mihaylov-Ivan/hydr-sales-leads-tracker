@@ -12,6 +12,7 @@ import ContactList from "@/components/ContactList";
 import FileAttachments from "@/components/FileAttachments";
 import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
+import ProjectChangeHistory from "@/components/ProjectChangeHistory";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -573,6 +574,8 @@ export default function ProjectPage() {
         }
         financials={project.financials}
       />
+
+      <ProjectChangeHistory projectId={project.id} />
 
       {/* Questions and action items */}
       <TodoList

@@ -30,6 +30,14 @@ Rules
 - Old files without Category / Company still import; category is inferred
   and company opex is cleared until you enter or re-export it.
 - No project finance is stored in the database.
+- Portable financial CSV also supports type=history rows (before/after
+  amounts). Latest full data export with history columns:
+  financial-data-2026-08-06 (6)_updated.csv
+  Minimal history example: financial-data-history-columns_updated.csv
+  History is merged by event_id on import; amounts never go to Postgres.
+- Header “Download history” exports type=history rows only.
+- Older CSVs without history columns still import; missing columns are
+  treated as empty. Re-export (or use *_updated.csv) to get the full header.
 
 Sample projects:
   Sofia District Heating H2 Blend

@@ -31,6 +31,9 @@ import {
   TodoKind,
   CompanyFinanceSettings,
   CompanyMetricsSettings,
+  ChangeEvent,
+  FinancialHistoryEntry,
+  STAGE_LABELS,
   TEAM_MEMBERS,
   DEFAULT_EMAIL_REMINDER_DAYS,
   GANTT_PHASE_COLORS,
@@ -48,6 +51,21 @@ import {
   ScheduleShiftUnit,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
+import {
+  buildChangeEvent,
+  buildFinancialHistoryEntry,
+  changeEventFromRow,
+  changeEventToRow,
+  createEventId,
+  formatValue,
+  mergeFinancialHistory,
+  sortChangeEventsDesc,
+  summarizeCrmProjectPatch,
+  summarizeFinancialFieldChange,
+  changeEventsFromStageHistory,
+  type ChangeEventRow,
+  type RecordChangeInput,
+} from "./change-history";
 import {
   supabase,
   commentFromRow,
@@ -113,8 +131,61 @@ const FINANCE_IMPORT_STORAGE_KEY = "hydrogenera-finance-import-v1";
 const PROJECT_FINANCIALS_STORAGE_KEY = "hydrogenera-project-financials-v1";
 const PROJECT_SCHEDULE_STORAGE_KEY = "hydrogenera-project-schedule-v2";
 const PROJECT_SCHEDULE_STORAGE_KEY_LEGACY = "hydrogenera-project-schedule-v1";
+const CHANGE_EVENTS_STORAGE_KEY = "hydrogenera-change-events-v1";
+const FINANCIAL_HISTORY_STORAGE_KEY = "hydrogenera-financial-history-v1";
+const MEANINGFUL_CHANGE_STORAGE_KEY = "hydrogenera-meaningful-change-v1";
+const STAGE_HISTORY_BACKFILL_KEY = "hydrogenera-stage-history-backfill-v1";
 const FILE_STORAGE_BUCKET = "project-files";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+function loadLocalChangeEvents(): ChangeEvent[] {
+  try {
+    const raw = window.localStorage.getItem(CHANGE_EVENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChangeEvent[];
+    return Array.isArray(parsed) ? sortChangeEventsDesc(parsed) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadLocalFinancialHistory(): FinancialHistoryEntry[] {
+  try {
+    const raw = window.localStorage.getItem(FINANCIAL_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as FinancialHistoryEntry[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadLocalMeaningfulChangeMode(): boolean {
+  try {
+    return window.localStorage.getItem(MEANINGFUL_CHANGE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function loadRemoteChangeEvents(): Promise<ChangeEvent[]> {
+  if (!supabase) return loadLocalChangeEvents();
+  const { data, error } = await supabase
+    .from("app_change_events")
+    .select("*")
+    .order("occurred_at", { ascending: false })
+    .limit(2000);
+  if (error || !data) {
+    if (error) console.error("Failed to load change events:", error.message);
+    return loadLocalChangeEvents();
+  }
+  const events: ChangeEvent[] = [];
+  for (const row of data as ChangeEventRow[]) {
+    const ev = changeEventFromRow(row);
+    if (ev) events.push(ev);
+  }
+  return sortChangeEventsDesc(events);
+}
 
 function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
   try {
@@ -405,6 +476,16 @@ interface ProjectsApi {
   /** Currently selected app user (for authorship of updates) */
   currentUserId: string | null;
   setCurrentUserId: (userId: string | null) => void;
+  /**
+   * When true, recorded changes are tagged intentional (real process change).
+   * Default false = typo / data-entry correction.
+   */
+  meaningfulChangeMode: boolean;
+  setMeaningfulChangeMode: (on: boolean) => void;
+  /** Non-financial + finance_meta change events (DB when available) */
+  changeEvents: ChangeEvent[];
+  /** Financial before/after snapshots (localStorage + CSV only) */
+  financialHistory: FinancialHistoryEntry[];
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
@@ -421,7 +502,9 @@ interface ProjectsApi {
    */
   importFinancialCsvText: (
     text: string,
-  ) => { ok: true; matched: number } | { ok: false; error: string };
+  ) =>
+    | { ok: true; matched: number; historyRows: number }
+    | { ok: false; error: string };
   projects: Project[];
   ready: boolean;
   /** True when the server has an AI API key configured */
@@ -865,6 +948,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
+  const [meaningfulChangeMode, setMeaningfulChangeModeState] = useState(false);
+  const [changeEvents, setChangeEvents] = useState<ChangeEvent[]>([]);
+  const [financialHistory, setFinancialHistory] = useState<
+    FinancialHistoryEntry[]
+  >([]);
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
@@ -889,6 +977,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
+  const meaningfulChangeModeRef = useRef(meaningfulChangeMode);
+  meaningfulChangeModeRef.current = meaningfulChangeMode;
+  const changeEventsRef = useRef<ChangeEvent[]>(changeEvents);
+  changeEventsRef.current = changeEvents;
+  const financialHistoryRef = useRef<FinancialHistoryEntry[]>(financialHistory);
+  financialHistoryRef.current = financialHistory;
 
   useEffect(() => {
     async function boot() {
@@ -916,6 +1010,56 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceImport(
           useStoredFinancialData ? loadLocalFinanceImport() : null,
         );
+        setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
+        setFinancialHistory(loadLocalFinancialHistory());
+        let remoteEvents = await loadRemoteChangeEvents().catch(() =>
+          loadLocalChangeEvents(),
+        );
+
+        // One-shot backfill from project_stage_history → app_change_events
+        try {
+          const already =
+            window.localStorage.getItem(STAGE_HISTORY_BACKFILL_KEY) === "1";
+          if (!already && supabase) {
+            const { data: stageRows, error: stageErr } = await supabase
+              .from("project_stage_history")
+              .select("id, project_id, stage, entered_at")
+              .order("entered_at", { ascending: true });
+            if (!stageErr && stageRows && stageRows.length > 0) {
+              const names = new Map(
+                remoteProjects.map((p) => [p.id, p.name] as const),
+              );
+              const existingIds = new Set(remoteEvents.map((e) => e.id));
+              const backfilled = changeEventsFromStageHistory(
+                stageRows as {
+                  id: string;
+                  project_id: string;
+                  stage: string;
+                  entered_at: string;
+                }[],
+                names,
+              ).filter((e) => !existingIds.has(e.id));
+              if (backfilled.length > 0) {
+                remoteEvents = sortChangeEventsDesc([
+                  ...backfilled,
+                  ...remoteEvents,
+                ]);
+                // Insert missing rows into app_change_events (ignore duplicates)
+                for (const ev of backfilled) {
+                  void supabase
+                    .from("app_change_events")
+                    .upsert(changeEventToRow(ev), { onConflict: "id" })
+                    .then(logDbError("stage history backfill"));
+                }
+              }
+            }
+            window.localStorage.setItem(STAGE_HISTORY_BACKFILL_KEY, "1");
+          }
+        } catch (e) {
+          console.error("Stage history backfill failed:", e);
+        }
+
+        setChangeEvents(remoteEvents);
         setReady(true);
       } else {
         const members = loadLocalTeamMembers();
@@ -931,6 +1075,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceImport(
           useStoredFinancialData ? loadLocalFinanceImport() : null,
         );
+        setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
+        setFinancialHistory(loadLocalFinancialHistory());
+        setChangeEvents(loadLocalChangeEvents());
         setReady(true);
       }
     }
@@ -1048,6 +1195,30 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUserId, ready]);
 
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(
+      MEANINGFUL_CHANGE_STORAGE_KEY,
+      meaningfulChangeMode ? "1" : "0",
+    );
+  }, [meaningfulChangeMode, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(
+      CHANGE_EVENTS_STORAGE_KEY,
+      JSON.stringify(changeEvents.slice(0, 2000)),
+    );
+  }, [changeEvents, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
+    window.localStorage.setItem(
+      FINANCIAL_HISTORY_STORAGE_KEY,
+      JSON.stringify(financialHistory),
+    );
+  }, [financialHistory, ready]);
+
   // If the selected user is removed/edited away, fall back to first member.
   useEffect(() => {
     if (!ready) return;
@@ -1063,37 +1234,194 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     setCurrentUserIdState(userId);
   }, []);
 
-  const updateFinanceSettings = useCallback((patch: FinanceSettingsPatch) => {
-    setFinanceSettings((prev) => {
-      const next: CompanyFinanceSettings = {
-        openingCash:
-          patch.openingCash !== undefined
-            ? patch.openingCash
-            : prev.openingCash,
-        minWorkingCapital:
-          patch.minWorkingCapital !== undefined
-            ? patch.minWorkingCapital
-            : prev.minWorkingCapital,
-        stageProbabilities: {
-          ...prev.stageProbabilities,
-          ...(patch.stageProbabilities ?? {}),
-        },
-        monthlyExpenses:
-          patch.monthlyExpenses !== undefined
-            ? patch.monthlyExpenses
-                .map(normalizeCompanyMonthlyExpense)
-                .filter((e): e is NonNullable<typeof e> => e != null)
-            : prev.monthlyExpenses,
-      };
-      if (patch.openingCashAsOf !== undefined) {
-        if (patch.openingCashAsOf) next.openingCashAsOf = patch.openingCashAsOf;
-        // else omit / clear
-      } else if (prev.openingCashAsOf) {
-        next.openingCashAsOf = prev.openingCashAsOf;
-      }
-      return next;
-    });
+  const setMeaningfulChangeMode = useCallback((on: boolean) => {
+    setMeaningfulChangeModeState(on);
   }, []);
+
+  type RecordFinanceSnapshot = {
+    projectId?: string;
+    projectName?: string;
+    entityType: string;
+    entityId?: string;
+    action: string;
+    field?: string;
+    oldValue?: string;
+    newValue?: string;
+    summary: string;
+  };
+
+  const recordChangeEvent = useCallback(
+    (
+      input: Omit<RecordChangeInput, "intentional" | "actorUserId" | "actorName"> & {
+        intentional?: boolean;
+      },
+      financeSnapshot?: RecordFinanceSnapshot,
+    ): ChangeEvent => {
+      const authorInfo = (() => {
+        const id = currentUserIdRef.current;
+        const member = id
+          ? teamMembersRef.current.find((m) => m.id === id)
+          : undefined;
+        return {
+          actorName: member?.name ?? "You",
+          ...(member ? { actorUserId: member.id } : {}),
+        };
+      })();
+      const event = buildChangeEvent({
+        ...input,
+        intentional:
+          input.intentional ?? meaningfulChangeModeRef.current,
+        ...authorInfo,
+      });
+      setChangeEvents((prev) => sortChangeEventsDesc([event, ...prev]));
+      if (supabase) {
+        void supabase
+          .from("app_change_events")
+          .insert(changeEventToRow(event))
+          .then(logDbError("change event insert"));
+      }
+      if (financeSnapshot) {
+        const hist = buildFinancialHistoryEntry({
+          eventId: event.id,
+          occurredAt: event.occurredAt,
+          intentional: event.intentional,
+          ...(event.actorUserId ? { actorUserId: event.actorUserId } : {}),
+          ...(event.actorName ? { actorName: event.actorName } : {}),
+          ...financeSnapshot,
+        });
+        setFinancialHistory((prev) => mergeFinancialHistory(prev, [hist]));
+      }
+      return event;
+    },
+    [],
+  );
+
+  const updateFinanceSettings = useCallback(
+    (patch: FinanceSettingsPatch) => {
+      setFinanceSettings((current) => {
+        const next: CompanyFinanceSettings = {
+          openingCash:
+            patch.openingCash !== undefined
+              ? patch.openingCash
+              : current.openingCash,
+          minWorkingCapital:
+            patch.minWorkingCapital !== undefined
+              ? patch.minWorkingCapital
+              : current.minWorkingCapital,
+          stageProbabilities: {
+            ...current.stageProbabilities,
+            ...(patch.stageProbabilities ?? {}),
+          },
+          monthlyExpenses:
+            patch.monthlyExpenses !== undefined
+              ? patch.monthlyExpenses
+                  .map(normalizeCompanyMonthlyExpense)
+                  .filter((e): e is NonNullable<typeof e> => e != null)
+              : current.monthlyExpenses,
+        };
+        if (patch.openingCashAsOf !== undefined) {
+          if (patch.openingCashAsOf) next.openingCashAsOf = patch.openingCashAsOf;
+        } else if (current.openingCashAsOf) {
+          next.openingCashAsOf = current.openingCashAsOf;
+        }
+
+        const moneyFields: {
+          field: string;
+          oldValue: string;
+          newValue: string;
+        }[] = [];
+        if (
+          patch.openingCash !== undefined &&
+          patch.openingCash !== current.openingCash
+        ) {
+          moneyFields.push({
+            field: "opening_cash",
+            oldValue: formatValue(current.openingCash),
+            newValue: formatValue(patch.openingCash),
+          });
+        }
+        if (
+          patch.minWorkingCapital !== undefined &&
+          patch.minWorkingCapital !== current.minWorkingCapital
+        ) {
+          moneyFields.push({
+            field: "min_working_capital",
+            oldValue: formatValue(current.minWorkingCapital),
+            newValue: formatValue(patch.minWorkingCapital),
+          });
+        }
+        if (
+          patch.openingCashAsOf !== undefined &&
+          (patch.openingCashAsOf ?? "") !== (current.openingCashAsOf ?? "")
+        ) {
+          moneyFields.push({
+            field: "opening_cash_as_of",
+            oldValue: current.openingCashAsOf ?? "",
+            newValue: patch.openingCashAsOf ?? "",
+          });
+        }
+        if (patch.monthlyExpenses !== undefined) {
+          moneyFields.push({
+            field: "monthly_expenses",
+            oldValue: String(current.monthlyExpenses?.length ?? 0),
+            newValue: String(next.monthlyExpenses.length),
+          });
+        }
+        if (patch.stageProbabilities) {
+          for (const [k, v] of Object.entries(patch.stageProbabilities)) {
+            const oldV =
+              current.stageProbabilities[
+                k as keyof typeof current.stageProbabilities
+              ];
+            if (v !== undefined && v !== oldV) {
+              moneyFields.push({
+                field: `prob_${k}`,
+                oldValue: formatValue(oldV),
+                newValue: formatValue(v),
+              });
+            }
+          }
+        }
+
+        if (moneyFields.length > 0) {
+          queueMicrotask(() => {
+            for (const mf of moneyFields) {
+              const summary = summarizeFinancialFieldChange(
+                "Company",
+                mf.field,
+                mf.oldValue,
+                mf.newValue,
+              );
+              recordChangeEvent(
+                {
+                  id: createEventId(),
+                  domain: "finance_meta",
+                  entityType: "company_finance",
+                  entityId: "company",
+                  action: "update",
+                  field: mf.field,
+                  summary,
+                  payloadJson: { field: mf.field },
+                },
+                {
+                  entityType: "company_finance",
+                  entityId: "company",
+                  action: "update",
+                  field: mf.field,
+                  oldValue: mf.oldValue,
+                  newValue: mf.newValue,
+                  summary,
+                },
+              );
+            }
+          });
+        }
+
+        return next;
+      });
+    },
+    [recordChangeEvent],
+  );
 
   const updateMetricsSettings = useCallback(
     (patch: MetricsSettingsPatch) => {
@@ -1102,6 +1430,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           ...patch,
         };
+        const changed = Object.keys(patch).filter(
+          (k) =>
+            patch[k as keyof MetricsSettingsPatch] !==
+            prev[k as keyof CompanyMetricsSettings],
+        );
+        if (changed.length > 0) {
+          queueMicrotask(() => {
+            recordChangeEvent({
+              domain: "system",
+              entityType: "metrics_settings",
+              entityId: "company",
+              action: "update",
+              summary: `Updated metrics settings (${changed.join(", ")})`,
+              payloadJson: { fields: changed },
+            });
+          });
+        }
         try {
           window.localStorage.setItem(
             METRICS_SETTINGS_STORAGE_KEY,
@@ -1122,44 +1467,68 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     },
-    [supportsMetricsSettingsTable],
+    [supportsMetricsSettingsTable, recordChangeEvent],
   );
 
-  const applyFinanceImport = useCallback((data: FinanceImportData) => {
-    setFinanceImport(data);
-    setFinanceSettings((prev) => settingsAfterImport(prev, data));
-    // Drop local payment/expense schedules while Excel is the source of truth.
-    // Keep contract summary fields; apply max expense caps from Projects sheet.
-    const capsByName = new Map(
-      (data.projectCaps ?? []).map((c) => [
-        c.projectName.trim().toLowerCase(),
-        c,
-      ]),
-    );
-    setProjects((prev) =>
-      prev.map((p) => {
-        const f = sanitizeAppFinancials(p.financials);
-        const caps = capsByName.get(p.name.trim().toLowerCase());
-        const next = {
-          ...f,
-          payments: [],
-          expenseSchedule: [],
-        };
-        if (caps) {
-          if (caps.maxMaterialsExpense != null && caps.maxMaterialsExpense > 0) {
-            next.maxMaterialsExpense = caps.maxMaterialsExpense;
+  const applyFinanceImport = useCallback(
+    (data: FinanceImportData) => {
+      setFinanceImport(data);
+      setFinanceSettings((prev) => settingsAfterImport(prev, data));
+      // Drop local payment/expense schedules while Excel is the source of truth.
+      // Keep contract summary fields; apply max expense caps from Projects sheet.
+      const capsByName = new Map(
+        (data.projectCaps ?? []).map((c) => [
+          c.projectName.trim().toLowerCase(),
+          c,
+        ]),
+      );
+      setProjects((prev) =>
+        prev.map((p) => {
+          const f = sanitizeAppFinancials(p.financials);
+          const caps = capsByName.get(p.name.trim().toLowerCase());
+          const next = {
+            ...f,
+            payments: [],
+            expenseSchedule: [],
+          };
+          if (caps) {
+            if (
+              caps.maxMaterialsExpense != null &&
+              caps.maxMaterialsExpense > 0
+            ) {
+              next.maxMaterialsExpense = caps.maxMaterialsExpense;
+            }
+            if (caps.maxManHrExpense != null && caps.maxManHrExpense > 0) {
+              next.maxManHrExpense = caps.maxManHrExpense;
+            }
           }
-          if (caps.maxManHrExpense != null && caps.maxManHrExpense > 0) {
-            next.maxManHrExpense = caps.maxManHrExpense;
-          }
-        }
-        return {
-          ...p,
-          financials: next,
-        };
-      }),
-    );
-  }, []);
+          return {
+            ...p,
+            financials: next,
+          };
+        }),
+      );
+      const summary = `Applied Excel finance import (${data.projectCaps?.length ?? 0} project caps)`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "finance_import",
+          entityId: "excel",
+          action: "import",
+          summary,
+          payloadJson: { projectCaps: data.projectCaps?.length ?? 0 },
+        },
+        {
+          entityType: "finance_import",
+          entityId: "excel",
+          action: "import",
+          summary,
+        },
+      );
+    },
+    [recordChangeEvent],
+  );
 
   const clearFinanceImport = useCallback(() => {
     setFinanceImport(null);
@@ -1169,29 +1538,66 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         (e) => e.status === "projected",
       ),
     }));
-  }, []);
+    recordChangeEvent({
+      domain: "finance_meta",
+      entityType: "finance_import",
+      entityId: "excel",
+      action: "clear",
+      summary: "Cleared Excel finance import overlay",
+    });
+  }, [recordChangeEvent]);
 
-  const importFinancialCsvText = useCallback((text: string) => {
-    const parsed = parseFinancialCsv(text);
-    if (!parsed.ok) return parsed;
+  const importFinancialCsvText = useCallback(
+    (text: string) => {
+      const parsed = parseFinancialCsv(text);
+      if (!parsed.ok) return parsed;
 
-    const { data } = parsed;
-    let matched = 0;
-    for (const p of projectsRef.current) {
-      if (
-        data.byProjectId[p.id] ||
-        data.byProjectName[p.name.toLowerCase()]
-      ) {
-        matched += 1;
+      const { data } = parsed;
+      let matched = 0;
+      for (const p of projectsRef.current) {
+        if (
+          data.byProjectId[p.id] ||
+          data.byProjectName[p.name.toLowerCase()]
+        ) {
+          matched += 1;
+        }
       }
-    }
 
-    setProjects((prev) => applyFinancialCsvBundle(prev, data));
-    if (data.financeSettings) {
-      setFinanceSettings(data.financeSettings);
-    }
-    return { ok: true as const, matched };
-  }, []);
+      setProjects((prev) => applyFinancialCsvBundle(prev, data));
+      if (data.financeSettings) {
+        setFinanceSettings(data.financeSettings);
+      }
+      if (data.history.length > 0) {
+        setFinancialHistory((prev) =>
+          mergeFinancialHistory(prev, data.history),
+        );
+      }
+      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"})`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "financial_csv",
+          entityId: "import",
+          action: "import",
+          summary,
+          payloadJson: {
+            matched,
+            historyRows: data.history.length,
+          },
+        },
+        {
+          entityType: "financial_csv",
+          entityId: "import",
+          action: "import",
+          summary,
+          newValue: String(matched),
+        },
+      );
+      return { ok: true as const, matched, historyRows: data.history.length };
+    },
+    [recordChangeEvent],
+  );
 
   const resolveAuthor = useCallback(() => {
     const id = currentUserIdRef.current;
@@ -1394,12 +1800,26 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           }
         });
     }
+    recordChangeEvent({
+      domain: "crm",
+      entityType: "project",
+      entityId: id,
+      projectId: id,
+      action: "create",
+      summary: `Created project ${project.name}`,
+      payloadJson: {
+        name: project.name,
+        stage: project.stage,
+        market: project.market,
+      },
+    });
     return id;
   }, [
     supportsOwnershipFields,
     supportsCommentAuthorId,
     supportsMetricsFields,
     resolveAuthor,
+    recordChangeEvent,
   ]);
 
   const addComment = useCallback(
@@ -1427,6 +1847,33 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         comments: [...current.comments, comment],
       };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "comment",
+        entityId: comment.id,
+        projectId,
+        action: "create",
+        summary: `${current.name}: added update${stageChange ? ` (→ ${STAGE_LABELS[stageChange]})` : ""}`,
+        payloadJson: {
+          stageChange: stageChange ?? null,
+          preview: text.slice(0, 120),
+        },
+      });
+      if (stageChange && stageChange !== current.stage) {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "project",
+          entityId: projectId,
+          projectId,
+          action: "stage_change",
+          field: "stage",
+          summary: `${current.name}: stage ${STAGE_LABELS[current.stage]} → ${STAGE_LABELS[stageChange]}`,
+          payloadJson: {
+            old: current.stage,
+            new: stageChange,
+          },
+        });
+      }
       if (supabase) {
         void supabase
           .from("project_comments")
@@ -1478,6 +1925,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       resolveAuthor,
       supportsCommentAuthorId,
       supportsMetricsFields,
+      recordChangeEvent,
     ],
   );
 
@@ -1499,6 +1947,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (mergedPatch.cancelledAt === "") delete updated.cancelledAt;
       if (mergedPatch.cancellationReason === "")
         delete updated.cancellationReason;
+
+      const diffs = summarizeCrmProjectPatch(
+        current as unknown as Record<string, unknown>,
+        patch as unknown as Record<string, unknown>,
+        current.name,
+      );
+      for (const d of diffs) {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "project",
+          entityId: projectId,
+          projectId,
+          action: d.field === "stage" ? "stage_change" : "update",
+          field: d.field,
+          summary: d.summary,
+          payloadJson: d.payload,
+        });
+      }
+
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
         const row: Record<string, string | number | boolean | null> = {};
@@ -1561,7 +2028,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, supportsOwnershipFields, supportsMetricsFields],
+    [
+      requestAiSummary,
+      supportsOwnershipFields,
+      supportsMetricsFields,
+      recordChangeEvent,
+    ],
   );
 
   const markClientContacted = useCallback(
@@ -1603,6 +2075,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ),
       };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "comment",
+        entityId: commentId,
+        projectId,
+        action: "update",
+        summary: `${current.name}: edited update`,
+        payloadJson: { preview: text.slice(0, 120) },
+      });
       if (supabase) {
         void supabase
           .from("project_comments")
@@ -1612,7 +2093,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary],
+    [requestAiSummary, recordChangeEvent],
   );
 
   const deleteComment = useCallback(
@@ -1624,6 +2105,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         comments: current.comments.filter((c) => c.id !== commentId),
       };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "comment",
+        entityId: commentId,
+        projectId,
+        action: "delete",
+        summary: `${current.name}: deleted update`,
+      });
       if (supabase) {
         void supabase
           .from("project_comments")
@@ -1633,7 +2122,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary],
+    [requestAiSummary, recordChangeEvent],
   );
 
   const regenerateSummary = useCallback(
@@ -1663,6 +2152,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       dueDate?: string,
       ownerUserId?: string,
     ) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
       const todo: ProjectTodo = {
         id: crypto.randomUUID(),
         kind,
@@ -1673,6 +2163,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
       };
       mutateTodos(projectId, (todos) => [...todos, todo]);
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "todo",
+        entityId: todo.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: added ${kind} — ${text.slice(0, 80)}`,
+        payloadJson: { kind, dueDate: dueDate ?? null },
+      });
       if (supabase) {
         void supabase
           .from("project_todos")
@@ -1691,20 +2190,28 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo insert"));
       }
     },
-    [mutateTodos, supportsOwnershipFields],
+    [mutateTodos, supportsOwnershipFields, recordChangeEvent],
   );
 
   const toggleTodo = useCallback(
     (projectId: string, todoId: string) => {
-      const current = projectsRef.current
-        .find((p) => p.id === projectId)
-        ?.todos.find((t) => t.id === todoId);
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const current = project?.todos.find((t) => t.id === todoId);
       if (!current) return;
       const done = !current.done;
       const doneAt = done ? new Date().toISOString() : undefined;
       mutateTodos(projectId, (todos) =>
         todos.map((t) => (t.id === todoId ? { ...t, done, doneAt } : t)),
       );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "todo",
+        entityId: todoId,
+        projectId,
+        action: done ? "complete" : "reopen",
+        summary: `${project?.name ?? projectId}: ${done ? "completed" : "reopened"} todo — ${current.text.slice(0, 80)}`,
+        payloadJson: { done },
+      });
       if (supabase) {
         void supabase
           .from("project_todos")
@@ -1713,11 +2220,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo toggle"));
       }
     },
-    [mutateTodos],
+    [mutateTodos, recordChangeEvent],
   );
 
   const updateTodo = useCallback(
     (projectId: string, todoId: string, patch: TodoPatch) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
       mutateTodos(projectId, (todos) =>
         todos.map((t) => {
           if (t.id !== todoId) return t;
@@ -1738,6 +2246,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "todo",
+        entityId: todoId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated todo`,
+        payloadJson: {
+          text: patch.text ?? null,
+          dueDate: patch.dueDate ?? null,
+        },
+      });
       if (supabase) {
         const row: Record<string, string | null> = {};
         if (patch.text !== undefined) row.text = patch.text;
@@ -1753,12 +2273,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo update"));
       }
     },
-    [mutateTodos, supportsOwnershipFields],
+    [mutateTodos, supportsOwnershipFields, recordChangeEvent],
   );
 
   const deleteTodo = useCallback(
     (projectId: string, todoId: string) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const todo = project?.todos.find((t) => t.id === todoId);
       mutateTodos(projectId, (todos) => todos.filter((t) => t.id !== todoId));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "todo",
+        entityId: todoId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted todo${todo ? ` — ${todo.text.slice(0, 80)}` : ""}`,
+      });
       if (supabase) {
         void supabase
           .from("project_todos")
@@ -1767,7 +2297,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo delete"));
       }
     },
-    [mutateTodos],
+    [mutateTodos, recordChangeEvent],
   );
 
   const mutateContacts = useCallback(
@@ -1788,6 +2318,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const phone = input.phone?.trim();
       const position = input.position?.trim();
       if (!name && !email && !phone && !position) return;
+      const project = projectsRef.current.find((p) => p.id === projectId);
       const contact: ProjectContact = {
         id: crypto.randomUUID(),
         ...(name ? { name } : {}),
@@ -1797,6 +2328,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date().toISOString(),
       };
       mutateContacts(projectId, (contacts) => [...contacts, contact]);
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "contact",
+        entityId: contact.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: added contact ${name || email || phone || "—"}`,
+        payloadJson: { name: name ?? null, email: email ?? null },
+      });
       if (supabase) {
         void supabase
           .from("project_contacts")
@@ -1812,11 +2352,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("contact insert"));
       }
     },
-    [mutateContacts],
+    [mutateContacts, recordChangeEvent],
   );
 
   const updateContact = useCallback(
     (projectId: string, contactId: string, patch: ContactInput) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
       mutateContacts(projectId, (contacts) =>
         contacts.map((c) => {
           if (c.id !== contactId) return c;
@@ -1831,6 +2372,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "contact",
+        entityId: contactId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated contact`,
+        payloadJson: {
+          name: patch.name ?? null,
+          email: patch.email ?? null,
+        },
+      });
       if (supabase) {
         const row: Record<string, string | null> = {};
         for (const key of ["name", "email", "phone", "position"] as const) {
@@ -1844,14 +2397,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("contact update"));
       }
     },
-    [mutateContacts],
+    [mutateContacts, recordChangeEvent],
   );
 
   const deleteContact = useCallback(
     (projectId: string, contactId: string) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const contact = project?.contacts.find((c) => c.id === contactId);
       mutateContacts(projectId, (contacts) =>
         contacts.filter((c) => c.id !== contactId),
       );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "contact",
+        entityId: contactId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted contact ${contact?.name || contact?.email || contactId}`,
+      });
       if (supabase) {
         void supabase
           .from("project_contacts")
@@ -1860,7 +2423,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("contact delete"));
       }
     },
-    [mutateContacts],
+    [mutateContacts, recordChangeEvent],
   );
 
   const mutateFiles = useCallback(
@@ -1964,9 +2527,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
 
       mutateFiles(projectId, (files) => [record, ...files]);
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "file",
+        entityId: record.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: uploaded file ${record.name}`,
+        payloadJson: { kind: record.kind, name: record.name },
+      });
       return { ok: true, file: record };
     },
-    [mutateFiles, resolveAuthor],
+    [mutateFiles, resolveAuthor, recordChangeEvent],
   );
 
   const updateProjectFile = useCallback(
@@ -1975,6 +2548,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       fileId: string,
       patch: { kind?: ProjectFileKind; note?: string | null },
     ) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const file = project?.files?.find((f) => f.id === fileId);
       mutateFiles(projectId, (files) =>
         files.map((f) => {
           if (f.id !== fileId) return f;
@@ -1987,6 +2562,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "file",
+        entityId: fileId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated file ${file?.name ?? fileId}`,
+        payloadJson: {
+          kind: patch.kind ?? null,
+          note: patch.note ?? null,
+        },
+      });
       if (supabase) {
         const row: Record<string, string | null> = {};
         if (patch.kind !== undefined) row.kind = patch.kind;
@@ -2000,15 +2587,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("file update"));
       }
     },
-    [mutateFiles],
+    [mutateFiles, recordChangeEvent],
   );
 
   const deleteProjectFile = useCallback(
     async (projectId: string, fileId: string) => {
-      const current = projectsRef.current
-        .find((p) => p.id === projectId)
-        ?.files.find((f) => f.id === fileId);
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const current = project?.files?.find((f) => f.id === fileId);
       mutateFiles(projectId, (files) => files.filter((f) => f.id !== fileId));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "file",
+        entityId: fileId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted file ${current?.name ?? fileId}`,
+        payloadJson: { name: current?.name ?? null },
+      });
       if (supabase && current) {
         void supabase
           .from("project_files")
@@ -2026,7 +2621,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [mutateFiles],
+    [mutateFiles, recordChangeEvent],
   );
 
   const getProjectFileUrl = useCallback(async (file: ProjectFile) => {
@@ -2055,6 +2650,80 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const updateFinancials = useCallback(
     (projectId: string, patch: FinancialsPatch) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const projectName = current?.name ?? projectId;
+      const before = current?.financials;
+
+      const fieldDefs: {
+        key: keyof FinancialsPatch;
+        label: string;
+        read: (f: ProjectFinancials | undefined) => string;
+      }[] = [
+        {
+          key: "contractValue",
+          label: "contract_value",
+          read: (f) => formatValue(f?.contractValue),
+        },
+        {
+          key: "contractSignedDate",
+          label: "contract_signed_date",
+          read: (f) => f?.contractSignedDate ?? "",
+        },
+        {
+          key: "expenses",
+          label: "expenses",
+          read: (f) => formatValue(f?.expenses),
+        },
+        {
+          key: "maxMaterialsExpense",
+          label: "max_materials_expense",
+          read: (f) => formatValue(f?.maxMaterialsExpense),
+        },
+        {
+          key: "maxManHrExpense",
+          label: "max_man_hr_expense",
+          read: (f) => formatValue(f?.maxManHrExpense),
+        },
+      ];
+
+      for (const def of fieldDefs) {
+        if (patch[def.key] === undefined) continue;
+        const oldValue = def.read(before);
+        const newValue =
+          patch[def.key] === null ? "" : formatValue(patch[def.key]);
+        if (oldValue === newValue) continue;
+        const summary = summarizeFinancialFieldChange(
+          projectName,
+          def.label,
+          oldValue,
+          newValue,
+        );
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "project_financials",
+            entityId: projectId,
+            projectId,
+            action: "update",
+            field: def.label,
+            summary,
+            payloadJson: { field: def.label },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "project_financials",
+            entityId: projectId,
+            action: "update",
+            field: def.label,
+            oldValue,
+            newValue,
+            summary,
+          },
+        );
+      }
+
       mutateFinancials(projectId, (f) => {
         const next = { ...f };
         if (patch.contractValue !== undefined) {
@@ -2085,7 +2754,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const addPayment = useCallback(
@@ -2113,13 +2782,37 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         payments: [...(f.payments ?? []), payment],
       }));
+      const projectName = current?.name ?? projectId;
+      const summary = `${projectName}: added payment ${payment.label ?? payment.id} (${formatValue(payment.amount)})`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "payment",
+          entityId: payment.id,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: { label: payment.label ?? null },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "payment",
+          entityId: payment.id,
+          action: "create",
+          newValue: formatValue(payment.amount),
+          summary,
+        },
+      );
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = current?.financials?.payments.find((p) => p.id === paymentId);
       const isMaintenance =
         patch.isMaintenance === undefined
           ? undefined
@@ -2163,18 +2856,78 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      if (before && before.amount !== patch.amount) {
+        const projectName = current?.name ?? projectId;
+        const summary = summarizeFinancialFieldChange(
+          projectName,
+          "payment_amount",
+          formatValue(before.amount),
+          formatValue(patch.amount),
+        );
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "payment",
+            entityId: paymentId,
+            projectId,
+            action: "update",
+            field: "amount",
+            summary,
+            payloadJson: { field: "amount" },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "payment",
+            entityId: paymentId,
+            action: "update",
+            field: "amount",
+            oldValue: formatValue(before.amount),
+            newValue: formatValue(patch.amount),
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const deletePayment = useCallback(
     (projectId: string, paymentId: string) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = current?.financials?.payments.find((p) => p.id === paymentId);
       mutateFinancials(projectId, (f) => ({
         ...f,
         payments: f.payments.filter((p) => p.id !== paymentId),
       }));
+      if (before) {
+        const projectName = current?.name ?? projectId;
+        const summary = `${projectName}: deleted payment ${before.label ?? paymentId} (${formatValue(before.amount)})`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "payment",
+            entityId: paymentId,
+            projectId,
+            action: "delete",
+            summary,
+            payloadJson: { label: before.label ?? null },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "payment",
+            entityId: paymentId,
+            action: "delete",
+            oldValue: formatValue(before.amount),
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const addExpense = useCallback(
@@ -2207,13 +2960,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         expenseSchedule: [...(f.expenseSchedule ?? []), expense],
       }));
+      const projectName = current?.name ?? projectId;
+      const summary = `${projectName}: added expense ${expense.label ?? expense.id} (${formatValue(expense.amount)})`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "expense",
+          entityId: expense.id,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: { category: expense.category },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "expense",
+          entityId: expense.id,
+          action: "create",
+          newValue: formatValue(expense.amount),
+          summary,
+        },
+      );
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const updateExpense = useCallback(
     (projectId: string, expenseId: string, patch: ExpenseInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = (current?.financials?.expenseSchedule ?? []).find(
+        (e) => e.id === expenseId,
+      );
       const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
       const dueDate = linkedDate ?? patch.dueDate;
       mutateFinancials(projectId, (f) => ({
@@ -2266,24 +3045,87 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      if (before && before.amount !== patch.amount) {
+        const projectName = current?.name ?? projectId;
+        const summary = summarizeFinancialFieldChange(
+          projectName,
+          "expense_amount",
+          formatValue(before.amount),
+          formatValue(patch.amount),
+        );
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: expenseId,
+            projectId,
+            action: "update",
+            field: "amount",
+            summary,
+            payloadJson: { field: "amount" },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "expense",
+            entityId: expenseId,
+            action: "update",
+            field: "amount",
+            oldValue: formatValue(before.amount),
+            newValue: formatValue(patch.amount),
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const deleteExpense = useCallback(
     (projectId: string, expenseId: string) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = (current?.financials?.expenseSchedule ?? []).find(
+        (e) => e.id === expenseId,
+      );
       mutateFinancials(projectId, (f) => ({
         ...f,
         expenseSchedule: (f.expenseSchedule ?? []).filter(
           (e) => e.id !== expenseId,
         ),
       }));
+      if (before) {
+        const projectName = current?.name ?? projectId;
+        const summary = `${projectName}: deleted expense ${before.label ?? expenseId} (${formatValue(before.amount)})`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: expenseId,
+            projectId,
+            action: "delete",
+            summary,
+            payloadJson: { category: before.category },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "expense",
+            entityId: expenseId,
+            action: "delete",
+            oldValue: formatValue(before.amount),
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const addMilestone = useCallback(
     (projectId: string, input: MilestoneInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
       const milestone: ProjectMilestone = {
         id: crypto.randomUUID(),
         kind: input.kind,
@@ -2295,12 +3137,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...f,
         milestones: [...f.milestones, milestone],
       }));
+      const projectName = current?.name ?? projectId;
+      const summary = `${projectName}: added milestone ${milestone.kind} (${milestone.date})`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "milestone",
+          entityId: milestone.id,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: { kind: milestone.kind, date: milestone.date },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "milestone",
+          entityId: milestone.id,
+          action: "create",
+          newValue: milestone.date,
+          summary,
+        },
+      );
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const updateMilestone = useCallback(
     (projectId: string, milestoneId: string, patch: MilestoneInput) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = current?.financials?.milestones.find(
+        (m) => m.id === milestoneId,
+      );
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.map((m) =>
@@ -2322,12 +3191,47 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           e.milestoneId === milestoneId ? { ...e, dueDate: patch.date } : e,
         ),
       }));
+      if (before && (before.date !== patch.date || before.kind !== patch.kind)) {
+        const projectName = current?.name ?? projectId;
+        const summary = `${projectName}: milestone ${before.kind}/${before.date} → ${patch.kind}/${patch.date}`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "milestone",
+            entityId: milestoneId,
+            projectId,
+            action: "update",
+            summary,
+            payloadJson: {
+              oldKind: before.kind,
+              newKind: patch.kind,
+              oldDate: before.date,
+              newDate: patch.date,
+            },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "milestone",
+            entityId: milestoneId,
+            action: "update",
+            oldValue: `${before.kind}:${before.date}`,
+            newValue: `${patch.kind}:${patch.date}`,
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const deleteMilestone = useCallback(
     (projectId: string, milestoneId: string) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      const before = current?.financials?.milestones.find(
+        (m) => m.id === milestoneId,
+      );
       mutateFinancials(projectId, (f) => ({
         ...f,
         milestones: f.milestones.filter((m) => m.id !== milestoneId),
@@ -2344,8 +3248,33 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      if (before) {
+        const projectName = current?.name ?? projectId;
+        const summary = `${projectName}: deleted milestone ${before.kind} (${before.date})`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "milestone",
+            entityId: milestoneId,
+            projectId,
+            action: "delete",
+            summary,
+            payloadJson: { kind: before.kind, date: before.date },
+          },
+          {
+            projectId,
+            projectName,
+            entityType: "milestone",
+            entityId: milestoneId,
+            action: "delete",
+            oldValue: before.date,
+            summary,
+          },
+        );
+      }
     },
-    [mutateFinancials],
+    [mutateFinancials, recordChangeEvent],
   );
 
   const mutateSchedule = useCallback(
@@ -2401,6 +3330,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...s,
         phases: [...s.phases, phase],
       }));
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_phase",
+        entityId: phase.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: added phase ${phase.name}`,
+        payloadJson: {
+          name: phase.name,
+          startDate: phase.startDate,
+          durationDays: phase.durationDays,
+        },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_phases")
@@ -2421,7 +3363,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt phase insert"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, supportsGanttTables, recordChangeEvent],
   );
 
   const updateGanttPhase = useCallback(
@@ -2509,14 +3451,34 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .eq("id", phaseId)
           .then(logDbError("gantt phase update"));
       }
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const phaseName =
+        patch.name.trim() ||
+        project?.schedule?.phases.find((p) => p.id === phaseId)?.name ||
+        phaseId;
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_phase",
+        entityId: phaseId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated phase ${phaseName}`,
+        payloadJson: {
+          name: patch.name.trim() || null,
+          startDate: patch.startDate || null,
+          durationDays: patch.durationDays ?? null,
+        },
+      });
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const deleteGanttPhase = useCallback(
     (projectId: string, phaseId: string) => {
-      const schedule = projectsRef.current.find((p) => p.id === projectId)
-        ?.schedule;
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const schedule = project?.schedule;
+      const phaseName =
+        schedule?.phases.find((p) => p.id === phaseId)?.name ?? phaseId;
       const removedIds = new Set<string>([phaseId]);
       for (const a of schedule?.activities ?? []) {
         if (a.phaseId === phaseId) removedIds.add(a.id);
@@ -2544,6 +3506,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_phase",
+        entityId: phaseId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted phase ${phaseName}`,
+        payloadJson: { name: phaseName },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_phases")
@@ -2552,7 +3523,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt phase delete"));
       }
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const addGanttActivity = useCallback(
@@ -2596,6 +3567,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...s,
         activities: [...(s.activities ?? []), activity],
       }));
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_activity",
+        entityId: activity.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: added activity ${activity.name}`,
+        payloadJson: {
+          name: activity.name,
+          phaseId: activity.phaseId,
+          startDate: activity.startDate,
+          durationDays: activity.durationDays,
+        },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_activities")
@@ -2618,7 +3603,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt activity insert"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, supportsGanttTables, recordChangeEvent],
   );
 
   const updateGanttActivity = useCallback(
@@ -2716,12 +3701,30 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .eq("id", activityId)
           .then(logDbError("gantt activity update"));
       }
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_activity",
+        entityId: activityId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated activity ${patch.name.trim() || activityId}`,
+        payloadJson: {
+          name: patch.name.trim() || null,
+          startDate: patch.startDate || null,
+          durationDays: patch.durationDays ?? null,
+        },
+      });
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const deleteGanttActivity = useCallback(
     (projectId: string, activityId: string) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const activityName =
+        (project?.schedule?.activities ?? []).find((a) => a.id === activityId)
+          ?.name ?? activityId;
       mutateSchedule(projectId, (s) => ({
         ...s,
         activities: (s.activities ?? []).filter((a) => a.id !== activityId),
@@ -2741,6 +3744,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_activity",
+        entityId: activityId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted activity ${activityName}`,
+        payloadJson: { name: activityName },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_activities")
@@ -2749,7 +3761,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt activity delete"));
       }
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const addGanttDeadline = useCallback(
@@ -2771,6 +3783,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...s,
         deadlines: [...s.deadlines, deadline],
       }));
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_deadline",
+        entityId: deadline.id,
+        projectId,
+        action: "create",
+        summary: `${project?.name ?? projectId}: added deadline ${deadline.name} (${deadline.date})`,
+        payloadJson: {
+          name: deadline.name,
+          date: deadline.date,
+          phaseId: deadline.phaseId,
+        },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_deadlines")
@@ -2789,7 +3815,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt deadline insert"));
       }
     },
-    [mutateSchedule, supportsGanttTables],
+    [mutateSchedule, supportsGanttTables, recordChangeEvent],
   );
 
   const updateGanttDeadline = useCallback(
@@ -2853,12 +3879,29 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .eq("id", deadlineId)
           .then(logDbError("gantt deadline update"));
       }
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_deadline",
+        entityId: deadlineId,
+        projectId,
+        action: "update",
+        summary: `${project?.name ?? projectId}: updated deadline ${patch.name.trim() || deadlineId}`,
+        payloadJson: {
+          name: patch.name.trim() || null,
+          date: patch.date || null,
+        },
+      });
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const deleteGanttDeadline = useCallback(
     (projectId: string, deadlineId: string) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const deadlineName =
+        project?.schedule?.deadlines.find((d) => d.id === deadlineId)?.name ??
+        deadlineId;
       mutateSchedule(projectId, (s) => ({
         ...s,
         deadlines: s.deadlines.filter((d) => d.id !== deadlineId),
@@ -2878,6 +3921,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           return next;
         }),
       }));
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_deadline",
+        entityId: deadlineId,
+        projectId,
+        action: "delete",
+        summary: `${project?.name ?? projectId}: deleted deadline ${deadlineName}`,
+        payloadJson: { name: deadlineName },
+      });
       if (supabase && supportsGanttTables) {
         void supabase
           .from("project_gantt_deadlines")
@@ -2886,7 +3938,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("gantt deadline delete"));
       }
     },
-    [mutateSchedule, mutateFinancials, supportsGanttTables],
+    [mutateSchedule, mutateFinancials, supportsGanttTables, recordChangeEvent],
   );
 
   const shiftProjectSchedule = useCallback(
@@ -2971,17 +4023,32 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [supportsGanttTables],
   );
 
-  const deleteProject = useCallback((projectId: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    if (supabase) {
-      // Comments are removed by the ON DELETE CASCADE constraint.
-      void supabase
-        .from("projects")
-        .delete()
-        .eq("id", projectId)
-        .then(logDbError("project delete"));
-    }
-  }, []);
+  const deleteProject = useCallback(
+    (projectId: string) => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      setProjects((prev) => prev.filter((p) => p.id !== projectId));
+      if (current) {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "project",
+          entityId: projectId,
+          projectId,
+          action: "delete",
+          summary: `Deleted project ${current.name}`,
+          payloadJson: { name: current.name },
+        });
+      }
+      if (supabase) {
+        // Comments are removed by the ON DELETE CASCADE constraint.
+        void supabase
+          .from("projects")
+          .delete()
+          .eq("id", projectId)
+          .then(logDbError("project delete"));
+      }
+    },
+    [recordChangeEvent],
+  );
 
   return (
     <ProjectsContext.Provider
@@ -2991,6 +4058,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateTeamMember,
         currentUserId,
         setCurrentUserId,
+        meaningfulChangeMode,
+        setMeaningfulChangeMode,
+        changeEvents,
+        financialHistory,
         financeSettings,
         updateFinanceSettings,
         metricsSettings,

@@ -1048,3 +1048,61 @@ export function isEmailReminderDue(p: Project): boolean {
 export function emailReminderDeltaDays(p: Project): number {
   return daysBetween(todayDate(), nextEmailReminderDate(p));
 }
+
+/** Domains for append-only app change / process history */
+export type ChangeEventDomain =
+  | "crm"
+  | "gantt"
+  | "finance_meta"
+  | "warehouse"
+  | "system";
+
+export const CHANGE_EVENT_DOMAINS: ChangeEventDomain[] = [
+  "crm",
+  "gantt",
+  "finance_meta",
+  "warehouse",
+  "system",
+];
+
+/**
+ * Non-financial (or finance metadata-only) change event.
+ * `payloadJson` must never contain monetary amounts.
+ */
+export interface ChangeEvent {
+  id: string;
+  occurredAt: string;
+  actorUserId?: string;
+  actorName?: string;
+  intentional: boolean;
+  domain: ChangeEventDomain;
+  entityType: string;
+  entityId?: string;
+  projectId?: string;
+  action: string;
+  field?: string;
+  summary: string;
+  payloadJson?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/**
+ * Financial before/after snapshot (localStorage + CSV only).
+ * Linked to `ChangeEvent` via `eventId` === `ChangeEvent.id`.
+ */
+export interface FinancialHistoryEntry {
+  eventId: string;
+  occurredAt: string;
+  intentional: boolean;
+  actorUserId?: string;
+  actorName?: string;
+  projectId?: string;
+  projectName?: string;
+  entityType: string;
+  entityId?: string;
+  action: string;
+  field?: string;
+  oldValue?: string;
+  newValue?: string;
+  summary: string;
+}

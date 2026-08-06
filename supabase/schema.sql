@@ -289,6 +289,55 @@ create policy "anon full access"
   using (true)
   with check (true);
 
+-- ---------- App change events (audit / process history) ----------
+-- Financial amounts stay out of Postgres. finance_meta rows store keys +
+-- who/when/intentional only; amounts live in the financial history CSV.
+create table if not exists public.app_change_events (
+  id uuid primary key default gen_random_uuid(),
+  occurred_at timestamptz not null default now(),
+  actor_user_id text,
+  actor_name text,
+  intentional boolean not null default false,
+  domain text not null
+    check (domain in (
+      'crm',
+      'gantt',
+      'finance_meta',
+      'warehouse',
+      'system'
+    )),
+  entity_type text not null,
+  entity_id text,
+  project_id uuid references public.projects (id) on delete set null,
+  action text not null,
+  field text,
+  summary text not null default '',
+  payload_json jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists app_change_events_occurred_at_idx
+  on public.app_change_events (occurred_at desc);
+
+create index if not exists app_change_events_project_occurred_idx
+  on public.app_change_events (project_id, occurred_at desc);
+
+create index if not exists app_change_events_domain_occurred_idx
+  on public.app_change_events (domain, occurred_at desc);
+
+create index if not exists app_change_events_intentional_occurred_idx
+  on public.app_change_events (intentional, occurred_at desc);
+
+alter table public.app_change_events enable row level security;
+
+drop policy if exists "anon full access" on public.app_change_events;
+create policy "anon full access"
+  on public.app_change_events
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
 -- ---------- Seed data (optional) ----------
 -- The same demo projects the app used to ship with. Delete this section
 -- if you want to start with an empty tracker.

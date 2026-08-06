@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { downloadFinancialCsv } from "@/lib/financial-csv";
+import { downloadFinancialCsv, downloadFinancialHistoryCsv } from "@/lib/financial-csv";
 
 export default function Header() {
   const router = useRouter();
@@ -14,6 +14,9 @@ export default function Header() {
     teamMembers,
     currentUserId,
     setCurrentUserId,
+    meaningfulChangeMode,
+    setMeaningfulChangeMode,
+    financialHistory,
     ready,
     projects,
     financeSettings,
@@ -42,10 +45,14 @@ export default function Header() {
       if (!result.ok) {
         setCsvMsg(result.error);
       } else {
+        const histNote =
+          result.historyRows > 0
+            ? ` Merged ${result.historyRows} history row${result.historyRows === 1 ? "" : "s"} by event_id.`
+            : "";
         setCsvMsg(
           result.matched > 0
-            ? `Imported financials for ${result.matched} project${result.matched === 1 ? "" : "s"}.`
-            : "CSV loaded (no matching projects by id/name).",
+            ? `Imported financials for ${result.matched} project${result.matched === 1 ? "" : "s"}.${histNote}`
+            : `CSV loaded (no matching projects by id/name).${histNote}`,
         );
       }
     } catch (e) {
@@ -96,10 +103,33 @@ export default function Header() {
             {navLink("/production", "Production")}
             {navLink("/finance", "Finance")}
             {navLink("/metrics", "Metrics")}
+            {navLink("/history", "History")}
           </nav>
         </div>
 
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <label
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm sm:gap-2 sm:px-2.5 sm:text-xs ${
+              meaningfulChangeMode
+                ? "border-teal-accent/50 bg-teal-soft text-teal-accent"
+                : "border-line bg-panel text-muted"
+            }`}
+            title={
+              meaningfulChangeMode
+                ? "On: edits are tagged as intentional process changes"
+                : "Off: edits are tagged as corrections / typo fixes"
+            }
+          >
+            <input
+              type="checkbox"
+              checked={meaningfulChangeMode}
+              disabled={!ready}
+              onChange={(e) => setMeaningfulChangeMode(e.target.checked)}
+              className="h-3.5 w-3.5 accent-teal-accent"
+            />
+            <span className="hidden sm:inline">Meaningful change</span>
+            <span className="sm:hidden">Intent</span>
+          </label>
           <label className="flex min-w-0 items-center gap-2">
             <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-muted sm:inline">
               Working as
@@ -135,9 +165,9 @@ export default function Header() {
             type="button"
             disabled={!ready}
             onClick={() =>
-              downloadFinancialCsv(projects, financeSettings)
+              downloadFinancialCsv(projects, financeSettings, financialHistory)
             }
-            title="Download financial data CSV"
+            title="Download financial data CSV (includes history rows)"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
           >
             <span className="sm:hidden">CSV ↓</span>
@@ -145,9 +175,19 @@ export default function Header() {
           </button>
           <button
             type="button"
+            disabled={!ready || financialHistory.length === 0}
+            onClick={() => downloadFinancialHistoryCsv(financialHistory)}
+            title="Download financial history rows only"
+            className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
+          >
+            <span className="sm:hidden">Hist ↓</span>
+            <span className="hidden sm:inline">Download history</span>
+          </button>
+          <button
+            type="button"
             disabled={!ready}
             onClick={() => fileRef.current?.click()}
-            title="Import financial data CSV"
+            title="Import financial data CSV (history rows merge by event_id)"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
           >
             <span className="sm:hidden">CSV ↑</span>

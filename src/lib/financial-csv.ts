@@ -9,6 +9,7 @@
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
  *   - company_opex  — company fixed monthly cost
+ *   - history       — append-only financial change snapshots (amounts OK here)
  */
 
 import { sanitizeAppFinancials } from "./finance-import";
@@ -16,6 +17,7 @@ import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
+  FinancialHistoryEntry,
   MilestoneKind,
   MILESTONE_KINDS,
   Project,
@@ -73,6 +75,19 @@ export const FINANCIAL_CSV_HEADERS = [
   "category",
   "subcategory",
   "is_maintenance",
+  // History rows (type=history); empty on snapshot rows
+  "event_id",
+  "intentional",
+  "actor_user_id",
+  "actor_name",
+  "action",
+  "field",
+  "old_value",
+  "new_value",
+  "summary",
+  "occurred_at",
+  "entity_type",
+  "entity_id",
 ] as const;
 
 export type FinancialCsvHeader = (typeof FINANCIAL_CSV_HEADERS)[number];
@@ -84,6 +99,8 @@ export type FinancialCsvBundle = {
   /** project_name (lower) → financials when id unknown */
   byProjectName: Record<string, ProjectFinancials>;
   financeSettings: CompanyFinanceSettings | null;
+  /** Append-only financial change snapshots from type=history rows */
+  history: FinancialHistoryEntry[];
 };
 
 function escCell(value: string | number | null | undefined): string {
@@ -108,11 +125,12 @@ function numStr(n: number | null | undefined): string {
 }
 
 /**
- * Build CSV text from live projects + company finance settings.
+ * Build CSV text from live projects + company finance settings + history.
  */
 export function buildFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
+  history: FinancialHistoryEntry[] = [],
 ): string {
   const lines: string[] = [FINANCIAL_CSV_HEADERS.join(",")];
 
@@ -220,16 +238,60 @@ export function buildFinancialCsv(
     }
   }
 
+  const sortedHistory = [...history].sort((a, b) =>
+    a.occurredAt.localeCompare(b.occurredAt),
+  );
+  for (const h of sortedHistory) {
+    const r = emptyRow();
+    r.type = "history";
+    r.event_id = h.eventId;
+    r.project_id = h.projectId ?? "";
+    r.project_name = h.projectName ?? "";
+    r.intentional = h.intentional ? "true" : "false";
+    r.actor_user_id = h.actorUserId ?? "";
+    r.actor_name = h.actorName ?? "";
+    r.action = h.action;
+    r.field = h.field ?? "";
+    r.old_value = h.oldValue ?? "";
+    r.new_value = h.newValue ?? "";
+    r.summary = h.summary;
+    r.occurred_at = h.occurredAt;
+    r.entity_type = h.entityType;
+    r.entity_id = h.entityId ?? "";
+    r.created_at = h.occurredAt;
+    lines.push(rowLine(r));
+  }
+
   return lines.join("\r\n") + "\r\n";
 }
 
 export function downloadFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
+  history: FinancialHistoryEntry[] = [],
   filename = `financial-data-${new Date().toISOString().slice(0, 10)}.csv`,
 ): void {
-  const csv = buildFinancialCsv(projects, financeSettings);
+  const csv = buildFinancialCsv(projects, financeSettings, history);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Export only type=history rows (amounts + metadata). */
+export function downloadFinancialHistoryCsv(
+  history: FinancialHistoryEntry[],
+  filename = `financial-history-${new Date().toISOString().slice(0, 10)}.csv`,
+): void {
+  const header = FINANCIAL_CSV_HEADERS.join(",");
+  const body = buildFinancialCsv([], defaultFinanceSettings(), history)
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("history,"));
+  const out = [header, ...body].join("\r\n") + "\r\n";
+  const blob = new Blob([out], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -331,7 +393,8 @@ export function parseFinancialCsv(text: string):
   if (idx("type") < 0) {
     return {
       ok: false,
-      error: `Missing required column "type". Expected headers: ${FINANCIAL_CSV_HEADERS.join(", ")}`,
+      error:
+        'Missing required column "type". Older files without history columns still work; only "type" is required.',
     };
   }
 
@@ -344,6 +407,7 @@ export function parseFinancialCsv(text: string):
   const byName = new Map<string, ProjectFinancials>();
   let financeSettings: CompanyFinanceSettings | null = null;
   const opex: CompanyMonthlyExpense[] = [];
+  const history: FinancialHistoryEntry[] = [];
 
   function touch(row: string[]): ProjectFinancials | null {
     const id = cell(row, "project_id");
@@ -363,6 +427,42 @@ export function parseFinancialCsv(text: string):
   for (const row of rows.slice(1)) {
     const type = cell(row, "type").toLowerCase();
     if (!type) continue;
+
+    if (type === "history") {
+      const eventId = cell(row, "event_id") || cell(row, "id");
+      if (!eventId) continue;
+      const entry: FinancialHistoryEntry = {
+        eventId,
+        occurredAt:
+          cell(row, "occurred_at") ||
+          cell(row, "created_at") ||
+          new Date().toISOString(),
+        intentional:
+          cell(row, "intentional").toLowerCase() === "true" ||
+          cell(row, "intentional") === "1",
+        entityType: cell(row, "entity_type") || "financial",
+        action: cell(row, "action") || "update",
+        summary: cell(row, "summary") || "Financial change",
+      };
+      const actorUserId = cell(row, "actor_user_id");
+      if (actorUserId) entry.actorUserId = actorUserId;
+      const actorName = cell(row, "actor_name");
+      if (actorName) entry.actorName = actorName;
+      const projectId = cell(row, "project_id");
+      if (projectId) entry.projectId = projectId;
+      const projectName = cell(row, "project_name");
+      if (projectName) entry.projectName = projectName;
+      const entityId = cell(row, "entity_id");
+      if (entityId) entry.entityId = entityId;
+      const field = cell(row, "field");
+      if (field) entry.field = field;
+      const oldValue = cell(row, "old_value");
+      if (oldValue) entry.oldValue = oldValue;
+      const newValue = cell(row, "new_value");
+      if (newValue) entry.newValue = newValue;
+      history.push(entry);
+      continue;
+    }
 
     if (type === "company") {
       const base = defaultFinanceSettings();
@@ -572,7 +672,7 @@ export function parseFinancialCsv(text: string):
 
   return {
     ok: true,
-    data: { byProjectId, byProjectName, financeSettings },
+    data: { byProjectId, byProjectName, financeSettings, history },
   };
 }
 
