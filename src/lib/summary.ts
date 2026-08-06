@@ -46,8 +46,10 @@ export function generateSummary(project: Project): string {
     parts.push(base.endsWith(".") || base.endsWith("!") || base.endsWith("?") ? base : base + ".");
   }
 
+  const sizePart =
+    project.sizeKw > 0 ? `${project.sizeKw.toLocaleString()} kW ` : "";
   parts.push(
-    `The project is currently ${STAGE_PHRASES[project.stage]} (${project.sizeKw.toLocaleString()} kW ${project.series} for ${project.client}, ${project.city}, ${project.country}).`,
+    `The project is currently ${STAGE_PHRASES[project.stage]} (${sizePart}${project.series} for ${project.client}, ${project.city}, ${project.country}).`,
   );
 
   const sorted = [...project.comments].sort(

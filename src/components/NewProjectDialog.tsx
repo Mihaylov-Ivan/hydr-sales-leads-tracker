@@ -31,12 +31,12 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [leadUserId, setLeadUserId] = useState("");
   const [description, setDescription] = useState("");
 
-  const valid =
-    name.trim() && client.trim() && country.trim() && Number(sizeKw) > 0;
+  const valid = name.trim() && client.trim() && country.trim();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) return;
+    const parsedSize = Number(sizeKw);
     const id = addProject({
       name: name.trim(),
       client: client.trim(),
@@ -44,7 +44,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       city: city.trim(),
       series,
       market,
-      sizeKw: Number(sizeKw),
+      sizeKw: Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
       stage,
       baseDescription: description.trim(),
       leadUserId: leadUserId || undefined,
@@ -116,14 +116,14 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             </select>
           </div>
           <div>
-            <label className={labelCls}>Size (kW) *</label>
+            <label className={labelCls}>Size (kW)</label>
             <input
               className={inputCls}
               type="number"
-              min={1}
+              min={0}
               value={sizeKw}
               onChange={(e) => setSizeKw(e.target.value)}
-              placeholder="500"
+              placeholder="Optional"
             />
           </div>
           <div className="sm:col-span-2">

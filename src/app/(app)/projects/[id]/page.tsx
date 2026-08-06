@@ -315,11 +315,19 @@ export default function ProjectPage() {
           <div className="mt-1 text-sm font-medium text-deep">
             <EditableText
               type="number"
-              value={String(project.sizeKw)}
+              value={project.sizeKw > 0 ? String(project.sizeKw) : ""}
               suffix=" kW"
+              placeholder="—"
               onSave={(v) => {
-                const kw = Number(v);
-                if (kw > 0) updateProject(project.id, { sizeKw: kw });
+                const t = v.trim();
+                if (!t) {
+                  updateProject(project.id, { sizeKw: 0 });
+                  return;
+                }
+                const kw = Number(t);
+                if (Number.isFinite(kw) && kw >= 0) {
+                  updateProject(project.id, { sizeKw: kw });
+                }
               }}
             />
           </div>

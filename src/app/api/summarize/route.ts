@@ -24,7 +24,7 @@ function buildPrompt(project: Project): string {
   return `Project: ${project.name}
 Client: ${project.client}
 Location: ${project.city}, ${project.country}
-System: ${project.sizeKw} kW ${project.series} electrolyser
+System: ${project.sizeKw > 0 ? `${project.sizeKw} kW ` : ""}${project.series} electrolyser
 Current stage: ${STAGE_LABELS[project.stage]}
 
 Original description:

@@ -97,9 +97,11 @@ export default function ProjectCard({ project }: { project: Project }) {
           </svg>
           {project.city}, {project.country}
         </span>
-        <span className="font-semibold text-teal-accent">
-          {project.sizeKw.toLocaleString()} kW
-        </span>
+        {project.sizeKw > 0 && (
+          <span className="font-semibold text-teal-accent">
+            {project.sizeKw.toLocaleString()} kW
+          </span>
+        )}
         <span>{project.series}</span>
         <span className="ml-auto flex items-center gap-2">
           {openTodos > 0 && (

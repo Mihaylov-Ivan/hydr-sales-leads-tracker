@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
 import {
   findLinkableDeadline,
@@ -99,6 +99,19 @@ export default function ExpensesPage() {
   const [draftExVat, setDraftExVat] = useState("");
   const [draftIncVat, setDraftIncVat] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(15);
+
+  useEffect(() => {
+    setVisibleCount(15);
+  }, [
+    filterProjectIds,
+    filterCategoryIds,
+    filterLinkIds,
+    filterDateFrom,
+    filterDateTo,
+    filterDesc,
+    dateSort,
+  ]);
 
   const activeProjects = useMemo(
     () =>
@@ -341,6 +354,9 @@ export default function ExpensesPage() {
     { ex: 0, inc: 0 },
   );
 
+  const visibleRows = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
+
   return (
     <div className="flex flex-col gap-4 pb-10">
       <div>
@@ -497,7 +513,147 @@ export default function ExpensesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
+              {/* Add row */}
+              <tr className="border-b border-line bg-teal-soft/20">
+                <td className="sticky left-0 z-10 bg-teal-soft/20 px-2 py-1.5">
+                  <input
+                    type="date"
+                    value={
+                      findLinkableDeadline(draftLinkId, draftEvents)?.date ??
+                      draftDate
+                    }
+                    readOnly={Boolean(
+                      findLinkableDeadline(draftLinkId, draftEvents),
+                    )}
+                    onChange={(e) => setDraftDate(e.target.value)}
+                    className={inputCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <select
+                    value={draftProjectId}
+                    onChange={(e) => {
+                      setDraftProjectId(e.target.value);
+                      setDraftLinkId("");
+                    }}
+                    className={inputCls}
+                  >
+                    <option value="">Select project…</option>
+                    {activeProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-2 py-1.5">
+                  <div className="flex flex-col gap-1">
+                    <select
+                      value={draftCategory}
+                      onChange={(e) =>
+                        setDraftCategory(
+                          e.target.value as ProjectExpenseCategory,
+                        )
+                      }
+                      className={inputCls}
+                    >
+                      {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                        </option>
+                      ))}
+                    </select>
+                    {draftCategory === "installation" && (
+                      <select
+                        value={draftSubcategory}
+                        onChange={(e) =>
+                          setDraftSubcategory(
+                            e.target.value as InstallationSubcategory,
+                          )
+                        }
+                        className={inputCls}
+                      >
+                        {INSTALLATION_SUBCATEGORIES.map((s) => (
+                          <option key={s} value={s}>
+                            {INSTALLATION_SUBCATEGORY_LABELS[s]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    value={draftLabel}
+                    onChange={(e) => setDraftLabel(e.target.value)}
+                    placeholder="Description"
+                    className={inputCls}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <select
+                    key={`draft-gantt-${draftProjectId}`}
+                    value={draftLinkId}
+                    onChange={(e) => {
+                      setDraftLinkId(e.target.value);
+                      const ev = findLinkableDeadline(
+                        e.target.value,
+                        draftEvents,
+                      );
+                      if (ev) setDraftDate(ev.date);
+                    }}
+                    disabled={!draftProjectId}
+                    className={inputCls}
+                    title={
+                      !draftProjectId
+                        ? "Select a project first"
+                        : draftEvents.length === 0
+                          ? "No Gantt events on this project yet"
+                          : "Link to this project’s schedule"
+                    }
+                  >
+                    <option value="">—</option>
+                    {draftEvents.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        {ev.label} · {ev.date}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={draftExVat}
+                    onChange={(e) => handleDraftEx(e.target.value)}
+                    placeholder="Ex VAT"
+                    className={`${inputCls} text-right`}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={draftIncVat}
+                    onChange={(e) => handleDraftInc(e.target.value)}
+                    placeholder="With VAT"
+                    className={`${inputCls} text-right`}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={submitDraft}
+                    className="rounded bg-olive px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-olive-ink hover:brightness-105"
+                  >
+                    Add
+                  </button>
+                </td>
+              </tr>
+
+              {visibleRows.map((row) => {
                 const project = projects.find((p) => p.id === row.projectId);
                 const events = project
                   ? projectLinkableDeadlines(project)
@@ -669,146 +825,6 @@ export default function ExpensesPage() {
                   </tr>
                 );
               })}
-
-              {/* Add row */}
-              <tr className="border-t border-line bg-teal-soft/20">
-                <td className="sticky left-0 z-10 bg-teal-soft/20 px-2 py-1.5">
-                  <input
-                    type="date"
-                    value={
-                      findLinkableDeadline(draftLinkId, draftEvents)?.date ??
-                      draftDate
-                    }
-                    readOnly={Boolean(
-                      findLinkableDeadline(draftLinkId, draftEvents),
-                    )}
-                    onChange={(e) => setDraftDate(e.target.value)}
-                    className={inputCls}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <select
-                    value={draftProjectId}
-                    onChange={(e) => {
-                      setDraftProjectId(e.target.value);
-                      setDraftLinkId("");
-                    }}
-                    className={inputCls}
-                  >
-                    <option value="">Select project…</option>
-                    {activeProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-2 py-1.5">
-                  <div className="flex flex-col gap-1">
-                    <select
-                      value={draftCategory}
-                      onChange={(e) =>
-                        setDraftCategory(
-                          e.target.value as ProjectExpenseCategory,
-                        )
-                      }
-                      className={inputCls}
-                    >
-                      {PROJECT_EXPENSE_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                        </option>
-                      ))}
-                    </select>
-                    {draftCategory === "installation" && (
-                      <select
-                        value={draftSubcategory}
-                        onChange={(e) =>
-                          setDraftSubcategory(
-                            e.target.value as InstallationSubcategory,
-                          )
-                        }
-                        className={inputCls}
-                      >
-                        {INSTALLATION_SUBCATEGORIES.map((s) => (
-                          <option key={s} value={s}>
-                            {INSTALLATION_SUBCATEGORY_LABELS[s]}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    value={draftLabel}
-                    onChange={(e) => setDraftLabel(e.target.value)}
-                    placeholder="Description"
-                    className={inputCls}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <select
-                    key={`draft-gantt-${draftProjectId}`}
-                    value={draftLinkId}
-                    onChange={(e) => {
-                      setDraftLinkId(e.target.value);
-                      const ev = findLinkableDeadline(
-                        e.target.value,
-                        draftEvents,
-                      );
-                      if (ev) setDraftDate(ev.date);
-                    }}
-                    disabled={!draftProjectId}
-                    className={inputCls}
-                    title={
-                      !draftProjectId
-                        ? "Select a project first"
-                        : draftEvents.length === 0
-                          ? "No Gantt events on this project yet"
-                          : "Link to this project’s schedule"
-                    }
-                  >
-                    <option value="">—</option>
-                    {draftEvents.map((ev) => (
-                      <option key={ev.id} value={ev.id}>
-                        {ev.label} · {ev.date}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={draftExVat}
-                    onChange={(e) => handleDraftEx(e.target.value)}
-                    placeholder="Ex VAT"
-                    className={`${inputCls} text-right`}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={draftIncVat}
-                    onChange={(e) => handleDraftInc(e.target.value)}
-                    placeholder="With VAT"
-                    className={`${inputCls} text-right`}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <button
-                    type="button"
-                    onClick={submitDraft}
-                    className="rounded bg-olive px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-olive-ink hover:brightness-105"
-                  >
-                    Add
-                  </button>
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -816,6 +832,17 @@ export default function ExpensesPage() {
           <p className="border-t border-line px-3 py-2 text-[11px] text-amber-accent">
             {draftError}
           </p>
+        )}
+        {hasMore && (
+          <div className="border-t border-line px-3 py-3 text-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((n) => n + 15)}
+              className="rounded-lg border border-line bg-surface px-4 py-1.5 text-[11px] font-semibold text-ink transition hover:border-teal-accent/40 hover:text-teal-accent"
+            >
+              Load more ({filtered.length - visibleCount} remaining)
+            </button>
+          </div>
         )}
         {filtered.length === 0 && rows.length === 0 && (
           <p className="px-3 py-6 text-center text-sm text-muted">
