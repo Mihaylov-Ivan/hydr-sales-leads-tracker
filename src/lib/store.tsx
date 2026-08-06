@@ -332,6 +332,8 @@ export interface PaymentInput {
   milestoneId?: string;
   /** Pass `null` to clear actualization; omit to leave unchanged on update */
   actualDate?: string | null;
+  /** Maintenance income — standalone dates only (no Gantt link) */
+  isMaintenance?: boolean | null;
 }
 
 /** Dated project outflow; category drives cash vs margin-only handling */
@@ -2089,7 +2091,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const addPayment = useCallback(
     (projectId: string, input: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
+      const isMaintenance = Boolean(input.isMaintenance);
+      const linkedDate = isMaintenance
+        ? undefined
+        : resolveLinkedDeadlineDate(input.milestoneId, current);
       const dueDate = linkedDate ?? input.dueDate;
       const payment: ProjectPayment = {
         id: crypto.randomUUID(),
@@ -2098,7 +2103,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(input.milestoneId && linkedDate
+        ...(isMaintenance ? { isMaintenance: true } : {}),
+        ...(!isMaintenance && input.milestoneId && linkedDate
           ? { milestoneId: input.milestoneId }
           : {}),
         createdAt: new Date().toISOString(),
@@ -2114,12 +2120,21 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      const linkedDate = resolveLinkedDeadlineDate(patch.milestoneId, current);
-      const dueDate = linkedDate ?? patch.dueDate;
+      const isMaintenance =
+        patch.isMaintenance === undefined
+          ? undefined
+          : Boolean(patch.isMaintenance);
       mutateFinancials(projectId, (f) => ({
         ...f,
         payments: f.payments.map((p) => {
           if (p.id !== paymentId) return p;
+          const nextMaint =
+            isMaintenance !== undefined ? isMaintenance : Boolean(p.isMaintenance);
+          const linkedDate =
+            nextMaint
+              ? undefined
+              : resolveLinkedDeadlineDate(patch.milestoneId, current);
+          const dueDate = linkedDate ?? patch.dueDate;
           const next: ProjectPayment = {
             id: p.id,
             amount: patch.amount,
@@ -2127,10 +2142,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             createdAt: p.createdAt,
           };
           if (patch.percent != null) next.percent = patch.percent;
-          if (patch.label?.trim()) next.label = patch.label.trim();
-          if (patch.milestoneId && linkedDate) {
+          else if (p.percent != null) next.percent = p.percent;
+          if (patch.label !== undefined) {
+            if (patch.label.trim()) next.label = patch.label.trim();
+          } else if (p.label) {
+            next.label = p.label;
+          }
+          if (nextMaint) {
+            next.isMaintenance = true;
+          }
+          if (!nextMaint && patch.milestoneId && linkedDate) {
             next.milestoneId = patch.milestoneId;
           }
+          // falsy milestoneId or maintenance clears the link
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (p.actualDate) {

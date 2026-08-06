@@ -74,6 +74,8 @@ type CashEvent = {
   actualMonth: string | null;
   dueDate: string;
   actualDate?: string;
+  /** Income from maintenance / service (not contract milestone payment) */
+  isMaintenance?: boolean;
   /** Set for cash-affecting project outflows */
   expenseCategory?: Extract<
     ProjectExpenseCategory,
@@ -86,7 +88,9 @@ function collectEvents(project: Project): CashEvent[] {
   const events: CashEvent[] = [];
 
   for (const p of f.payments ?? []) {
-    const due = effectiveScheduleDate(p, project);
+    const due = p.isMaintenance
+      ? p.dueDate
+      : effectiveScheduleDate(p, project);
     events.push({
       projectId: project.id,
       projectName: project.name,
@@ -97,6 +101,7 @@ function collectEvents(project: Project): CashEvent[] {
       actualMonth: p.actualDate ? monthKey(p.actualDate) : null,
       dueDate: due,
       ...(p.actualDate ? { actualDate: p.actualDate } : {}),
+      ...(p.isMaintenance ? { isMaintenance: true } : {}),
     });
   }
   for (const raw of f.expenseSchedule ?? []) {
@@ -387,8 +392,10 @@ export function buildMonthlyPlan(
         addProject(
           month,
           b.projectInById,
-          ev.projectId,
-          ev.projectName,
+          ev.isMaintenance ? `${ev.projectId}::maint` : ev.projectId,
+          ev.isMaintenance
+            ? `${ev.projectName} · Maintenance`
+            : ev.projectName,
           ev.amount,
         );
       }

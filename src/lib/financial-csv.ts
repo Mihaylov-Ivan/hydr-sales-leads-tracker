@@ -34,6 +34,7 @@ import {
   isProjectExpenseCategory,
   normalizeCompanyMonthlyExpense,
   parseInstallationSubcategory,
+  parseIsMaintenanceFlag,
   parseProjectExpenseCategory,
 } from "./types";
 
@@ -71,6 +72,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "fixed_monthly",
   "category",
   "subcategory",
+  "is_maintenance",
 ] as const;
 
 export type FinancialCsvHeader = (typeof FINANCIAL_CSV_HEADERS)[number];
@@ -168,8 +170,9 @@ export function buildFinancialCsv(
       r.percent = numStr(pay.percent);
       r.due_date = pay.dueDate ?? "";
       r.actual_date = pay.actualDate ?? "";
-      r.milestone_id = pay.milestoneId ?? "";
+      r.milestone_id = pay.isMaintenance ? "" : (pay.milestoneId ?? "");
       r.created_at = pay.createdAt ?? "";
+      r.is_maintenance = pay.isMaintenance ? "true" : "";
       lines.push(rowLine(r));
     }
 
@@ -464,8 +467,15 @@ export function parseFinancialCsv(text: string):
       if (actual) payment.actualDate = actual;
       const label = cell(row, "label");
       if (label) payment.label = label;
-      const mid = cell(row, "milestone_id");
-      if (mid) payment.milestoneId = mid;
+      const isMaint =
+        parseIsMaintenanceFlag(cell(row, "is_maintenance")) ||
+        parseIsMaintenanceFlag(cell(row, "category"));
+      if (isMaint) {
+        payment.isMaintenance = true;
+      } else {
+        const mid = cell(row, "milestone_id");
+        if (mid) payment.milestoneId = mid;
+      }
       f.payments.push(payment);
       continue;
     }

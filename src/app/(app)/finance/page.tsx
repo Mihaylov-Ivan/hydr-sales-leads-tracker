@@ -311,14 +311,16 @@ export default function FinancePage() {
     for (const p of scheduleProjects) {
       const deadlines = projectLinkableDeadlines(p);
       for (const pay of p.financials.payments ?? []) {
-        const linked = findLinkableDeadline(pay.milestoneId, deadlines);
+        const linked = pay.isMaintenance
+          ? undefined
+          : findLinkableDeadline(pay.milestoneId, deadlines);
         const expectedDate = linked?.date ?? pay.dueDate;
         rows.push({
           key: `in-${p.id}-${pay.id}`,
           projectId: p.id,
           projectName: p.name,
           kind: "income",
-          categoryLabel: null,
+          categoryLabel: pay.isMaintenance ? "Maintenance" : null,
           label: pay.label?.trim() || "—",
           amount: pay.amount,
           expectedDate,

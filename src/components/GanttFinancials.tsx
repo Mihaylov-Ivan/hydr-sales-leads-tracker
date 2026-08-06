@@ -139,6 +139,9 @@ function CashItemRow({
   const [actualDate, setActualDate] = useState(item.actualDate ?? "");
   const [label, setLabel] = useState(item.label ?? "");
   const [linkId, setLinkId] = useState(item.milestoneId ?? "");
+  const [isMaintenance, setIsMaintenance] = useState(
+    kind === "payment" && Boolean((item as ProjectPayment).isMaintenance),
+  );
   const [category, setCategory] = useState<ProjectExpenseCategory>(
     expenseItem?.category ?? "materials",
   );
@@ -146,10 +149,14 @@ function CashItemRow({
     expenseItem?.subcategory ?? "fuel",
   );
 
-  const linked = findLinkableDeadline(linkId, events);
+  const linked = isMaintenance
+    ? undefined
+    : findLinkableDeadline(linkId, events);
   const accent =
     kind === "payment" ? "border-teal-accent/40" : "border-amber-accent/40";
   const actualLabel = kind === "payment" ? "Received on" : "Paid on";
+  const paymentItem =
+    kind === "payment" ? (item as ProjectPayment) : null;
 
   const activePercentBase =
     kind === "expense" && financials
@@ -175,6 +182,9 @@ function CashItemRow({
     setActualDate(item.actualDate ?? "");
     setLabel(item.label ?? "");
     setLinkId(item.milestoneId ?? "");
+    setIsMaintenance(
+      kind === "payment" && Boolean((item as ProjectPayment).isMaintenance),
+    );
     setEditing(true);
   }
 
@@ -224,11 +234,17 @@ function CashItemRow({
   }
 
   function handleLink(id: string) {
+    if (isMaintenance) return;
     setLinkId(id);
     if (id) {
       const ev = findLinkableDeadline(id, events);
       if (ev) setDueDate(ev.date);
     }
+  }
+
+  function handleMaintenanceToggle(next: boolean) {
+    setIsMaintenance(next);
+    if (next) setLinkId("");
   }
 
   function save() {
@@ -250,7 +266,8 @@ function CashItemRow({
         ...(pct != null ? { percent: pct } : {}),
         dueDate: date,
         label,
-        ...(linked ? { milestoneId: linked.id } : {}),
+        isMaintenance,
+        ...(linked && !isMaintenance ? { milestoneId: linked.id } : {}),
         actualDate: actualDate.trim() ? actualDate.trim() : null,
       });
     } else {
@@ -327,18 +344,45 @@ function CashItemRow({
               className={inputCls}
             />
           </div>
-          <select
-            value={linkId}
-            onChange={(e) => handleLink(e.target.value)}
-            className={`${inputCls} col-span-2`}
-          >
-            <option value="">Standalone date</option>
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                {ev.label} · {formatDate(ev.date)}
-              </option>
-            ))}
-          </select>
+          {kind === "payment" && (
+            <label className="col-span-2 flex items-center gap-2 text-sm text-ink sm:col-span-1">
+              <input
+                type="checkbox"
+                checked={isMaintenance}
+                onChange={(e) => handleMaintenanceToggle(e.target.checked)}
+                className="rounded border-line"
+              />
+              <span>Maintenance</span>
+            </label>
+          )}
+          {kind === "payment" && !isMaintenance && (
+            <select
+              value={linkId}
+              onChange={(e) => handleLink(e.target.value)}
+              className={`${inputCls} col-span-2`}
+            >
+              <option value="">Standalone date</option>
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.label} · {formatDate(ev.date)}
+                </option>
+              ))}
+            </select>
+          )}
+          {kind === "expense" && (
+            <select
+              value={linkId}
+              onChange={(e) => handleLink(e.target.value)}
+              className={`${inputCls} col-span-2`}
+            >
+              <option value="">Standalone date</option>
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.label} · {formatDate(ev.date)}
+                </option>
+              ))}
+            </select>
+          )}
           {kind === "expense" && (
             <>
               <div>
@@ -406,7 +450,9 @@ function CashItemRow({
     );
   }
 
-  const displayLinked = findLinkableDeadline(item.milestoneId, events);
+  const displayLinked = paymentItem?.isMaintenance
+    ? undefined
+    : findLinkableDeadline(item.milestoneId, events);
   const expectedDate = displayLinked?.date ?? item.dueDate;
   const isActual = Boolean(item.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
@@ -429,7 +475,11 @@ function CashItemRow({
         ...(item.percent != null ? { percent: item.percent } : {}),
         dueDate: item.dueDate,
         label: item.label ?? "",
-        ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
+        ...(paymentItem?.isMaintenance
+          ? { isMaintenance: true }
+          : item.milestoneId
+            ? { milestoneId: item.milestoneId }
+            : {}),
         actualDate: todayDate(),
       });
       return;
@@ -458,7 +508,11 @@ function CashItemRow({
         ...(item.percent != null ? { percent: item.percent } : {}),
         dueDate: item.dueDate,
         label: item.label ?? "",
-        ...(item.milestoneId ? { milestoneId: item.milestoneId } : {}),
+        ...(paymentItem?.isMaintenance
+          ? { isMaintenance: true }
+          : item.milestoneId
+            ? { milestoneId: item.milestoneId }
+            : {}),
         actualDate: null,
       });
       return;
@@ -526,6 +580,11 @@ function CashItemRow({
           )}
         </span>
       )}
+      {paymentItem?.isMaintenance && (
+        <span className="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
+          Maintenance
+        </span>
+      )}
       <span className="text-muted">expected {formatDate(expectedDate)}</span>
       {isActual && (
         <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
@@ -548,7 +607,11 @@ function CashItemRow({
           Delayed
         </span>
       )}
-      {displayLinked ? (
+      {paymentItem?.isMaintenance ? (
+        <span className="rounded-full bg-muted/15 px-2 py-0.5 text-[11px] font-semibold text-muted">
+          Standalone
+        </span>
+      ) : displayLinked ? (
         <span className="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
           ↔ {displayLinked.label}
         </span>
@@ -625,13 +688,16 @@ function AddCashForm({
   const [actualDate, setActualDate] = useState("");
   const [label, setLabel] = useState("");
   const [linkId, setLinkId] = useState("");
+  const [isMaintenance, setIsMaintenance] = useState(false);
   const [category, setCategory] =
     useState<ProjectExpenseCategory>("materials");
   const [subcategory, setSubcategory] =
     useState<InstallationSubcategory>("fuel");
   const [error, setError] = useState<string | null>(null);
 
-  const linked = findLinkableDeadline(linkId, events);
+  const linked = isMaintenance
+    ? undefined
+    : findLinkableDeadline(linkId, events);
   const actualLabel = kind === "payment" ? "Received on" : "Paid on";
 
   const activePercentBase =
@@ -705,12 +771,19 @@ function AddCashForm({
   }
 
   function handleLink(id: string) {
+    if (isMaintenance) return;
     setLinkId(id);
     setError(null);
     if (id) {
       const ev = findLinkableDeadline(id, events);
       if (ev) setDate(ev.date);
     }
+  }
+
+  function handleMaintenanceToggle(next: boolean) {
+    setIsMaintenance(next);
+    setError(null);
+    if (next) setLinkId("");
   }
 
   function submit(e?: React.FormEvent) {
@@ -739,7 +812,11 @@ function AddCashForm({
       return;
     }
     if (!dueDate) {
-      setError("Pick an expected date, or link to a schedule event.");
+      setError(
+        isMaintenance
+          ? "Pick an expected date."
+          : "Pick an expected date, or link to a schedule event.",
+      );
       return;
     }
     if (kind === "payment") {
@@ -748,7 +825,8 @@ function AddCashForm({
         ...(pct != null ? { percent: pct } : {}),
         dueDate,
         label,
-        ...(linked ? { milestoneId: linked.id } : {}),
+        ...(isMaintenance ? { isMaintenance: true } : {}),
+        ...(linked && !isMaintenance ? { milestoneId: linked.id } : {}),
         ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
       });
     } else {
@@ -773,6 +851,7 @@ function AddCashForm({
     setActualDate("");
     setLabel("");
     setLinkId("");
+    setIsMaintenance(false);
     setCategory("materials");
     setSubcategory("fuel");
     setError(null);
@@ -857,19 +936,47 @@ function AddCashForm({
           className={inputCls}
         />
       </div>
-      <select
-        value={linkId}
-        onChange={(e) => handleLink(e.target.value)}
-        className={`${inputCls} col-span-2`}
-        title="Link to a Gantt event, or leave as standalone"
-      >
-        <option value="">Standalone date</option>
-        {events.map((ev) => (
-          <option key={ev.id} value={ev.id}>
-            {ev.label} · {formatDate(ev.date)}
-          </option>
-        ))}
-      </select>
+      {kind === "payment" && (
+        <label className="col-span-2 flex items-center gap-2 text-sm text-ink sm:col-span-1">
+          <input
+            type="checkbox"
+            checked={isMaintenance}
+            onChange={(e) => handleMaintenanceToggle(e.target.checked)}
+            className="rounded border-line"
+          />
+          <span>Maintenance</span>
+        </label>
+      )}
+      {kind === "payment" && !isMaintenance && (
+        <select
+          value={linkId}
+          onChange={(e) => handleLink(e.target.value)}
+          className={`${inputCls} col-span-2`}
+          title="Link to a Gantt event, or leave as standalone"
+        >
+          <option value="">Standalone date</option>
+          {events.map((ev) => (
+            <option key={ev.id} value={ev.id}>
+              {ev.label} · {formatDate(ev.date)}
+            </option>
+          ))}
+        </select>
+      )}
+      {kind === "expense" && (
+        <select
+          value={linkId}
+          onChange={(e) => handleLink(e.target.value)}
+          className={`${inputCls} col-span-2`}
+          title="Link to a Gantt event, or leave as standalone"
+        >
+          <option value="">Standalone date</option>
+          {events.map((ev) => (
+            <option key={ev.id} value={ev.id}>
+              {ev.label} · {formatDate(ev.date)}
+            </option>
+          ))}
+        </select>
+      )}
       {kind === "expense" && (
         <>
           <div>
@@ -914,7 +1021,9 @@ function AddCashForm({
         onChange={(e) => setLabel(e.target.value)}
         placeholder={
           kind === "payment"
-            ? "Label (optional) e.g. Down payment"
+            ? isMaintenance
+              ? "Label (optional) e.g. Annual service"
+              : "Label (optional) e.g. Down payment"
             : "Label (optional) e.g. Supplier deposit"
         }
         className={`${inputCls} col-span-2 sm:col-span-1`}

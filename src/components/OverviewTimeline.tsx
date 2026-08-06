@@ -108,6 +108,7 @@ type CashFlow = {
   received: boolean;
   label?: string;
   milestoneLabel?: string;
+  isMaintenance?: boolean;
   color: string;
 };
 
@@ -143,7 +144,9 @@ function collectFlows(
     const cv = f.contractValue;
     const deadlines = projectLinkableDeadlines(p);
     for (const pay of f.payments) {
-      const linked = findLinkableDeadline(pay.milestoneId, deadlines);
+      const linked = pay.isMaintenance
+        ? undefined
+        : findLinkableDeadline(pay.milestoneId, deadlines);
       const percent = resolveContractPercent(pay.amount, cv, pay.percent);
       const expectedDate = linked?.date ?? pay.dueDate;
       const received = Boolean(pay.actualDate);
@@ -158,8 +161,13 @@ function collectFlows(
         date: pay.actualDate ?? expectedDate,
         expectedDate,
         received,
-        ...(pay.label ? { label: pay.label } : {}),
+        ...(pay.label
+          ? { label: pay.label }
+          : pay.isMaintenance
+            ? { label: "Maintenance" }
+            : {}),
         ...(linked ? { milestoneLabel: linked.label } : {}),
+        ...(pay.isMaintenance ? { isMaintenance: true } : {}),
         color,
       });
     }
@@ -650,7 +658,11 @@ function CashChart({
           }}
         >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            {hover.item.kind === "income" ? "Incoming payment" : "Expense"}
+            {hover.item.kind === "income"
+              ? hover.item.isMaintenance
+                ? "Maintenance income"
+                : "Incoming payment"
+              : "Expense"}
             {asOfDate && hover.item.date < asOfDate ? " · before as of" : ""}
           </p>
           <p className="mt-1 text-lg font-bold text-deep">

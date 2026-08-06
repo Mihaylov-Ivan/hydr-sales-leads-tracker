@@ -2,7 +2,7 @@
  * Build / download finance2.xlsx
  *
  * Sheet "Data":
- *   Project | Date | Income | Expense | Deadline | Category | Subcategory
+ *   Project | Date | Income | Expense | Deadline | Category | Subcategory | Maintenance
  *
  * Sheet "Company":
  *   Month | Fixed monthly | Status
@@ -13,6 +13,7 @@
  * Category: materials | man-hr | installation | maintenance | admin
  * Subcategory (installation/maintenance): fuel | tickets | hotels |
  *   travel-allowance | installation-equipment | maintenance-parts
+ * Maintenance (income): yes/true — standalone expected/received dates, no Gantt
  */
 
 import * as XLSX from "xlsx";
@@ -43,6 +44,8 @@ export type FinanceExportRow = {
   category: string;
   /** Installation subcategory; empty otherwise */
   subcategory: string;
+  /** Income flagged as maintenance (yes / empty) */
+  maintenance: string;
 };
 
 export type ProjectCapsExportRow = {
@@ -53,7 +56,7 @@ export type ProjectCapsExportRow = {
 
 /**
  * Flatten merged project financials into finance2 Data sheet rows.
- * Same project+date+deadline+category+subcategory collapses amounts onto one row.
+ * Same project+date+deadline+category+subcategory+maintenance collapses amounts onto one row.
  */
 export function buildFinanceExportRows(
   projects: Project[],
@@ -70,8 +73,9 @@ export function buildFinanceExportRows(
     deadline: string,
     category: string,
     subcategory: string,
+    maintenance: string,
   ): string {
-    return `${project}\0${date}\0${deadline}\0${category}\0${subcategory}`;
+    return `${project}\0${date}\0${deadline}\0${category}\0${subcategory}\0${maintenance}`;
   }
 
   function bump(
@@ -82,11 +86,13 @@ export function buildFinanceExportRows(
     amount: number,
     category: string,
     subcategory: string,
+    maintenance: string = "",
   ) {
     if (amount <= 0 || !project || !date) return;
     const cat = kind === "expense" ? category : "";
     const sub = kind === "expense" ? subcategory : "";
-    const k = key(project, date, deadline, cat, sub);
+    const maint = kind === "income" ? maintenance : "";
+    const k = key(project, date, deadline, cat, sub, maint);
     const cur = map.get(k) ?? { income: 0, expense: 0 };
     if (kind === "income") cur.income += amount;
     else cur.expense += amount;
@@ -97,10 +103,24 @@ export function buildFinanceExportRows(
     const f = p.financials;
     const deadlines = projectLinkableDeadlines(p);
     for (const pay of f.payments ?? []) {
-      const linked = findLinkableDeadline(pay.milestoneId, deadlines);
+      const isMaint = !!pay.isMaintenance;
+      const linked = isMaint
+        ? undefined
+        : findLinkableDeadline(pay.milestoneId, deadlines);
       const date = pay.actualDate ?? linked?.date ?? pay.dueDate;
-      const deadline = pay.label?.trim() || linked?.label || "";
-      bump(p.name, date, deadline, "income", pay.amount, "", "");
+      const deadline = isMaint
+        ? pay.label?.trim() || ""
+        : pay.label?.trim() || linked?.label || "";
+      bump(
+        p.name,
+        date,
+        deadline,
+        "income",
+        pay.amount,
+        "",
+        "",
+        isMaint ? "yes" : "",
+      );
     }
     for (const raw of f.expenseSchedule ?? []) {
       const exp = normalizeProjectExpense(raw);
@@ -119,7 +139,8 @@ export function buildFinanceExportRows(
 
   const rows: FinanceExportRow[] = [];
   for (const [k, agg] of map) {
-    const [project, date, deadline, category, subcategory] = k.split("\0");
+    const [project, date, deadline, category, subcategory, maintenance] =
+      k.split("\0");
     rows.push({
       project,
       date,
@@ -128,6 +149,7 @@ export function buildFinanceExportRows(
       deadline,
       category: category ?? "",
       subcategory: subcategory ?? "",
+      maintenance: maintenance ?? "",
     });
   }
 
@@ -136,6 +158,8 @@ export function buildFinanceExportRows(
     if (d !== 0) return d;
     const p = a.project.localeCompare(b.project);
     if (p !== 0) return p;
+    const m = a.maintenance.localeCompare(b.maintenance);
+    if (m !== 0) return m;
     const c = a.category.localeCompare(b.category);
     if (c !== 0) return c;
     return a.subcategory.localeCompare(b.subcategory);
@@ -194,7 +218,16 @@ export function buildFinanceWorkbook(
   projectCapsRows: ProjectCapsExportRow[] = [],
 ): XLSX.WorkBook {
   const dataAoa: (string | number | Date)[][] = [
-    ["Project", "Date", "Income", "Expense", "Deadline", "Category", "Subcategory"],
+    [
+      "Project",
+      "Date",
+      "Income",
+      "Expense",
+      "Deadline",
+      "Category",
+      "Subcategory",
+      "Maintenance",
+    ],
     ...rows.map((r) => [
       r.project,
       isoToLocalDate(r.date),
@@ -203,6 +236,7 @@ export function buildFinanceWorkbook(
       r.deadline,
       r.category,
       r.subcategory,
+      r.maintenance,
     ]),
   ];
   const dataSheet = XLSX.utils.aoa_to_sheet(dataAoa);

@@ -204,9 +204,31 @@ export interface ProjectPayment {
    */
   actualDate?: string;
   label?: string;
-  /** Optional link to a project deadline — both share the same date on the timeline */
+  /**
+   * Optional link to a project deadline — both share the same date on the timeline.
+   * Not used when `isMaintenance` is true (standalone dates only).
+   */
   milestoneId?: string;
+  /**
+   * Maintenance income (service / aftercare). Standalone expected + received
+   * dates only — not linkable to the Gantt chart.
+   */
+  isMaintenance?: boolean;
   createdAt: string; // ISO
+}
+
+export function parseIsMaintenanceFlag(
+  raw: string | null | undefined,
+): boolean {
+  const t = (raw ?? "").trim().toLowerCase();
+  return (
+    t === "1" ||
+    t === "true" ||
+    t === "yes" ||
+    t === "y" ||
+    t === "maintenance" ||
+    t === "maint"
+  );
 }
 
 /**

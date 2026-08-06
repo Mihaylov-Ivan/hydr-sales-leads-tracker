@@ -2,11 +2,12 @@
  * Finance import from Excel (finance2.xlsx style).
  *
  * Sheet "Data":
- *   Project | Date | Income | Expense | Deadline | Category | Subcategory
+ *   Project | Date | Income | Expense | Deadline | Category | Subcategory | Maintenance
  *   Category (optional, expenses): materials | man-hr | installation | maintenance | admin
  *     (also accepts "Manufacture materials", "Man-hrs", "Maintenance", "Admin")
  *   Subcategory (optional, installation/maintenance): fuel | tickets | hotels |
  *     travel-allowance | installation-equipment | maintenance-parts
+ *   Maintenance (optional, income): yes/true — standalone expected/received dates, no Gantt
  *   Missing category → inferred from Deadline/label.
  *
  * Sheet "Company" (optional):
@@ -39,6 +40,7 @@ import {
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   parseInstallationSubcategory,
+  parseIsMaintenanceFlag,
   parseProjectExpenseCategory,
   categoryHasSubcategories,
   todayDate,
@@ -67,6 +69,8 @@ export type ImportedProjectActual = {
   category?: ProjectExpenseCategory;
   /** Installation subcategory from Excel Subcategory column */
   subcategory?: InstallationSubcategory;
+  /** Income flagged as maintenance (standalone dates, no Gantt) */
+  isMaintenance?: boolean;
 };
 
 export type ImportedProjectMilestone = {
@@ -252,6 +256,12 @@ export function parseFinanceDataRows(
     "sub-category",
     "installation_subcategory",
   );
+  const iMaintenance = headerIndex(
+    headers,
+    "maintenance",
+    "is_maintenance",
+    "maint",
+  );
 
   if (iProject < 0 || iDate < 0) {
     return {
@@ -284,6 +294,7 @@ export function parseFinanceDataRows(
     isActual: boolean,
     category?: ProjectExpenseCategory,
     subcategory?: InstallationSubcategory,
+    isMaintenance?: boolean,
   ) {
     const line: ImportedProjectActual = {
       projectName,
@@ -298,6 +309,7 @@ export function parseFinanceDataRows(
             ...(subcategory ? { subcategory } : {}),
           }
         : {}),
+      ...(type === "income" && isMaintenance ? { isMaintenance: true } : {}),
     };
     if (isActual) actuals.push(line);
     else expected.push(line);
@@ -323,10 +335,26 @@ export function parseFinanceDataRows(
         parseInstallationSubcategory(categoryRaw) ??
         inferInstallationSubcategory(deadline);
     }
+    const maintenanceRaw =
+      iMaintenance >= 0 && r[iMaintenance] ? r[iMaintenance].trim() : "";
+    const isMaintenanceIncome =
+      income > 0 &&
+      (parseIsMaintenanceFlag(maintenanceRaw) ||
+        (expense <= 0 && parseIsMaintenanceFlag(categoryRaw)));
     const isActual = date <= today;
 
     if (income > 0) {
-      pushLine(projectName, "income", income, date, deadline, isActual);
+      pushLine(
+        projectName,
+        "income",
+        income,
+        date,
+        deadline,
+        isActual,
+        undefined,
+        undefined,
+        isMaintenanceIncome,
+      );
     }
     if (expense > 0) {
       const resolvedCategory =
@@ -343,7 +371,7 @@ export function parseFinanceDataRows(
       );
     }
 
-    if (deadline) {
+    if (deadline && (!isMaintenanceIncome || expense > 0)) {
       const kind = deadlineToKind(deadline);
       if (kind) {
         const key = `${projectName.toLowerCase()}|${kind}|${date}`;
@@ -658,6 +686,7 @@ export function projectActualPaymentsFromImport(
       ...(a.actualDate ? { actualDate: a.actualDate } : {}),
       ...(a.label ? { label: a.label } : {}),
       ...(a.percent != null ? { percent: a.percent } : {}),
+      ...(a.isMaintenance ? { isMaintenance: true } : {}),
       createdAt: data.importedAt,
     }));
 }
@@ -739,6 +768,7 @@ export function expectedSchedulesForProject(
       amount: a.amount,
       dueDate: a.dueDate,
       ...(a.label ? { label: a.label } : {}),
+      ...(a.isMaintenance ? { isMaintenance: true } : {}),
       createdAt: data.importedAt,
     }));
   const expenses = expected
