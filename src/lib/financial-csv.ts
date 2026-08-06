@@ -23,8 +23,11 @@ import {
   ProjectFinancials,
   ProjectMilestone,
   ProjectPayment,
+  amountExFromInc,
+  amountIncFromEx,
   companyMonthlyCashTotal,
   defaultFinanceSettings,
+  DEFAULT_VAT_RATE,
   emptyFinancials,
   inferExpenseCategory,
   isProjectExpenseCategory,
@@ -38,6 +41,8 @@ export const FINANCIAL_CSV_HEADERS = [
   "id",
   "label",
   "amount",
+  "amount_ex_vat",
+  "vat_rate",
   "percent",
   "due_date",
   "actual_date",
@@ -172,6 +177,14 @@ export function buildFinancialCsv(
       r.id = exp.id;
       r.label = exp.label ?? "";
       r.amount = numStr(exp.amount);
+      const exVat =
+        exp.amountExVat != null && exp.amountExVat > 0
+          ? exp.amountExVat
+          : exp.amount > 0
+            ? amountExFromInc(exp.amount)
+            : undefined;
+      r.amount_ex_vat = numStr(exVat);
+      r.vat_rate = numStr(DEFAULT_VAT_RATE);
       r.percent = numStr(exp.percent);
       r.due_date = exp.dueDate ?? "";
       r.actual_date = exp.actualDate ?? "";
@@ -451,8 +464,16 @@ export function parseFinancialCsv(text: string):
     if (type === "expense") {
       const f = touch(row);
       if (!f) continue;
-      const amount = parseOptionalNumber(cell(row, "amount"));
       const dueDate = cell(row, "due_date");
+      let amount = parseOptionalNumber(cell(row, "amount"));
+      let amountExVat = parseOptionalNumber(cell(row, "amount_ex_vat"));
+      const vatRate =
+        parseOptionalNumber(cell(row, "vat_rate")) ?? DEFAULT_VAT_RATE;
+      if (amount == null && amountExVat != null) {
+        amount = amountIncFromEx(amountExVat, vatRate);
+      } else if (amountExVat == null && amount != null) {
+        amountExVat = amountExFromInc(amount, vatRate);
+      }
       if (amount == null || !dueDate) continue;
       const expense: ProjectExpenseItem = {
         id: cell(row, "id") || crypto.randomUUID(),
@@ -460,6 +481,9 @@ export function parseFinancialCsv(text: string):
         dueDate,
         createdAt: cell(row, "created_at") || new Date().toISOString(),
       };
+      if (amountExVat != null && amountExVat > 0) {
+        expense.amountExVat = amountExVat;
+      }
       const percent = parseOptionalNumber(cell(row, "percent"));
       if (percent !== undefined) expense.percent = percent;
       const actual = cell(row, "actual_date");

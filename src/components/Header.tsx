@@ -92,6 +92,7 @@ export default function Header() {
           </Link>
           <nav className="flex items-center gap-1">
             {navLink("/", "Board")}
+            {navLink("/expenses", "Expenses")}
             {navLink("/finance", "Finance")}
             {navLink("/metrics", "Metrics")}
           </nav>

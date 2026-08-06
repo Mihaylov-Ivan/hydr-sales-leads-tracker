@@ -335,6 +335,8 @@ export interface PaymentInput {
 /** Dated project outflow; category drives cash vs margin-only handling */
 export interface ExpenseInput extends PaymentInput {
   category: ProjectExpenseCategory;
+  /** Amount without VAT; pass `null` to clear on update */
+  amountExVat?: number | null;
 }
 
 export interface FinanceSettingsPatch {
@@ -2157,6 +2159,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         amount: input.amount,
         category: input.category,
         ...(input.percent != null ? { percent: input.percent } : {}),
+        ...(input.amountExVat != null && input.amountExVat > 0
+          ? { amountExVat: input.amountExVat }
+          : {}),
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
@@ -2190,10 +2195,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             createdAt: e.createdAt,
           };
           if (patch.percent != null) next.percent = patch.percent;
-          if (patch.label?.trim()) next.label = patch.label.trim();
-          if (patch.milestoneId && linkedDate) {
-            next.milestoneId = patch.milestoneId;
+          else if (e.percent != null) next.percent = e.percent;
+
+          if (patch.amountExVat != null && patch.amountExVat > 0) {
+            next.amountExVat = patch.amountExVat;
+          } else if (patch.amountExVat === null) {
+            // cleared intentionally
+          } else if (e.amountExVat != null) {
+            next.amountExVat = e.amountExVat;
           }
+
+          if (patch.label !== undefined) {
+            if (patch.label.trim()) next.label = patch.label.trim();
+          } else if (e.label) {
+            next.label = e.label;
+          }
+
+          if (patch.milestoneId) {
+            if (linkedDate) next.milestoneId = patch.milestoneId;
+          }
+          // falsy milestoneId clears the link
+
           if (patch.actualDate !== undefined) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (e.actualDate) {

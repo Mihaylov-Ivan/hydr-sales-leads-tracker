@@ -14,6 +14,8 @@ import {
   ProjectExpenseItem,
   ProjectFinancials,
   ProjectPayment,
+  amountExFromInc,
+  amountIncFromEx,
   expensePercentBase,
   inferExpenseCategory,
   normalizeProjectExpense,
@@ -116,6 +118,15 @@ function CashItemRow({
       : null;
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(String(item.amount));
+  const [amountExVat, setAmountExVat] = useState(() => {
+    if (kind !== "expense") return "";
+    const exp = normalizeProjectExpense(item as ProjectExpenseItem);
+    return String(
+      exp.amountExVat != null && exp.amountExVat > 0
+        ? exp.amountExVat
+        : amountExFromInc(exp.amount),
+    );
+  });
   const [percent, setPercent] = useState(
     item.percent != null ? String(item.percent) : "",
   );
@@ -139,25 +150,50 @@ function CashItemRow({
 
   function startEdit() {
     setAmount(String(item.amount));
+    if (kind === "expense") {
+      const exp = normalizeProjectExpense(item as ProjectExpenseItem);
+      setAmountExVat(
+        String(
+          exp.amountExVat != null && exp.amountExVat > 0
+            ? exp.amountExVat
+            : amountExFromInc(exp.amount),
+        ),
+      );
+      setCategory(exp.category ?? "materials");
+    }
     setPercent(item.percent != null ? String(item.percent) : "");
     setDueDate(item.dueDate);
     setActualDate(item.actualDate ?? "");
     setLabel(item.label ?? "");
     setLinkId(item.milestoneId ?? "");
-    if (kind === "expense") {
-      setCategory(
-        normalizeProjectExpense(item as ProjectExpenseItem).category ??
-          "materials",
-      );
-    }
     setEditing(true);
+  }
+
+  function setIncAndDeriveEx(incRaw: string) {
+    setAmount(incRaw);
+    const inc = parseOptionalNumber(incRaw);
+    if (inc != null && inc >= 0) {
+      setAmountExVat(String(amountExFromInc(inc)));
+    }
+  }
+
+  function setExAndDeriveInc(exRaw: string) {
+    setAmountExVat(exRaw);
+    const ex = parseOptionalNumber(exRaw);
+    if (ex != null && ex >= 0) {
+      setAmount(String(amountIncFromEx(ex)));
+    }
   }
 
   function handlePercentChange(raw: string) {
     setPercent(raw);
     const pct = parseOptionalNumber(raw);
     if (pct != null && activePercentBase != null && activePercentBase > 0) {
-      setAmount(String(amountFromPercent(activePercentBase, pct)));
+      const inc = amountFromPercent(activePercentBase, pct);
+      setAmount(String(inc));
+      if (kind === "expense") {
+        setAmountExVat(String(amountExFromInc(inc)));
+      }
     }
   }
 
@@ -167,7 +203,9 @@ function CashItemRow({
     if (pct != null && financials) {
       const base = expensePercentBase(next, financials);
       if (base != null && base > 0) {
-        setAmount(String(amountFromPercent(base, pct)));
+        const inc = amountFromPercent(base, pct);
+        setAmount(String(inc));
+        setAmountExVat(String(amountExFromInc(inc)));
       }
     }
   }
@@ -203,8 +241,11 @@ function CashItemRow({
         actualDate: actualDate.trim() ? actualDate.trim() : null,
       });
     } else {
+      let ex = parseOptionalNumber(amountExVat);
+      if (ex == null) ex = amountExFromInc(amt);
       updateExpense(projectId, item.id, {
         amount: amt,
+        amountExVat: ex,
         ...(pct != null ? { percent: pct } : {}),
         dueDate: date,
         label,
@@ -230,12 +271,29 @@ function CashItemRow({
             }
             className={inputCls}
           />
-          <input
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="Amount €"
-            className={inputCls}
-          />
+          {kind === "expense" ? (
+            <>
+              <input
+                value={amountExVat}
+                onChange={(e) => setExAndDeriveInc(e.target.value)}
+                placeholder="Ex VAT €"
+                className={inputCls}
+              />
+              <input
+                value={amount}
+                onChange={(e) => setIncAndDeriveEx(e.target.value)}
+                placeholder="With VAT €"
+                className={inputCls}
+              />
+            </>
+          ) : (
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Amount €"
+              className={inputCls}
+            />
+          )}
           <div>
             <span className={labelTiny}>Expected</span>
             <input
@@ -345,6 +403,7 @@ function CashItemRow({
     const exp = normalizeProjectExpense(item as ProjectExpenseItem);
     updateExpense(projectId, item.id, {
       amount: exp.amount,
+      ...(exp.amountExVat != null ? { amountExVat: exp.amountExVat } : {}),
       ...(exp.percent != null ? { percent: exp.percent } : {}),
       dueDate: exp.dueDate,
       label: exp.label ?? "",
@@ -370,6 +429,7 @@ function CashItemRow({
     const exp = normalizeProjectExpense(item as ProjectExpenseItem);
     updateExpense(projectId, item.id, {
       amount: exp.amount,
+      ...(exp.amountExVat != null ? { amountExVat: exp.amountExVat } : {}),
       ...(exp.percent != null ? { percent: exp.percent } : {}),
       dueDate: exp.dueDate,
       label: exp.label ?? "",
@@ -383,6 +443,16 @@ function CashItemRow({
     <li className="group flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm">
       <span className="font-semibold text-deep">
         {formatMoney(item.amount)}
+        {kind === "expense" && expenseItem && (
+          <span className="ml-1 text-[10px] font-medium text-muted">
+            ex{" "}
+            {formatMoney(
+              expenseItem.amountExVat != null && expenseItem.amountExVat > 0
+                ? expenseItem.amountExVat
+                : amountExFromInc(item.amount),
+            )}
+          </span>
+        )}
         {pct != null && (
           <span
             className={`ml-1 font-medium ${
@@ -504,6 +574,7 @@ function AddCashForm({
 }) {
   const { addPayment, addExpense } = useProjects();
   const [amount, setAmount] = useState("");
+  const [amountExVat, setAmountExVat] = useState("");
   const [percent, setPercent] = useState("");
   const [date, setDate] = useState("");
   const [actualDate, setActualDate] = useState("");
@@ -528,7 +599,11 @@ function AddCashForm({
   useEffect(() => {
     const pct = parseOptionalNumber(percent);
     if (pct != null && activePercentBase != null && activePercentBase > 0) {
-      setAmount(String(amountFromPercent(activePercentBase, pct)));
+      const inc = amountFromPercent(activePercentBase, pct);
+      setAmount(String(inc));
+      if (kind === "expense") {
+        setAmountExVat(String(amountExFromInc(inc)));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePercentBase]);
@@ -538,7 +613,11 @@ function AddCashForm({
     setError(null);
     const pct = parseOptionalNumber(raw);
     if (pct != null && activePercentBase != null && activePercentBase > 0) {
-      setAmount(String(amountFromPercent(activePercentBase, pct)));
+      const inc = amountFromPercent(activePercentBase, pct);
+      setAmount(String(inc));
+      if (kind === "expense") {
+        setAmountExVat(String(amountExFromInc(inc)));
+      }
     }
   }
 
@@ -549,8 +628,28 @@ function AddCashForm({
     if (pct != null && financials) {
       const base = expensePercentBase(next, financials);
       if (base != null && base > 0) {
-        setAmount(String(amountFromPercent(base, pct)));
+        const inc = amountFromPercent(base, pct);
+        setAmount(String(inc));
+        setAmountExVat(String(amountExFromInc(inc)));
       }
+    }
+  }
+
+  function setIncAndDeriveEx(incRaw: string) {
+    setAmount(incRaw);
+    setError(null);
+    const inc = parseOptionalNumber(incRaw);
+    if (inc != null && inc >= 0) {
+      setAmountExVat(String(amountExFromInc(inc)));
+    }
+  }
+
+  function setExAndDeriveInc(exRaw: string) {
+    setAmountExVat(exRaw);
+    setError(null);
+    const ex = parseOptionalNumber(exRaw);
+    if (ex != null && ex >= 0) {
+      setAmount(String(amountIncFromEx(ex)));
     }
   }
 
@@ -602,8 +701,11 @@ function AddCashForm({
         ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
       });
     } else {
+      let ex = parseOptionalNumber(amountExVat);
+      if (ex == null) ex = amountExFromInc(amt);
       addExpense(projectId, {
         amount: amt,
+        amountExVat: ex,
         ...(pct != null ? { percent: pct } : {}),
         dueDate,
         label,
@@ -613,6 +715,7 @@ function AddCashForm({
       });
     }
     setAmount("");
+    setAmountExVat("");
     setPercent("");
     setDate("");
     setActualDate("");
@@ -625,6 +728,7 @@ function AddCashForm({
   const dueReady = Boolean(linked?.date || date);
   const amountReady =
     Boolean(amount.trim()) ||
+    Boolean(amountExVat.trim()) ||
     (Boolean(percent.trim()) &&
       activePercentBase != null &&
       activePercentBase > 0);
@@ -646,15 +750,32 @@ function AddCashForm({
         }
         className={inputCls}
       />
-      <input
-        value={amount}
-        onChange={(e) => {
-          setAmount(e.target.value);
-          setError(null);
-        }}
-        placeholder="Amount €"
-        className={inputCls}
-      />
+      {kind === "expense" ? (
+        <>
+          <input
+            value={amountExVat}
+            onChange={(e) => setExAndDeriveInc(e.target.value)}
+            placeholder="Ex VAT €"
+            className={inputCls}
+          />
+          <input
+            value={amount}
+            onChange={(e) => setIncAndDeriveEx(e.target.value)}
+            placeholder="With VAT €"
+            className={inputCls}
+          />
+        </>
+      ) : (
+        <input
+          value={amount}
+          onChange={(e) => {
+            setAmount(e.target.value);
+            setError(null);
+          }}
+          placeholder="Amount €"
+          className={inputCls}
+        />
+      )}
       <div>
         <span className={labelTiny}>Expected</span>
         <input
@@ -841,9 +962,9 @@ export default function GanttFinancials({
             Expenses
           </h4>
           <p className="mb-2 text-[10px] text-muted">
-            Materials &amp; installation hit company cash. Man-hr is for project
-            analysis only (salary covers payroll). Expense % uses the max
-            Materials / Man-hr caps below (installation % uses contract value).
+            Materials &amp; installation hit company cash (with VAT). Man-hr is
+            for project analysis only. Expense % uses max Materials / Man-hr
+            caps (installation % uses contract value). VAT auto-calcs at 20%.
           </p>
           <div className="mb-3 grid grid-cols-2 gap-2">
             <label className="block">

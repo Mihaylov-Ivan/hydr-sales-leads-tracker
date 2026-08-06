@@ -293,8 +293,11 @@ export function inferExpenseCategory(
 /** A scheduled project cost / outflow */
 export interface ProjectExpenseItem {
   id: string;
+  /** Amount with VAT — used for cashflow (materials / installation) */
   amount: number;
-  /** Share of contract value, e.g. 40 for 40% */
+  /** Amount without VAT */
+  amountExVat?: number;
+  /** Share of contract value / max category, e.g. 40 for 40% */
   percent?: number;
   /** Expected date (yyyy-mm-dd). When linked to a milestone, mirrors that date. */
   dueDate: string;
@@ -313,13 +316,38 @@ export interface ProjectExpenseItem {
   createdAt: string; // ISO
 }
 
+/** Default VAT rate used to convert between ex-VAT and with-VAT amounts. */
+export const DEFAULT_VAT_RATE = 0.2;
+
+export function amountIncFromEx(
+  exVat: number,
+  rate: number = DEFAULT_VAT_RATE,
+): number {
+  return Math.round(exVat * (1 + rate) * 100) / 100;
+}
+
+export function amountExFromInc(
+  incVat: number,
+  rate: number = DEFAULT_VAT_RATE,
+): number {
+  if (!(1 + rate)) return incVat;
+  return Math.round((incVat / (1 + rate)) * 100) / 100;
+}
+
 export function normalizeProjectExpense(
   item: ProjectExpenseItem,
 ): ProjectExpenseItem {
   const category = isProjectExpenseCategory(item.category)
     ? item.category
     : inferExpenseCategory(item.label);
-  return { ...item, category };
+  const next: ProjectExpenseItem = { ...item, category };
+  if (
+    (next.amountExVat == null || !Number.isFinite(next.amountExVat)) &&
+    next.amount > 0
+  ) {
+    next.amountExVat = amountExFromInc(next.amount);
+  }
+  return next;
 }
 
 /** Stage → win probability (0–100). Used for weighted pipeline. */
