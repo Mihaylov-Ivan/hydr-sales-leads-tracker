@@ -30,8 +30,11 @@ import {
   DEFAULT_VAT_RATE,
   emptyFinancials,
   inferExpenseCategory,
+  isInstallationSubcategory,
   isProjectExpenseCategory,
   normalizeCompanyMonthlyExpense,
+  parseInstallationSubcategory,
+  parseProjectExpenseCategory,
 } from "./types";
 
 export const FINANCIAL_CSV_HEADERS = [
@@ -67,6 +70,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "prob_commissioned",
   "fixed_monthly",
   "category",
+  "subcategory",
 ] as const;
 
 export type FinancialCsvHeader = (typeof FINANCIAL_CSV_HEADERS)[number];
@@ -191,6 +195,10 @@ export function buildFinancialCsv(
       r.milestone_id = exp.milestoneId ?? "";
       r.created_at = exp.createdAt ?? "";
       r.category = exp.category ?? inferExpenseCategory(exp.label);
+      r.subcategory =
+        exp.category === "installation" && exp.subcategory
+          ? exp.subcategory
+          : "";
       lines.push(rowLine(r));
     }
 
@@ -493,9 +501,20 @@ export function parseFinancialCsv(text: string):
       const mid = cell(row, "milestone_id");
       if (mid) expense.milestoneId = mid;
       const categoryRaw = cell(row, "category");
-      expense.category = isProjectExpenseCategory(categoryRaw)
-        ? categoryRaw
-        : inferExpenseCategory(label);
+      const category =
+        parseProjectExpenseCategory(categoryRaw) ??
+        (isProjectExpenseCategory(categoryRaw)
+          ? categoryRaw
+          : inferExpenseCategory(label));
+      expense.category = category;
+      const subRaw = cell(row, "subcategory");
+      if (category === "installation") {
+        const sub =
+          parseInstallationSubcategory(subRaw) ??
+          (isInstallationSubcategory(subRaw) ? subRaw : undefined) ??
+          parseInstallationSubcategory(categoryRaw);
+        if (sub) expense.subcategory = sub;
+      }
       f.expenseSchedule.push(expense);
       continue;
     }

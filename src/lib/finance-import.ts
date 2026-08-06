@@ -2,8 +2,11 @@
  * Finance import from Excel (finance2.xlsx style).
  *
  * Sheet "Data":
- *   Project | Date | Income | Expense | Deadline | Category
- *   Category (optional, expenses): man-hr | materials | installation
+ *   Project | Date | Income | Expense | Deadline | Category | Subcategory
+ *   Category (optional, expenses): materials | man-hr | installation
+ *     (also accepts "Manufacture materials", "Man-hrs")
+ *   Subcategory (optional, installation only): fuel | tickets | hotels |
+ *     travel-allowance | installation-equipment
  *   Missing category → inferred from Deadline/label.
  *
  * Sheet "Company" (optional):
@@ -22,6 +25,7 @@ import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
+  InstallationSubcategory,
   MilestoneKind,
   MILESTONE_KINDS,
   MILESTONE_LABELS,
@@ -31,9 +35,11 @@ import {
   ProjectMilestone,
   ProjectPayment,
   inferExpenseCategory,
-  isProjectExpenseCategory,
+  inferInstallationSubcategory,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
+  parseInstallationSubcategory,
+  parseProjectExpenseCategory,
   todayDate,
 } from "./types";
 
@@ -58,6 +64,8 @@ export type ImportedProjectActual = {
   deadline?: string;
   /** Expense category from Excel Category column */
   category?: ProjectExpenseCategory;
+  /** Installation subcategory from Excel Subcategory column */
+  subcategory?: InstallationSubcategory;
 };
 
 export type ImportedProjectMilestone = {
@@ -236,6 +244,13 @@ export function parseFinanceDataRows(
   );
   const iDeadline = headerIndex(headers, "deadline", "milestone", "label");
   const iCategory = headerIndex(headers, "category", "type", "expense_type");
+  const iSubcategory = headerIndex(
+    headers,
+    "subcategory",
+    "sub_category",
+    "sub-category",
+    "installation_subcategory",
+  );
 
   if (iProject < 0 || iDate < 0) {
     return {
@@ -267,6 +282,7 @@ export function parseFinanceDataRows(
     deadline: string | undefined,
     isActual: boolean,
     category?: ProjectExpenseCategory,
+    subcategory?: InstallationSubcategory,
   ) {
     const line: ImportedProjectActual = {
       projectName,
@@ -277,8 +293,8 @@ export function parseFinanceDataRows(
       ...(deadline ? { label: deadline, deadline } : {}),
       ...(type === "expense"
         ? {
-            category:
-              category ?? inferExpenseCategory(deadline),
+            category: category ?? inferExpenseCategory(deadline),
+            ...(subcategory ? { subcategory } : {}),
           }
         : {}),
     };
@@ -296,10 +312,16 @@ export function parseFinanceDataRows(
     const deadline =
       iDeadline >= 0 && r[iDeadline] ? r[iDeadline].trim() : undefined;
     const categoryRaw =
-      iCategory >= 0 && r[iCategory] ? r[iCategory].trim().toLowerCase() : "";
-    const category = isProjectExpenseCategory(categoryRaw)
-      ? categoryRaw
-      : undefined;
+      iCategory >= 0 && r[iCategory] ? r[iCategory].trim() : "";
+    const category = parseProjectExpenseCategory(categoryRaw);
+    const subRaw =
+      iSubcategory >= 0 && r[iSubcategory] ? r[iSubcategory].trim() : "";
+    let subcategory = parseInstallationSubcategory(subRaw);
+    if (!subcategory && category === "installation") {
+      subcategory =
+        parseInstallationSubcategory(categoryRaw) ??
+        inferInstallationSubcategory(deadline);
+    }
     const isActual = date <= today;
 
     if (income > 0) {
@@ -314,6 +336,11 @@ export function parseFinanceDataRows(
         deadline,
         isActual,
         category,
+        category === "installation" ||
+          (category == null &&
+            inferExpenseCategory(deadline) === "installation")
+          ? subcategory
+          : undefined,
       );
     }
 
@@ -650,6 +677,7 @@ export function projectActualExpensesFromImport(
       amount: a.amount,
       dueDate: a.dueDate,
       category: a.category ?? inferExpenseCategory(a.label),
+      ...(a.subcategory ? { subcategory: a.subcategory } : {}),
       ...(a.actualDate ? { actualDate: a.actualDate } : {}),
       ...(a.label ? { label: a.label } : {}),
       ...(a.percent != null ? { percent: a.percent } : {}),
@@ -723,6 +751,7 @@ export function expectedSchedulesForProject(
       amount: a.amount,
       dueDate: a.dueDate,
       category: a.category ?? inferExpenseCategory(a.label),
+      ...(a.subcategory ? { subcategory: a.subcategory } : {}),
       ...(a.label ? { label: a.label } : {}),
       createdAt: data.importedAt,
     }));

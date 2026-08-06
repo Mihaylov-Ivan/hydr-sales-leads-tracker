@@ -21,7 +21,7 @@ import ProjectMultiSelect, {
 import {
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
-  PROJECT_EXPENSE_CATEGORY_LABELS,
+  formatExpenseCategoryLabel,
   normalizeProjectExpense,
   todayDate,
 } from "@/lib/types";
@@ -335,7 +335,7 @@ export default function FinancePage() {
           projectId: p.id,
           projectName: p.name,
           kind: "expense",
-          categoryLabel: PROJECT_EXPENSE_CATEGORY_LABELS[cat],
+          categoryLabel: formatExpenseCategoryLabel(cat, exp.subcategory),
           label: exp.label?.trim() || "—",
           amount: exp.amount,
           expectedDate,

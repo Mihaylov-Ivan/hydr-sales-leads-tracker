@@ -12,6 +12,7 @@ import {
   Project,
   companyMonthlyCashTotal,
   expensePercentBase,
+  formatExpenseCategoryLabel,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
 } from "@/lib/types";
@@ -176,7 +177,9 @@ function collectFlows(
       const expectedDate = linked?.date ?? exp.dueDate;
       const received = Boolean(exp.actualDate);
       const typeLabel =
-        category === "installation" ? "Installation" : "Materials";
+        category === "installation"
+          ? formatExpenseCategoryLabel("installation", exp.subcategory)
+          : "Manufacture materials";
       list.push({
         id: `out-${p.id}-${exp.id}`,
         kind: "expense",

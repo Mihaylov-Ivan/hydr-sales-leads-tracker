@@ -212,14 +212,14 @@ export interface ProjectPayment {
 /**
  * Project expense kind.
  * - man-hr: allocated labour (for project margin later — not company cash)
- * - materials: purchases that hit cash
- * - installation: extra pay above salary that hits cash
+ * - materials: manufacture materials that hit cash
+ * - installation: site/install costs that hit cash (see subcategories)
  */
 export type ProjectExpenseCategory = "man-hr" | "materials" | "installation";
 
 export const PROJECT_EXPENSE_CATEGORIES: ProjectExpenseCategory[] = [
-  "man-hr",
   "materials",
+  "man-hr",
   "installation",
 ];
 
@@ -227,9 +227,38 @@ export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
   ProjectExpenseCategory,
   string
 > = {
-  "man-hr": "Man-hr",
-  materials: "Materials",
+  materials: "Manufacture materials",
+  "man-hr": "Man-hrs",
   installation: "Installation",
+};
+
+/** Installation-only subcategories */
+export type InstallationSubcategory =
+  | "fuel"
+  | "tickets"
+  | "hotels"
+  | "travel-allowance"
+  | "installation-equipment";
+
+export type ProjectExpenseSubcategory = InstallationSubcategory;
+
+export const INSTALLATION_SUBCATEGORIES: InstallationSubcategory[] = [
+  "fuel",
+  "tickets",
+  "hotels",
+  "travel-allowance",
+  "installation-equipment",
+];
+
+export const INSTALLATION_SUBCATEGORY_LABELS: Record<
+  InstallationSubcategory,
+  string
+> = {
+  fuel: "Fuel",
+  tickets: "Tickets",
+  hotels: "Hotels",
+  "travel-allowance": "Travel Allowance",
+  "installation-equipment": "Installation equipment",
 };
 
 /** Categories that leave the company bank account */
@@ -242,6 +271,93 @@ export function isProjectExpenseCategory(
   return (
     value === "man-hr" || value === "materials" || value === "installation"
   );
+}
+
+export function isInstallationSubcategory(
+  value: unknown,
+): value is InstallationSubcategory {
+  return (
+    value === "fuel" ||
+    value === "tickets" ||
+    value === "hotels" ||
+    value === "travel-allowance" ||
+    value === "installation-equipment"
+  );
+}
+
+/** Parse category cell from CSV/Excel (ids or display labels). */
+export function parseProjectExpenseCategory(
+  raw: string | null | undefined,
+): ProjectExpenseCategory | undefined {
+  const t = (raw ?? "").trim().toLowerCase().replace(/_/g, " ").replace(/-/g, " ");
+  if (!t) return undefined;
+  if (
+    t === "materials" ||
+    t === "manufacture materials" ||
+    t === "manufacture material" ||
+    t === "material"
+  ) {
+    return "materials";
+  }
+  if (
+    t === "man hr" ||
+    t === "man hrs" ||
+    t === "manhr" ||
+    t === "manhrs" ||
+    t === "labour" ||
+    t === "labor"
+  ) {
+    return "man-hr";
+  }
+  if (t === "installation" || t === "install") return "installation";
+  // Combined "installation / fuel" or "installation:fuel"
+  const slash = t.split(/[/:]/).map((s) => s.trim());
+  if (slash[0] === "installation" || slash[0] === "install") {
+    return "installation";
+  }
+  return isProjectExpenseCategory(raw?.trim())
+    ? (raw!.trim() as ProjectExpenseCategory)
+    : undefined;
+}
+
+/** Parse subcategory cell (ids or display labels). */
+export function parseInstallationSubcategory(
+  raw: string | null | undefined,
+): InstallationSubcategory | undefined {
+  const t = (raw ?? "").trim().toLowerCase().replace(/_/g, " ").replace(/-/g, " ");
+  if (!t) return undefined;
+  if (t === "fuel") return "fuel";
+  if (t === "tickets" || t === "ticket") return "tickets";
+  if (t === "hotels" || t === "hotel") return "hotels";
+  if (
+    t === "travel allowance" ||
+    t === "travelallowance" ||
+    t === "allowance"
+  ) {
+    return "travel-allowance";
+  }
+  if (
+    t === "installation equipment" ||
+    t === "install equipment" ||
+    t === "equipment"
+  ) {
+    return "installation-equipment";
+  }
+  return isInstallationSubcategory(raw?.trim())
+    ? (raw!.trim() as InstallationSubcategory)
+    : undefined;
+}
+
+/** Display label for category (+ subcategory when installation). */
+export function formatExpenseCategoryLabel(
+  category: ProjectExpenseCategory,
+  subcategory?: InstallationSubcategory | null,
+): string {
+  const base = PROJECT_EXPENSE_CATEGORY_LABELS[category];
+  if (category === "installation" && subcategory) {
+    return `${base} · ${INSTALLATION_SUBCATEGORY_LABELS[subcategory]}`;
+  }
+  return base;
 }
 
 /**
@@ -286,8 +402,33 @@ export function inferExpenseCategory(
   ) {
     return "man-hr";
   }
-  if (/\binstall/.test(t)) return "installation";
+  if (
+    /\binstall/.test(t) ||
+    /\bfuel\b/.test(t) ||
+    /\btickets?\b/.test(t) ||
+    /\bhotels?\b/.test(t) ||
+    /\btravel\s*allowance\b/.test(t)
+  ) {
+    return "installation";
+  }
   return "materials";
+}
+
+export function inferInstallationSubcategory(
+  label?: string | null,
+): InstallationSubcategory | undefined {
+  const t = (label ?? "").trim().toLowerCase();
+  if (!t) return undefined;
+  if (/\bfuel\b/.test(t)) return "fuel";
+  if (/\btickets?\b/.test(t)) return "tickets";
+  if (/\bhotels?\b/.test(t)) return "hotels";
+  if (/\btravel\s*allowance\b/.test(t) || /\ballowance\b/.test(t)) {
+    return "travel-allowance";
+  }
+  if (/\binstallation\s*equipment\b/.test(t) || /\bequipment\b/.test(t)) {
+    return "installation-equipment";
+  }
+  return undefined;
 }
 
 /** A scheduled project cost / outflow */
@@ -312,6 +453,8 @@ export interface ProjectExpenseItem {
    * Missing on legacy rows — treat via `normalizeProjectExpense`.
    */
   category?: ProjectExpenseCategory;
+  /** Only when category is installation */
+  subcategory?: InstallationSubcategory;
   milestoneId?: string;
   createdAt: string; // ISO
 }
@@ -341,6 +484,15 @@ export function normalizeProjectExpense(
     ? item.category
     : inferExpenseCategory(item.label);
   const next: ProjectExpenseItem = { ...item, category };
+  if (category === "installation") {
+    const sub = isInstallationSubcategory(item.subcategory)
+      ? item.subcategory
+      : inferInstallationSubcategory(item.label);
+    if (sub) next.subcategory = sub;
+    else delete next.subcategory;
+  } else {
+    delete next.subcategory;
+  }
   if (
     (next.amountExVat == null || !Number.isFinite(next.amountExVat)) &&
     next.amount > 0

@@ -8,6 +8,9 @@ import {
   projectLinkableDeadlines,
 } from "@/lib/gantt-finance";
 import {
+  INSTALLATION_SUBCATEGORIES,
+  INSTALLATION_SUBCATEGORY_LABELS,
+  InstallationSubcategory,
   PROJECT_EXPENSE_CATEGORIES,
   PROJECT_EXPENSE_CATEGORY_LABELS,
   ProjectExpenseCategory,
@@ -17,6 +20,7 @@ import {
   amountExFromInc,
   amountIncFromEx,
   expensePercentBase,
+  formatExpenseCategoryLabel,
   inferExpenseCategory,
   normalizeProjectExpense,
   todayDate,
@@ -67,17 +71,17 @@ function resolvePercentOfBase(
 }
 
 function expensePercentPlaceholder(category: ProjectExpenseCategory): string {
-  if (category === "materials") return "% of max materials";
-  if (category === "man-hr") return "% of max man-hr";
+  if (category === "materials") return "% of max manufacture materials";
+  if (category === "man-hr") return "% of max man-hrs";
   return "% of contract";
 }
 
 function expensePercentMissingMessage(category: ProjectExpenseCategory): string {
   if (category === "materials") {
-    return "Set max Materials expense above, or enter an amount in €.";
+    return "Set max Manufacture materials expense above, or enter an amount in €.";
   }
   if (category === "man-hr") {
-    return "Set max Man-hr expense above, or enter an amount in €.";
+    return "Set max Man-hrs expense above, or enter an amount in €.";
   }
   return "Set a contract value above, or enter an amount in €.";
 }
@@ -137,6 +141,9 @@ function CashItemRow({
   const [category, setCategory] = useState<ProjectExpenseCategory>(
     expenseItem?.category ?? "materials",
   );
+  const [subcategory, setSubcategory] = useState<InstallationSubcategory>(
+    expenseItem?.subcategory ?? "fuel",
+  );
 
   const linked = findLinkableDeadline(linkId, events);
   const accent =
@@ -160,6 +167,7 @@ function CashItemRow({
         ),
       );
       setCategory(exp.category ?? "materials");
+      setSubcategory(exp.subcategory ?? "fuel");
     }
     setPercent(item.percent != null ? String(item.percent) : "");
     setDueDate(item.dueDate);
@@ -199,6 +207,7 @@ function CashItemRow({
 
   function handleCategoryChange(next: ProjectExpenseCategory) {
     setCategory(next);
+    if (next === "installation" && !subcategory) setSubcategory("fuel");
     const pct = parseOptionalNumber(percent);
     if (pct != null && financials) {
       const base = expensePercentBase(next, financials);
@@ -250,6 +259,7 @@ function CashItemRow({
         dueDate: date,
         label,
         category,
+        subcategory: category === "installation" ? subcategory : null,
         ...(linked ? { milestoneId: linked.id } : {}),
         actualDate: actualDate.trim() ? actualDate.trim() : null,
       });
@@ -326,24 +336,44 @@ function CashItemRow({
             ))}
           </select>
           {kind === "expense" && (
-            <div>
-              <span className={labelTiny}>Type</span>
-              <select
-                value={category}
-                onChange={(e) =>
-                  handleCategoryChange(
-                    e.target.value as ProjectExpenseCategory,
-                  )
-                }
-                className={inputCls}
-              >
-                {PROJECT_EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div>
+                <span className={labelTiny}>Type</span>
+                <select
+                  value={category}
+                  onChange={(e) =>
+                    handleCategoryChange(
+                      e.target.value as ProjectExpenseCategory,
+                    )
+                  }
+                  className={inputCls}
+                >
+                  {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {category === "installation" && (
+                <div>
+                  <span className={labelTiny}>Subcategory</span>
+                  <select
+                    value={subcategory}
+                    onChange={(e) =>
+                      setSubcategory(e.target.value as InstallationSubcategory)
+                    }
+                    className={inputCls}
+                  >
+                    {INSTALLATION_SUBCATEGORIES.map((s) => (
+                      <option key={s} value={s}>
+                        {INSTALLATION_SUBCATEGORY_LABELS[s]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </>
           )}
           <input
             value={label}
@@ -408,6 +438,8 @@ function CashItemRow({
       dueDate: exp.dueDate,
       label: exp.label ?? "",
       category: exp.category ?? "materials",
+      subcategory:
+        exp.category === "installation" ? (exp.subcategory ?? null) : null,
       ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
       actualDate: todayDate(),
     });
@@ -434,6 +466,8 @@ function CashItemRow({
       dueDate: exp.dueDate,
       label: exp.label ?? "",
       category: exp.category ?? "materials",
+      subcategory:
+        exp.category === "installation" ? (exp.subcategory ?? null) : null,
       ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
       actualDate: null,
     });
@@ -478,7 +512,10 @@ function CashItemRow({
               : "Hits company cashflow"
           }
         >
-          {PROJECT_EXPENSE_CATEGORY_LABELS[displayCategory]}
+          {formatExpenseCategoryLabel(
+            displayCategory,
+            expenseItem?.subcategory,
+          )}
         </span>
       )}
       <span className="text-muted">expected {formatDate(expectedDate)}</span>
@@ -582,6 +619,8 @@ function AddCashForm({
   const [linkId, setLinkId] = useState("");
   const [category, setCategory] =
     useState<ProjectExpenseCategory>("materials");
+  const [subcategory, setSubcategory] =
+    useState<InstallationSubcategory>("fuel");
   const [error, setError] = useState<string | null>(null);
 
   const linked = findLinkableDeadline(linkId, events);
@@ -623,6 +662,7 @@ function AddCashForm({
 
   function handleCategoryChange(next: ProjectExpenseCategory) {
     setCategory(next);
+    if (next === "installation") setSubcategory("fuel");
     setError(null);
     const pct = parseOptionalNumber(percent);
     if (pct != null && financials) {
@@ -710,6 +750,7 @@ function AddCashForm({
         dueDate,
         label,
         category,
+        ...(category === "installation" ? { subcategory } : {}),
         ...(linked ? { milestoneId: linked.id } : {}),
         ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
       });
@@ -722,6 +763,7 @@ function AddCashForm({
     setLabel("");
     setLinkId("");
     setCategory("materials");
+    setSubcategory("fuel");
     setError(null);
   }
 
@@ -818,23 +860,43 @@ function AddCashForm({
         ))}
       </select>
       {kind === "expense" && (
-        <div>
-          <span className={labelTiny}>Type</span>
-          <select
-            value={category}
-            onChange={(e) =>
-              handleCategoryChange(e.target.value as ProjectExpenseCategory)
-            }
-            className={inputCls}
-            title="Man-hr is for project analysis only; materials & installation hit cashflow"
-          >
-            {PROJECT_EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-              </option>
-            ))}
-          </select>
-        </div>
+        <>
+          <div>
+            <span className={labelTiny}>Type</span>
+            <select
+              value={category}
+              onChange={(e) =>
+                handleCategoryChange(e.target.value as ProjectExpenseCategory)
+              }
+              className={inputCls}
+              title="Man-hrs is for project analysis only; manufacture materials & installation hit cashflow"
+            >
+              {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </div>
+          {category === "installation" && (
+            <div>
+              <span className={labelTiny}>Subcategory</span>
+              <select
+                value={subcategory}
+                onChange={(e) =>
+                  setSubcategory(e.target.value as InstallationSubcategory)
+                }
+                className={inputCls}
+              >
+                {INSTALLATION_SUBCATEGORIES.map((s) => (
+                  <option key={s} value={s}>
+                    {INSTALLATION_SUBCATEGORY_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </>
       )}
       <input
         value={label}
@@ -962,13 +1024,14 @@ export default function GanttFinancials({
             Expenses
           </h4>
           <p className="mb-2 text-[10px] text-muted">
-            Materials &amp; installation hit company cash (with VAT). Man-hr is
-            for project analysis only. Expense % uses max Materials / Man-hr
-            caps (installation % uses contract value). VAT auto-calcs at 20%.
+            Manufacture materials &amp; installation hit company cash (with
+            VAT). Man-hrs is for project analysis only. Expense % uses max
+            Manufacture materials / Man-hrs caps (installation % uses contract
+            value). VAT auto-calcs at 20%.
           </p>
           <div className="mb-3 grid grid-cols-2 gap-2">
             <label className="block">
-              <span className={labelTiny}>Max Materials €</span>
+              <span className={labelTiny}>Max Manufacture materials €</span>
               <input
                 type="number"
                 min={0}
@@ -987,7 +1050,7 @@ export default function GanttFinancials({
               />
             </label>
             <label className="block">
-              <span className={labelTiny}>Max Man-hr €</span>
+              <span className={labelTiny}>Max Man-hrs €</span>
               <input
                 type="number"
                 min={0}

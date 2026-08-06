@@ -10,11 +10,15 @@ import { isFileOwnedFinanceId } from "@/lib/finance-import";
 import ProjectMultiSelect from "@/components/ProjectMultiSelect";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import {
+  INSTALLATION_SUBCATEGORIES,
+  INSTALLATION_SUBCATEGORY_LABELS,
+  InstallationSubcategory,
   PROJECT_EXPENSE_CATEGORIES,
   PROJECT_EXPENSE_CATEGORY_LABELS,
   ProjectExpenseCategory,
   amountExFromInc,
   amountIncFromEx,
+  formatExpenseCategoryLabel,
   normalizeProjectExpense,
   todayDate,
 } from "@/lib/types";
@@ -41,6 +45,7 @@ type FlatRow = {
   dueDate: string;
   actualDate?: string;
   category: ProjectExpenseCategory;
+  subcategory?: InstallationSubcategory;
   label: string;
   milestoneId?: string;
   amount: number;
@@ -87,6 +92,8 @@ export default function ExpensesPage() {
   const [draftDate, setDraftDate] = useState(todayDate());
   const [draftCategory, setDraftCategory] =
     useState<ProjectExpenseCategory>("materials");
+  const [draftSubcategory, setDraftSubcategory] =
+    useState<InstallationSubcategory>("fuel");
   const [draftLabel, setDraftLabel] = useState("");
   const [draftLinkId, setDraftLinkId] = useState("");
   const [draftExVat, setDraftExVat] = useState("");
@@ -122,6 +129,7 @@ export default function ExpensesPage() {
           dueDate: exp.dueDate,
           ...(exp.actualDate ? { actualDate: exp.actualDate } : {}),
           category: exp.category ?? "materials",
+          ...(exp.subcategory ? { subcategory: exp.subcategory } : {}),
           label: exp.label ?? "",
           ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
           amount: exp.amount,
@@ -206,6 +214,7 @@ export default function ExpensesPage() {
       projectId: string;
       dueDate: string;
       category: ProjectExpenseCategory;
+      subcategory?: InstallationSubcategory | null;
       label: string;
       milestoneId: string;
       amount: number;
@@ -220,30 +229,31 @@ export default function ExpensesPage() {
     const label = patch.label ?? row.label;
     const milestoneId =
       patch.milestoneId !== undefined ? patch.milestoneId : row.milestoneId;
+    const subcategory =
+      category === "installation"
+        ? patch.subcategory !== undefined
+          ? patch.subcategory
+          : (row.subcategory ?? null)
+        : null;
 
-    if (nextProjectId === row.projectId) {
-      updateExpense(row.projectId, row.expenseId, {
-        amount,
-        amountExVat,
-        category,
-        dueDate,
-        label,
-        ...(milestoneId ? { milestoneId } : {}),
-        ...(row.actualDate ? { actualDate: row.actualDate } : {}),
-      });
-      return;
-    }
-
-    // Move to another project: recreate then delete
-    addExpense(nextProjectId, {
+    const expensePatch = {
       amount,
       amountExVat,
       category,
       dueDate,
       label,
+      subcategory,
       ...(milestoneId ? { milestoneId } : {}),
       ...(row.actualDate ? { actualDate: row.actualDate } : {}),
-    });
+    };
+
+    if (nextProjectId === row.projectId) {
+      updateExpense(row.projectId, row.expenseId, expensePatch);
+      return;
+    }
+
+    // Move to another project: recreate then delete
+    addExpense(nextProjectId, expensePatch);
     deleteExpense(row.projectId, row.expenseId);
   }
 
@@ -301,6 +311,9 @@ export default function ExpensesPage() {
       amount: inc,
       ...(ex != null && ex > 0 ? { amountExVat: ex } : {}),
       category: draftCategory,
+      ...(draftCategory === "installation"
+        ? { subcategory: draftSubcategory }
+        : {}),
       dueDate,
       label: draftLabel,
       ...(linked ? { milestoneId: linked.id } : {}),
@@ -525,21 +538,54 @@ export default function ExpensesPage() {
                       </select>
                     </td>
                     <td className="px-2 py-1">
-                      <select
-                        value={row.category}
-                        onChange={(e) =>
-                          saveRow(row, {
-                            category: e.target.value as ProjectExpenseCategory,
-                          })
-                        }
-                        className={inputCls}
-                      >
-                        {PROJECT_EXPENSE_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-1">
+                        <select
+                          value={row.category}
+                          onChange={(e) => {
+                            const category = e.target
+                              .value as ProjectExpenseCategory;
+                            saveRow(row, {
+                              category,
+                              subcategory:
+                                category === "installation"
+                                  ? (row.subcategory ?? "fuel")
+                                  : null,
+                            });
+                          }}
+                          className={inputCls}
+                          title={formatExpenseCategoryLabel(
+                            row.category,
+                            row.subcategory,
+                          )}
+                        >
+                          {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>
+                              {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                            </option>
+                          ))}
+                        </select>
+                        {row.category === "installation" && (
+                          <select
+                            value={row.subcategory ?? ""}
+                            onChange={(e) =>
+                              saveRow(row, {
+                                subcategory: e.target
+                                  .value as InstallationSubcategory,
+                              })
+                            }
+                            className={inputCls}
+                          >
+                            <option value="" disabled>
+                              Subcategory…
+                            </option>
+                            {INSTALLATION_SUBCATEGORIES.map((s) => (
+                              <option key={s} value={s}>
+                                {INSTALLATION_SUBCATEGORY_LABELS[s]}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 py-1">
                       <input
@@ -658,21 +704,40 @@ export default function ExpensesPage() {
                   </select>
                 </td>
                 <td className="px-2 py-1.5">
-                  <select
-                    value={draftCategory}
-                    onChange={(e) =>
-                      setDraftCategory(
-                        e.target.value as ProjectExpenseCategory,
-                      )
-                    }
-                    className={inputCls}
-                  >
-                    {PROJECT_EXPENSE_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col gap-1">
+                    <select
+                      value={draftCategory}
+                      onChange={(e) =>
+                        setDraftCategory(
+                          e.target.value as ProjectExpenseCategory,
+                        )
+                      }
+                      className={inputCls}
+                    >
+                      {PROJECT_EXPENSE_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                        </option>
+                      ))}
+                    </select>
+                    {draftCategory === "installation" && (
+                      <select
+                        value={draftSubcategory}
+                        onChange={(e) =>
+                          setDraftSubcategory(
+                            e.target.value as InstallationSubcategory,
+                          )
+                        }
+                        className={inputCls}
+                      >
+                        {INSTALLATION_SUBCATEGORIES.map((s) => (
+                          <option key={s} value={s}>
+                            {INSTALLATION_SUBCATEGORY_LABELS[s]}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </td>
                 <td className="px-2 py-1.5">
                   <input

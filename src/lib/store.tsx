@@ -15,6 +15,7 @@ import {
   ProjectContact,
   ProjectExpenseCategory,
   ProjectExpenseItem,
+  InstallationSubcategory,
   ProjectFile,
   ProjectFileKind,
   ProjectFinancials,
@@ -335,6 +336,8 @@ export interface PaymentInput {
 /** Dated project outflow; category drives cash vs margin-only handling */
 export interface ExpenseInput extends PaymentInput {
   category: ProjectExpenseCategory;
+  /** Installation subcategory; ignored unless category is installation */
+  subcategory?: InstallationSubcategory | null;
   /** Amount without VAT; pass `null` to clear on update */
   amountExVat?: number | null;
 }
@@ -2165,6 +2168,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
+        ...(input.category === "installation" &&
+        input.subcategory &&
+        input.subcategory !== null
+          ? { subcategory: input.subcategory }
+          : {}),
         ...(input.milestoneId && linkedDate
           ? { milestoneId: input.milestoneId }
           : {}),
@@ -2220,6 +2228,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.actualDate) next.actualDate = patch.actualDate;
           } else if (e.actualDate) {
             next.actualDate = e.actualDate;
+          }
+
+          if (patch.category === "installation") {
+            if (patch.subcategory) next.subcategory = patch.subcategory;
+            else if (patch.subcategory === null) {
+              // cleared
+            } else if (e.subcategory) {
+              next.subcategory = e.subcategory;
+            }
           }
           return next;
         }),
