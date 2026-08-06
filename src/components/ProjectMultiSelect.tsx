@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Project } from "@/lib/types";
 
 export const PROJECT_FILTER_COLORS = [
@@ -18,6 +19,35 @@ export const PROJECT_FILTER_COLORS = [
 
 export function colorForProjectIndex(index: number): string {
   return PROJECT_FILTER_COLORS[index % PROJECT_FILTER_COLORS.length];
+}
+
+type MenuPos = {
+  top?: number;
+  bottom?: number;
+  left: number;
+  maxHeight: number;
+};
+
+function computeMenuPos(
+  btn: HTMLElement,
+  itemCount: number,
+): MenuPos {
+  const r = btn.getBoundingClientRect();
+  const estimatedH = Math.min(320, 56 + itemCount * 40);
+  const spaceBelow = window.innerHeight - r.bottom - 8;
+  const spaceAbove = r.top - 8;
+  const openUp = spaceBelow < estimatedH && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(160, openUp ? spaceAbove : spaceBelow);
+  const menuW = Math.min(288, window.innerWidth - 16);
+  const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - menuW);
+  if (openUp) {
+    return {
+      bottom: window.innerHeight - r.top + 4,
+      left,
+      maxHeight,
+    };
+  }
+  return { top: r.bottom + 4, left, maxHeight };
 }
 
 export default function ProjectMultiSelect({
@@ -38,12 +68,36 @@ export default function ProjectMultiSelect({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) {
+      setPos(null);
+      return;
+    }
+    function update() {
+      const btn = btnRef.current;
+      if (!btn) return;
+      setPos(computeMenuPos(btn, projects.length));
+    }
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, projects.length]);
 
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -66,9 +120,94 @@ export default function ProjectMultiSelect({
           ? (projects.find((p) => selectedIds.has(p.id))?.name ?? "1 project")
           : `${count} projects`;
 
+  const menu =
+    open &&
+    pos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={menuRef}
+        role="listbox"
+        aria-multiselectable="true"
+        className="fixed z-[80] flex w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
+        style={{
+          top: pos.top,
+          bottom: pos.bottom,
+          left: pos.left,
+          maxHeight: pos.maxHeight,
+        }}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Projects
+          </span>
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="font-semibold text-teal-accent hover:underline"
+            >
+              All
+            </button>
+            <span className="text-line">|</span>
+            <button
+              type="button"
+              onClick={onClear}
+              className="font-semibold text-muted hover:text-ink hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+          {projects.map((p, i) => {
+            const on = selectedIds.has(p.id);
+            const color = colorById?.get(p.id) ?? colorForProjectIndex(i);
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => onToggle(p.id)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                      on
+                        ? "border-transparent text-white"
+                        : "border-line bg-panel text-transparent"
+                    }`}
+                    style={on ? { backgroundColor: color } : undefined}
+                    aria-hidden
+                  >
+                    ✓
+                  </span>
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">
+                    {p.name}
+                  </span>
+                  {p.client && (
+                    <span className="max-w-[40%] truncate text-xs text-muted">
+                      {p.client}
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>,
+      document.body,
+    );
+
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={btnRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -84,79 +223,7 @@ export default function ProjectMultiSelect({
           {open ? "▴" : "▾"}
         </span>
       </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          className="absolute left-0 z-30 mt-1 w-72 max-w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Projects
-            </span>
-            <div className="flex gap-2 text-xs">
-              <button
-                type="button"
-                onClick={onSelectAll}
-                className="font-semibold text-teal-accent hover:underline"
-              >
-                All
-              </button>
-              <span className="text-line">|</span>
-              <button
-                type="button"
-                onClick={onClear}
-                className="font-semibold text-muted hover:text-ink hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-          <ul className="max-h-64 overflow-y-auto py-1">
-            {projects.map((p, i) => {
-              const on = selectedIds.has(p.id);
-              const color =
-                colorById?.get(p.id) ?? colorForProjectIndex(i);
-              return (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={on}
-                    onClick={() => onToggle(p.id)}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
-                        on
-                          ? "border-transparent text-white"
-                          : "border-line bg-panel text-transparent"
-                      }`}
-                      style={on ? { backgroundColor: color } : undefined}
-                      aria-hidden
-                    >
-                      ✓
-                    </span>
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="min-w-0 flex-1 truncate font-medium text-ink">
-                      {p.name}
-                    </span>
-                    {p.client && (
-                      <span className="max-w-[40%] truncate text-xs text-muted">
-                        {p.client}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      {menu}
     </div>
   );
 }

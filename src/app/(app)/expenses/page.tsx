@@ -862,7 +862,9 @@ export default function ExpensesPage() {
         )}
         {filtered.length === 0 && rows.length > 0 && (
           <p className="px-3 py-4 text-center text-sm text-muted">
-            No expenses match the current filters.
+            {selectedProjectIds.size === 0
+              ? "No projects selected — use the Project filter to choose some."
+              : "No expenses match the current filters."}
           </p>
         )}
       </section>

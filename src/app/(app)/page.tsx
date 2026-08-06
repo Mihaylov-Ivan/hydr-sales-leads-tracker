@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Stage, STAGE_LABELS, BOARD_STAGES } from "@/lib/types";
+import {
+  KEY_DATE_COLUMNS,
+  KEY_DATE_COLUMN_LABELS,
+  projectsKeyDatesSorted,
+} from "@/lib/project-key-dates";
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
+import ProjectMultiSelect from "@/components/ProjectMultiSelect";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import TeamMembersPanel from "@/components/TeamMembersPanel";
 
@@ -31,6 +38,15 @@ const COLUMN_MIN_PX = 270;
 
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
+
+function formatKeyDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 type ColumnDragHandlers = {
   onDragOver: (e: React.DragEvent) => void;
@@ -334,6 +350,11 @@ export default function Dashboard() {
   const [showToContact, setShowToContact] = useState(false);
   const [toContactPrefReady, setToContactPrefReady] = useState(false);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
+  const [keyDatesOpen, setKeyDatesOpen] = useState(false);
+  const [keyDateProjectIds, setKeyDateProjectIds] = useState<Set<string> | null>(
+    null,
+  );
+  const prevKeyDateFilterIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -425,6 +446,35 @@ export default function Dashboard() {
     for (const p of filtered) map[p.stage].push(p);
     return map;
   }, [filtered]);
+
+  const keyDateFilterProjects = useMemo(
+    () => [...filtered].sort((a, b) => a.name.localeCompare(b.name)),
+    [filtered],
+  );
+
+  useEffect(() => {
+    const valid = new Set(keyDateFilterProjects.map((p) => p.id));
+    const prev = prevKeyDateFilterIdsRef.current;
+    setKeyDateProjectIds((curr) => {
+      if (curr === null) return new Set(valid);
+      const next = new Set([...curr].filter((id) => valid.has(id)));
+      for (const id of valid) {
+        if (!prev.has(id)) next.add(id);
+      }
+      return next;
+    });
+    prevKeyDateFilterIdsRef.current = valid;
+  }, [keyDateFilterProjects]);
+
+  const selectedKeyDateIds =
+    keyDateProjectIds ?? new Set(keyDateFilterProjects.map((p) => p.id));
+
+  const keyDateRows = useMemo(() => {
+    const projects = keyDateFilterProjects.filter((p) =>
+      selectedKeyDateIds.has(p.id),
+    );
+    return projectsKeyDatesSorted(projects);
+  }, [keyDateFilterProjects, selectedKeyDateIds]);
 
   function moveProjectToStage(projectId: string, stage: Stage) {
     const project = projects.find((p) => p.id === projectId);
@@ -525,6 +575,122 @@ export default function Dashboard() {
           ))}
         </select>
       </div>
+
+      {/* Key project dates — collapsed by default */}
+      <section className="shrink-0 overflow-hidden rounded-xl border border-line bg-panel shadow-sm">
+        <button
+          type="button"
+          aria-expanded={keyDatesOpen}
+          onClick={() => setKeyDatesOpen((o) => !o)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-tint/40 sm:px-5"
+        >
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
+              Key project dates
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Read-only from Gantt · {keyDateRows.length} project
+              {keyDateRows.length === 1 ? "" : "s"} · sorted by contract signed
+            </p>
+          </div>
+          <span
+            className={`shrink-0 text-sm font-semibold text-muted transition ${
+              keyDatesOpen ? "rotate-90" : ""
+            }`}
+            aria-hidden
+          >
+            ›
+          </span>
+        </button>
+        {keyDatesOpen && (
+          <div className="border-t border-line">
+            {keyDateFilterProjects.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 border-b border-line/70 px-4 py-2.5 sm:px-5">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Projects
+                </span>
+                <ProjectMultiSelect
+                  projects={keyDateFilterProjects}
+                  selectedIds={selectedKeyDateIds}
+                  onToggle={(id) => {
+                    setKeyDateProjectIds((prev) => {
+                      const base =
+                        prev ??
+                        new Set(keyDateFilterProjects.map((p) => p.id));
+                      const next = new Set(base);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    });
+                  }}
+                  onSelectAll={() =>
+                    setKeyDateProjectIds(
+                      new Set(keyDateFilterProjects.map((p) => p.id)),
+                    )
+                  }
+                  onClear={() => setKeyDateProjectIds(new Set())}
+                  compact
+                />
+              </div>
+            )}
+            <div className="max-h-[min(40vh,22rem)] overflow-auto">
+              {keyDateRows.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-muted">
+                  {selectedKeyDateIds.size === 0
+                    ? "No projects selected — use the Projects filter above to choose some."
+                    : "No projects match the current filters."}
+                </p>
+              ) : (
+                <table className="w-full min-w-[56rem] border-collapse text-left text-sm">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="border-b border-line bg-panel text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      <th className="sticky left-0 z-30 bg-panel px-3 py-2 shadow-[2px_0_0_0_var(--color-line,rgba(0,0,0,0.08))]">
+                        Project
+                      </th>
+                      {KEY_DATE_COLUMNS.map((col) => (
+                        <th
+                          key={col}
+                          className="whitespace-nowrap bg-panel px-3 py-2"
+                        >
+                          {KEY_DATE_COLUMN_LABELS[col]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keyDateRows.map((row) => (
+                      <tr
+                        key={row.projectId}
+                        className="group border-b border-line/60 hover:bg-surface"
+                      >
+                        <td className="sticky left-0 z-10 bg-panel px-3 py-2 font-semibold text-deep group-hover:bg-surface">
+                          <Link
+                            href={`/projects/${row.projectId}`}
+                            className="hover:text-teal-accent"
+                            title="Open project to edit Gantt dates"
+                          >
+                            {row.projectName}
+                          </Link>
+                        </td>
+                        {KEY_DATE_COLUMNS.map((col) => (
+                          <td
+                            key={col}
+                            className={`whitespace-nowrap px-3 py-2 tabular-nums ${
+                              row.dates[col] ? "text-ink" : "text-muted"
+                            }`}
+                          >
+                            {formatKeyDate(row.dates[col])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Stage board fills leftover height; only columns scroll */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">

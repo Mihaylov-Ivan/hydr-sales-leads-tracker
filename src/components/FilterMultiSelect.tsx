@@ -1,11 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type FilterMultiSelectOption = {
   id: string;
   label: string;
 };
+
+type MenuPos = {
+  top?: number;
+  bottom?: number;
+  left: number;
+  maxHeight: number;
+};
+
+function computeMenuPos(btn: HTMLElement, itemCount: number): MenuPos {
+  const r = btn.getBoundingClientRect();
+  const estimatedH = Math.min(320, 56 + itemCount * 40);
+  const spaceBelow = window.innerHeight - r.bottom - 8;
+  const spaceAbove = r.top - 8;
+  const openUp = spaceBelow < estimatedH && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(160, openUp ? spaceAbove : spaceBelow);
+  const menuW = Math.min(256, window.innerWidth - 16);
+  const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - menuW);
+  if (openUp) {
+    return {
+      bottom: window.innerHeight - r.top + 4,
+      left,
+      maxHeight,
+    };
+  }
+  return { top: r.bottom + 4, left, maxHeight };
+}
 
 /** Same All / Clear checkbox list pattern as ProjectMultiSelect. */
 export default function FilterMultiSelect({
@@ -34,12 +61,36 @@ export default function FilterMultiSelect({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<MenuPos | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !btnRef.current) {
+      setPos(null);
+      return;
+    }
+    function update() {
+      const btn = btnRef.current;
+      if (!btn) return;
+      setPos(computeMenuPos(btn, options.length));
+    }
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open, options.length]);
 
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -65,9 +116,83 @@ export default function FilterMultiSelect({
             (options.find((o) => selectedIds.has(o.id))?.label ?? "1"))
           : (manyLabel?.(count) ?? `${count} selected`);
 
+  const menu =
+    open &&
+    pos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={menuRef}
+        role="listbox"
+        aria-multiselectable="true"
+        className="fixed z-[80] flex w-64 max-w-[min(16rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
+        style={{
+          top: pos.top,
+          bottom: pos.bottom,
+          left: pos.left,
+          maxHeight: pos.maxHeight,
+        }}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            {title}
+          </span>
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="font-semibold text-teal-accent hover:underline"
+            >
+              All
+            </button>
+            <span className="text-line">|</span>
+            <button
+              type="button"
+              onClick={onClear}
+              className="font-semibold text-muted hover:text-ink hover:underline"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto py-1">
+          {options.map((o) => {
+            const on = selectedIds.has(o.id);
+            return (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  onClick={() => onToggle(o.id)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
+                >
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                      on
+                        ? "border-teal-accent bg-teal-accent text-white"
+                        : "border-line bg-panel text-transparent"
+                    }`}
+                    aria-hidden
+                  >
+                    ✓
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">
+                    {o.label}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>,
+      document.body,
+    );
+
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={btnRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -83,67 +208,7 @@ export default function FilterMultiSelect({
           {open ? "▴" : "▾"}
         </span>
       </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-multiselectable="true"
-          className="absolute left-0 z-40 mt-1 w-64 max-w-[min(16rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-panel shadow-lg"
-        >
-          <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              {title}
-            </span>
-            <div className="flex gap-2 text-xs">
-              <button
-                type="button"
-                onClick={onSelectAll}
-                className="font-semibold text-teal-accent hover:underline"
-              >
-                All
-              </button>
-              <span className="text-line">|</span>
-              <button
-                type="button"
-                onClick={onClear}
-                className="font-semibold text-muted hover:text-ink hover:underline"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-          <ul className="max-h-64 overflow-y-auto py-1">
-            {options.map((o) => {
-              const on = selectedIds.has(o.id);
-              return (
-                <li key={o.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={on}
-                    onClick={() => onToggle(o.id)}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition hover:bg-surface"
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
-                        on
-                          ? "border-teal-accent bg-teal-accent text-white"
-                          : "border-line bg-panel text-transparent"
-                      }`}
-                      aria-hidden
-                    >
-                      ✓
-                    </span>
-                    <span className="min-w-0 flex-1 truncate font-medium text-ink">
-                      {o.label}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
