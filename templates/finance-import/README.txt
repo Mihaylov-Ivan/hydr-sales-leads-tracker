@@ -32,11 +32,12 @@ Rules
 - No project finance is stored in the database.
 - Portable financial CSV also supports type=history rows (before/after
   amounts) and type=warehouse_lot (unit costs linked by lot id). Latest:
-  financial-data-2026-08-06 (6)_updated_updated_updated.csv
+  financial-data-2026-08-06 (9)_updated.csv
   Minimal history example: financial-data-history-columns_updated.csv
   History is merged by event_id on import; amounts never go to Postgres.
-- Expense rows may include warehouse_lot_id (link to warehouse lot). Older
-  CSVs without that column still import; missing values stay unlinked.
+- Expense rows may include warehouse_lot_id (link to warehouse lot) and
+  budget_amount (original predicted envelope when amount was later aligned
+  to WH spent). Older CSVs without those columns still import.
 - Header “Download history” exports type=history rows only.
 - Older CSVs without history columns still import; missing columns are
   treated as empty. Re-export (or use *_updated.csv) to get the full header.

@@ -577,6 +577,11 @@ export interface ProjectExpenseItem {
   milestoneId?: string;
   /** Links this expense slice to a warehouse receipt lot (materials cost follows stock). */
   warehouseLotId?: string;
+  /**
+   * Original predicted envelope (inc VAT) before WH settle / overspend bump.
+   * Kept for display when `amount` is later aligned to actual WH draws.
+   */
+  budgetAmount?: number;
   createdAt: string; // ISO
 }
 
@@ -714,6 +719,9 @@ export function normalizeProjectExpense(
     : inferExpenseCategory(item.label);
   const next: ProjectExpenseItem = { ...item, category };
   if (item.warehouseLotId) next.warehouseLotId = item.warehouseLotId;
+  if (item.budgetAmount != null && item.budgetAmount > 0) {
+    next.budgetAmount = item.budgetAmount;
+  }
   if (categoryHasSubcategories(category)) {
     const allowed = new Set(subcategoriesForCategory(category));
     let sub = isProjectExpenseSubcategory(item.subcategory)

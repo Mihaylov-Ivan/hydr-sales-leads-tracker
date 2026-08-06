@@ -51,6 +51,7 @@ import {
   defaultFinanceSettings,
   defaultMetricsSettings,
   categoryHasSubcategories,
+  amountExFromInc,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   normalizeStage,
@@ -139,13 +140,17 @@ import {
   expenseProjectIdForLocation,
   findBalance,
   applyBalanceDelta,
+  isBudgetEnvelopeExpense,
   loadWarehouseState,
   locationLabel,
   locationsEqual,
   materialKindToExpense,
   movementSummary,
+  preserveBudgetAmount,
   roundMoney,
   saveWarehouseState,
+  spentAgainstExpense,
+  spentAgainstExpenseEx,
   unitCostExFromInc,
 } from "./warehouse";
 
@@ -3221,6 +3226,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           next.warehouseLotId = e.warehouseLotId;
         }
 
+        if (e.budgetAmount != null && e.budgetAmount > 0) {
+          next.budgetAmount = e.budgetAmount;
+        }
+
         return next;
       };
 
@@ -3230,7 +3239,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ? patch.amount / before.amount
           : 1;
 
-      // Warehouse-linked: update this row, rescale sibling slices, sync lot.
+      let budgetSettledTo: number | null = null;
+
       if (lotId && typeof lotId === "string") {
         setProjects((prev) =>
           prev.map((p) => {
@@ -3327,15 +3337,74 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           },
         });
       } else {
+        const markingPaid =
+          Boolean(before) &&
+          !before!.actualDate &&
+          Boolean(patch.actualDate) &&
+          !before!.warehouseLotId;
+        const spent = markingPaid
+          ? spentAgainstExpense(warehouseRef.current.lots, expenseId)
+          : 0;
+        const spentEx =
+          markingPaid && spent > 0
+            ? spentAgainstExpenseEx(warehouseRef.current.lots, expenseId)
+            : 0;
+        const settleToSpent = markingPaid && spent > 0;
+        if (settleToSpent) budgetSettledTo = spent;
+
         mutateFinancials(projectId, (f) => ({
           ...f,
-          expenseSchedule: (f.expenseSchedule ?? []).map((e) =>
-            e.id !== expenseId ? e : buildNext(e),
-          ),
+          expenseSchedule: (f.expenseSchedule ?? []).map((e) => {
+            if (e.id !== expenseId) return e;
+            const next = buildNext(e);
+            if (!settleToSpent) return next;
+            const kept = preserveBudgetAmount(e, spent);
+            next.amount = roundMoney(spent);
+            if (spentEx > 0) next.amountExVat = roundMoney(spentEx);
+            else next.amountExVat = amountExFromInc(spent);
+            if (kept != null) next.budgetAmount = kept;
+            return next;
+          }),
         }));
+
+        if (
+          settleToSpent &&
+          before &&
+          Math.abs(before.amount - spent) >= 0.01
+        ) {
+          const projectName = current?.name ?? projectId;
+          const summary = `${projectName}: settled predicted expense to WH spent ${formatValue(spent)}`;
+          recordChangeEvent(
+            {
+              id: createEventId(),
+              domain: "finance_meta",
+              entityType: "expense",
+              entityId: expenseId,
+              projectId,
+              action: "update",
+              field: "amount",
+              summary,
+              payloadJson: {
+                field: "amount",
+                reason: "budget_settle",
+              },
+            },
+            {
+              projectId,
+              projectName,
+              entityType: "expense",
+              entityId: expenseId,
+              action: "update",
+              field: "amount",
+              oldValue: formatValue(before.amount),
+              newValue: formatValue(spent),
+              summary,
+            },
+          );
+        }
       }
 
-      if (before && before.amount !== patch.amount) {
+      if (before && before.amount !== patch.amount && budgetSettledTo == null) {
         const projectName = current?.name ?? projectId;
         const summary = summarizeFinancialFieldChange(
           projectName,
@@ -3383,6 +3452,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       );
       if (before?.warehouseLotId) {
         return deleteWarehouseLotRef.current(before.warehouseLotId);
+      }
+      // Budget envelope with WH draws: remove linked lots first
+      const linkedLots = warehouseRef.current.lots.filter(
+        (l) => l.expenseId === expenseId,
+      );
+      for (const lot of linkedLots) {
+        const res = deleteWarehouseLotRef.current(lot.id);
+        if (!res.ok) return res;
       }
       mutateFinancials(projectId, (f) => ({
         ...f,
@@ -4664,6 +4741,160 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [recordChangeEvent],
   );
 
+  /** Align predicted expenses with WH draws: bump if overspent; snap on due date. */
+  const reconcileBudgetExpenses = useCallback(
+    (expenseIds?: string[]) => {
+      const lots = warehouseRef.current.lots;
+      const today = todayDate();
+      const changes: {
+        projectId: string;
+        projectName: string;
+        expenseId: string;
+        oldAmount: number;
+        newAmount: number;
+        settled: boolean;
+      }[] = [];
+
+      setProjects((prev) =>
+        prev.map((p) => {
+          let changed = false;
+          const schedule = (p.financials.expenseSchedule ?? []).map((e) => {
+            if (expenseIds && !expenseIds.includes(e.id)) return e;
+            if (e.warehouseLotId) return e;
+
+            const spent = spentAgainstExpense(lots, e.id);
+            const spentEx = spentAgainstExpenseEx(lots, e.id);
+            const dueReached = today >= e.dueDate;
+            const alreadyPaid = Boolean(e.actualDate);
+
+            let nextAmount = e.amount;
+            let nextEx = e.amountExVat;
+            let nextActual = e.actualDate;
+            let settled = false;
+
+            if (alreadyPaid) {
+              // Marked paid (manually or previously) — keep amount aligned with WH draws
+              if (spent > 0 && Math.abs(spent - e.amount) > 0.009) {
+                nextAmount = spent;
+                nextEx = spentEx > 0 ? spentEx : undefined;
+                settled = true;
+              } else if (
+                spent > 0 &&
+                !(e.budgetAmount != null && e.budgetAmount > 0)
+              ) {
+                // Recover original prediction from history when already settled
+                let best = 0;
+                for (const h of financialHistoryRef.current) {
+                  if (
+                    h.entityType !== "expense" ||
+                    h.entityId !== e.id ||
+                    h.field !== "amount" ||
+                    !h.oldValue
+                  ) {
+                    continue;
+                  }
+                  const parsed = Number(
+                    String(h.oldValue).replace(/[^0-9.-]/g, ""),
+                  );
+                  if (Number.isFinite(parsed) && parsed > best) best = parsed;
+                }
+                if (best > 0 && Math.abs(best - e.amount) > 0.01) {
+                  changed = true;
+                  return { ...e, budgetAmount: roundMoney(best) };
+                }
+                return e;
+              } else {
+                return e;
+              }
+            } else {
+              if (spent > e.amount + 0.009) {
+                nextAmount = spent;
+                nextEx = spentEx > 0 ? spentEx : undefined;
+              }
+              if (dueReached && spent > 0) {
+                nextAmount = spent;
+                nextEx = spentEx > 0 ? spentEx : undefined;
+                nextActual = e.dueDate;
+                settled = true;
+              } else if (dueReached && spent <= 0) {
+                return e;
+              }
+            }
+
+            if (
+              Math.abs(nextAmount - e.amount) < 0.01 &&
+              nextActual === e.actualDate
+            ) {
+              return e;
+            }
+
+            changed = true;
+            changes.push({
+              projectId: p.id,
+              projectName: p.name,
+              expenseId: e.id,
+              oldAmount: e.amount,
+              newAmount: nextAmount,
+              settled,
+            });
+            const next: ProjectExpenseItem = {
+              ...e,
+              amount: roundMoney(nextAmount),
+            };
+            const kept = preserveBudgetAmount(e, nextAmount);
+            if (kept != null) next.budgetAmount = kept;
+            if (nextEx != null && nextEx > 0) {
+              next.amountExVat = roundMoney(nextEx);
+            } else if (nextAmount > 0) {
+              next.amountExVat = amountExFromInc(nextAmount);
+            }
+            if (nextActual) next.actualDate = nextActual;
+            return next;
+          });
+          if (!changed) return p;
+          return {
+            ...p,
+            financials: { ...p.financials, expenseSchedule: schedule },
+          };
+        }),
+      );
+
+      for (const c of changes) {
+        const summary = c.settled
+          ? `${c.projectName}: settled predicted expense to WH spent ${formatValue(c.newAmount)}`
+          : `${c.projectName}: raised predicted expense to WH spent ${formatValue(c.newAmount)}`;
+        recordChangeEvent(
+          {
+            id: createEventId(),
+            domain: "finance_meta",
+            entityType: "expense",
+            entityId: c.expenseId,
+            projectId: c.projectId,
+            action: "update",
+            field: "amount",
+            summary,
+            payloadJson: {
+              field: "amount",
+              reason: c.settled ? "budget_settle" : "budget_overspend",
+            },
+          },
+          {
+            projectId: c.projectId,
+            projectName: c.projectName,
+            entityType: "expense",
+            entityId: c.expenseId,
+            action: "update",
+            field: "amount",
+            oldValue: formatValue(c.oldAmount),
+            newValue: formatValue(c.newAmount),
+            summary,
+          },
+        );
+      }
+    },
+    [recordChangeEvent],
+  );
+
   const receiveStock = useCallback(
     (
       input: WarehouseReceiveInput,
@@ -4735,66 +4966,37 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           (e) => e.id === link.expenseId,
         );
         if (!exp) return { ok: false, error: "Linked expense not found" };
+        // Dedicated 1:1 WH cash lines cannot take a second lot
         if (exp.warehouseLotId) {
-          return { ok: false, error: "That expense is already linked to a lot" };
+          return {
+            ok: false,
+            error:
+              "That expense is already a dedicated warehouse cash line. Link draws to a predicted (unpaid) budget expense instead, or create a new expense.",
+          };
+        }
+        if (exp.actualDate) {
+          return {
+            ok: false,
+            error:
+              "That expense is already paid. Link warehouse draws to an unpaid predicted budget expense, or create a new expense.",
+          };
         }
         expenseId = exp.id;
-        setProjects((prev) =>
-          prev.map((p) => {
-            if (p.id !== link.projectId) return p;
-            return {
-              ...p,
-              financials: {
-                ...p.financials,
-                expenseSchedule: (p.financials.expenseSchedule ?? []).map(
-                  (e) =>
-                    e.id === exp.id
-                      ? {
-                          ...e,
-                          warehouseLotId: lotId,
-                          amount: totalInc,
-                          amountExVat: totalEx,
-                          dueDate: input.receivedAt,
-                          ...(input.actualDate
-                            ? { actualDate: input.actualDate }
-                            : e.actualDate
-                              ? { actualDate: e.actualDate }
-                              : { actualDate: input.receivedAt }),
-                          category,
-                          ...(subcategory ? { subcategory } : {}),
-                          label: e.label?.trim() || label,
-                        }
-                      : e,
-                ),
-              },
-            };
-          }),
-        );
-        const summary = `${proj?.name ?? link.projectId}: linked expense to warehouse lot (${formatValue(totalInc)})`;
-        recordChangeEvent(
-          {
-            id: createEventId(),
-            domain: "finance_meta",
-            entityType: "expense",
-            entityId: expenseId,
-            projectId: link.projectId,
-            action: "update",
-            field: "warehouseLotId",
-            summary,
-            payloadJson: { lotId },
+        // Budget envelope: attach lot only — do not overwrite predicted amount
+        // or invent actualDate. reconcileBudgetExpenses may bump if overspent.
+        const summary = `${proj?.name ?? link.projectId}: linked warehouse lot to predicted expense ${exp.label ?? exp.id} (+${formatValue(totalInc)})`;
+        recordChangeEvent({
+          domain: "warehouse",
+          entityType: "lot",
+          entityId: lotId,
+          projectId: link.projectId,
+          action: "link",
+          summary,
+          payloadJson: {
+            expenseId,
+            budget: isBudgetEnvelopeExpense(exp),
           },
-          {
-            projectId: link.projectId,
-            projectName: proj?.name,
-            entityType: "expense",
-            entityId: expenseId,
-            action: "update",
-            field: "amount",
-            oldValue: formatValue(exp.amount),
-            newValue: formatValue(totalInc),
-            summary,
-          },
-        );
+        });
       } else {
         expenseId = crypto.randomUUID();
         const expense: ProjectExpenseItem = {
@@ -4912,6 +5114,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         },
       });
 
+      // Lot is in warehouseRef only after setState — merge for reconcile
+      warehouseRef.current = {
+        ...warehouseRef.current,
+        lots: [
+          ...warehouseRef.current.lots.filter((l) => l.id !== lotId),
+          lot,
+        ],
+        balances: [
+          ...warehouseRef.current.balances.filter((b) => b.lotId !== lotId),
+          balance,
+        ],
+      };
+      reconcileBudgetExpenses([expenseId]);
+
       return { ok: true, lotId };
     },
     [
@@ -4919,6 +5135,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       upsertWarehouseItem,
       recordChangeEvent,
       projectNameById,
+      reconcileBudgetExpenses,
     ],
   );
 
@@ -5261,9 +5478,29 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
+      warehouseRef.current = {
+        ...warehouseRef.current,
+        lots: warehouseRef.current.lots.map((l) => {
+          if (l.id !== input.lotId) return l;
+          const patched = {
+            ...l,
+            unitCostIncVat: roundMoney(nextInc),
+            unitCostExVat: roundMoney(nextEx),
+            receivedAt,
+            category: cat.category,
+          };
+          if (cat.subcategory) patched.subcategory = cat.subcategory;
+          else delete patched.subcategory;
+          return patched;
+        }),
+      };
+      if (lot.expenseId) {
+        reconcileBudgetExpenses([lot.expenseId]);
+      }
+
       return { ok: true };
     },
-    [recordChangeEvent],
+    [recordChangeEvent, reconcileBudgetExpenses],
   );
 
   const deleteWarehouseLot = useCallback(
@@ -5306,6 +5543,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }));
 
       const totalRemoved = removedAmounts.reduce((s, r) => s + r.amount, 0);
+      const budgetExpenseId = lot.expenseId;
       const summary = `Deleted warehouse lot ${lot.label ?? lotId.slice(0, 8)} (removed ${formatValue(totalRemoved)} from expenses)`;
       recordChangeEvent(
         {
@@ -5328,12 +5566,31 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         },
       );
 
+      // Keep warehouseRef in sync for immediate reconcile
+      warehouseRef.current = {
+        ...warehouseRef.current,
+        lots: warehouseRef.current.lots.filter((l) => l.id !== lotId),
+        balances: warehouseRef.current.balances.filter((b) => b.lotId !== lotId),
+        movements: warehouseRef.current.movements.filter((m) => m.lotId !== lotId),
+      };
+      if (budgetExpenseId) {
+        reconcileBudgetExpenses([budgetExpenseId]);
+      }
+
       return { ok: true };
     },
-    [recordChangeEvent],
+    [recordChangeEvent, reconcileBudgetExpenses],
   );
 
   deleteWarehouseLotRef.current = deleteWarehouseLot;
+
+  // Settle / bump predicted expenses vs WH draws (e.g. after refresh on due date)
+  useEffect(() => {
+    if (!ready) return;
+    reconcileBudgetExpenses();
+    // once when app becomes ready with hydrated warehouse + projects
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
 
   return (
     <ProjectsContext.Provider

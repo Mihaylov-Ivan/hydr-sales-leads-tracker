@@ -547,6 +547,17 @@ function CashItemRow({
             )}
           </span>
         )}
+        {kind === "expense" &&
+          expenseItem?.budgetAmount != null &&
+          expenseItem.budgetAmount > 0 &&
+          Math.abs(expenseItem.budgetAmount - item.amount) > 0.01 && (
+            <span
+              className="ml-1 text-[10px] font-medium text-muted"
+              title="Original predicted amount"
+            >
+              · predicted {formatMoney(expenseItem.budgetAmount)}
+            </span>
+          )}
         {pct != null && (
           <span
             className={`ml-1 font-medium ${

@@ -82,6 +82,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "warehouse_item_id",
   "qty",
   "is_maintenance",
+  "budget_amount",
   // History rows (type=history); empty on snapshot rows
   "event_id",
   "intentional",
@@ -248,6 +249,10 @@ export function buildFinancialCsv(
           ? exp.subcategory
           : "";
       r.warehouse_lot_id = exp.warehouseLotId ?? "";
+      r.budget_amount =
+        exp.budgetAmount != null && exp.budgetAmount > 0
+          ? numStr(exp.budgetAmount)
+          : "";
       lines.push(rowLine(r));
     }
 
@@ -679,6 +684,10 @@ export function parseFinancialCsv(text: string):
       }
       const lotId = cell(row, "warehouse_lot_id");
       if (lotId) expense.warehouseLotId = lotId;
+      const budgetAmount = parseOptionalNumber(cell(row, "budget_amount"));
+      if (budgetAmount != null && budgetAmount > 0) {
+        expense.budgetAmount = budgetAmount;
+      }
       f.expenseSchedule.push(expense);
       continue;
     }

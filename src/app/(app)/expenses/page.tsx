@@ -23,6 +23,10 @@ import {
   subcategoriesForCategory,
   todayDate,
 } from "@/lib/types";
+import {
+  isBudgetEnvelopeExpense,
+  spentAgainstExpense,
+} from "@/lib/warehouse";
 
 const inputCls =
   "w-full rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none focus:border-teal-accent";
@@ -52,6 +56,11 @@ type FlatRow = {
   amount: number;
   amountExVat: number;
   warehouseLotId?: string;
+  /** Original predicted envelope before WH align */
+  budgetAmount?: number;
+  /** WH receipt value drawn against this predicted expense */
+  whSpent?: number;
+  whLotCount?: number;
 };
 
 function parseNum(raw: string): number | null {
@@ -73,6 +82,7 @@ export default function ExpensesPage() {
   const {
     projects,
     ready,
+    warehouse,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -156,11 +166,25 @@ export default function ExpensesPage() {
           ...(exp.warehouseLotId
             ? { warehouseLotId: exp.warehouseLotId }
             : {}),
+          ...(exp.budgetAmount != null && exp.budgetAmount > 0
+            ? { budgetAmount: exp.budgetAmount }
+            : {}),
+          ...(() => {
+            if (exp.warehouseLotId) return {};
+            const lotCount = warehouse.lots.filter(
+              (l) => l.expenseId === exp.id,
+            ).length;
+            if (lotCount === 0) return {};
+            return {
+              whSpent: spentAgainstExpense(warehouse.lots, exp.id),
+              whLotCount: lotCount,
+            };
+          })(),
         });
       }
     }
     return list;
-  }, [projects]);
+  }, [projects, warehouse.lots]);
 
   const filtered = useMemo(() => {
     const list = rows.filter((r) => {
@@ -774,27 +798,81 @@ export default function ExpensesPage() {
                       </div>
                     </td>
                     <td className="px-2 py-1">
-                      <div className="flex items-center gap-1">
-                        {row.warehouseLotId && (
-                          <span
-                            className="shrink-0 rounded bg-teal-soft px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-teal-accent"
-                            title="Linked to warehouse lot — edits sync unit cost & metadata"
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1">
+                          {row.warehouseLotId && (
+                            <span
+                              className="shrink-0 rounded bg-teal-soft px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-teal-accent"
+                              title="Dedicated warehouse cash line"
+                            >
+                              WH
+                            </span>
+                          )}
+                          {row.whLotCount != null &&
+                            row.whLotCount > 0 &&
+                            !row.warehouseLotId && (
+                              <span
+                                className={`shrink-0 rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide ${
+                                  row.actualDate
+                                    ? "bg-teal-soft text-teal-accent"
+                                    : "bg-amber-100 text-amber-800"
+                                }`}
+                                title={
+                                  row.actualDate
+                                    ? "Settled from warehouse draws"
+                                    : "Predicted expense with warehouse draws"
+                                }
+                              >
+                                {row.actualDate ? "Settled" : "Budget"}
+                              </span>
+                            )}
+                          <input
+                            defaultValue={row.label}
+                            key={`label-${row.expenseId}-${row.label}`}
+                            onBlur={(e) => {
+                              if (e.target.value !== row.label) {
+                                setRowError(null);
+                                saveRow(row, { label: e.target.value });
+                              }
+                            }}
+                            placeholder="Description"
+                            className={inputCls}
+                          />
+                        </div>
+                        {row.budgetAmount != null &&
+                          row.budgetAmount > 0 &&
+                          Math.abs(row.budgetAmount - row.amount) > 0.01 && (
+                            <div
+                              className="text-[9px] text-muted tabular-nums"
+                              title="Original predicted amount"
+                            >
+                              Predicted {formatMoney(row.budgetAmount)}
+                            </div>
+                          )}
+                        {row.whSpent != null && row.whLotCount != null && (
+                          <div
+                            className={`text-[9px] tabular-nums ${
+                              row.whSpent > row.amount + 0.01
+                                ? "font-semibold text-red-600"
+                                : "text-muted"
+                            }`}
                           >
-                            WH
-                          </span>
+                            WH spent {formatMoney(row.whSpent)} /{" "}
+                            {formatMoney(row.amount)}
+                            {row.whLotCount > 0
+                              ? ` · ${row.whLotCount} lot${row.whLotCount === 1 ? "" : "s"}`
+                              : ""}
+                            {row.actualDate
+                              ? Math.abs(row.whSpent - row.amount) < 0.01
+                                ? " · settled to spent"
+                                : " · paid (aligning…)"
+                              : row.whSpent > row.amount + 0.01
+                                ? " · over budget (raised)"
+                                : isBudgetEnvelopeExpense(row)
+                                  ? " · predicted"
+                                  : ""}
+                          </div>
                         )}
-                        <input
-                          defaultValue={row.label}
-                          key={`label-${row.expenseId}-${row.label}`}
-                          onBlur={(e) => {
-                            if (e.target.value !== row.label) {
-                              setRowError(null);
-                              saveRow(row, { label: e.target.value });
-                            }
-                          }}
-                          placeholder="Description"
-                          className={inputCls}
-                        />
                       </div>
                     </td>
                     <td className="px-2 py-1">

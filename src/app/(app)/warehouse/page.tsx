@@ -15,6 +15,7 @@ import {
   locationLabel,
   lotQtyOnHand,
   openLotsCount,
+  spentAgainstExpense,
   stockValueAtLocation,
   totalStockValue,
 } from "@/lib/warehouse";
@@ -220,19 +221,24 @@ export default function WarehousePage() {
     const p = projects.find((x) => x.id === destProjectId);
     if (!p) return [];
     return (p.financials.expenseSchedule ?? [])
-      .filter((e) => !e.warehouseLotId)
-      .map((e) => ({
-        id: e.id,
-        label: e.label || e.id.slice(0, 8),
-        amount: e.amount,
-        dueDate: e.dueDate,
-      }))
+      .filter((e) => !e.warehouseLotId && !e.actualDate)
+      .map((e) => {
+        const spent = spentAgainstExpense(warehouse.lots, e.id);
+        return {
+          id: e.id,
+          label: e.label || e.id.slice(0, 8),
+          amount: e.amount,
+          dueDate: e.dueDate,
+          spent,
+        };
+      })
       .sort((a, b) => b.dueDate.localeCompare(a.dueDate));
   }, [
     recvDestKind,
     recvProjectId,
     holdingProject,
     warehouse.holdingProjectId,
+    warehouse.lots,
     projects,
   ]);
 
@@ -691,7 +697,9 @@ export default function WarehousePage() {
           </div>
           {recvExpenseMode === "link" && (
             <div className="col-span-2">
-              <label className={labelCls}>Link expense</label>
+              <label className={labelCls}>
+                Link to predicted expense (budget)
+              </label>
               <select
                 className={inputCls}
                 value={recvLinkExpenseId}
@@ -700,10 +708,17 @@ export default function WarehousePage() {
                 <option value="">Select…</option>
                 {linkableExpenses.map((e) => (
                   <option key={e.id} value={e.id}>
-                    {e.dueDate} · {e.label} · {formatMoney(e.amount)}
+                    {e.dueDate} · {e.label} ·{" "}
+                    {e.spent > 0
+                      ? `spent ${formatMoney(e.spent)} / ${formatMoney(e.amount)}`
+                      : formatMoney(e.amount)}
                   </option>
                 ))}
               </select>
+              <p className="mt-0.5 text-[9px] text-muted">
+                Cashflow keeps the predicted amount until WH draws exceed it or
+                the due date — then it snaps to actual spent.
+              </p>
             </div>
           )}
           <div className="col-span-2">

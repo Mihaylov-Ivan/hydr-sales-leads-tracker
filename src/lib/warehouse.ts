@@ -154,6 +154,64 @@ export function openLotsCount(
   return lots.filter((l) => lotQtyOnHand(balances, l.id) > 0).length;
 }
 
+export function lotReceiptValue(lot: WarehouseLot): number {
+  return roundMoney(lot.qtyReceived * lot.unitCostIncVat);
+}
+
+export function lotReceiptValueEx(lot: WarehouseLot): number {
+  return roundMoney(lot.qtyReceived * lot.unitCostExVat);
+}
+
+/** Sum of receipt values for lots whose expenseId points at this expense. */
+export function spentAgainstExpense(
+  lots: WarehouseLot[],
+  expenseId: string,
+): number {
+  return roundMoney(
+    lots
+      .filter((l) => l.expenseId === expenseId)
+      .reduce((s, l) => s + lotReceiptValue(l), 0),
+  );
+}
+
+export function spentAgainstExpenseEx(
+  lots: WarehouseLot[],
+  expenseId: string,
+): number {
+  return roundMoney(
+    lots
+      .filter((l) => l.expenseId === expenseId)
+      .reduce((s, l) => s + lotReceiptValueEx(l), 0),
+  );
+}
+
+/**
+ * Predicted (unpaid) envelope expense — not a 1:1 warehouse cash line.
+ * Multiple WH lots can draw against it via lot.expenseId.
+ */
+export function isBudgetEnvelopeExpense(
+  expense: { actualDate?: string; warehouseLotId?: string },
+): boolean {
+  return !expense.actualDate && !expense.warehouseLotId;
+}
+
+/**
+ * When amount is about to change on a budget envelope, keep the first predicted
+ * amount as budgetAmount (never overwrite once set).
+ */
+export function preserveBudgetAmount(
+  expense: { amount: number; budgetAmount?: number; warehouseLotId?: string },
+  nextAmount: number,
+): number | undefined {
+  if (expense.warehouseLotId) return expense.budgetAmount;
+  if (expense.budgetAmount != null && expense.budgetAmount > 0) {
+    return roundMoney(expense.budgetAmount);
+  }
+  if (Math.abs(nextAmount - expense.amount) < 0.01) return undefined;
+  if (!(expense.amount > 0)) return undefined;
+  return roundMoney(expense.amount);
+}
+
 export function loadWarehouseState(): WarehouseState {
   try {
     const raw = window.localStorage.getItem("hydrogenera-warehouse-v1");
