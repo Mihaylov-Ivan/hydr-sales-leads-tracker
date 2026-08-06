@@ -3,10 +3,10 @@
  *
  * Sheet "Data":
  *   Project | Date | Income | Expense | Deadline | Category | Subcategory
- *   Category (optional, expenses): materials | man-hr | installation
- *     (also accepts "Manufacture materials", "Man-hrs")
- *   Subcategory (optional, installation only): fuel | tickets | hotels |
- *     travel-allowance | installation-equipment
+ *   Category (optional, expenses): materials | man-hr | installation | maintenance
+ *     (also accepts "Manufacture materials", "Man-hrs", "Maintenance")
+ *   Subcategory (optional, installation/maintenance): fuel | tickets | hotels |
+ *     travel-allowance | installation-equipment | maintenance-parts
  *   Missing category → inferred from Deadline/label.
  *
  * Sheet "Company" (optional):
@@ -40,6 +40,7 @@ import {
   normalizeProjectExpense,
   parseInstallationSubcategory,
   parseProjectExpenseCategory,
+  categoryHasSubcategories,
   todayDate,
 } from "./types";
 
@@ -317,7 +318,7 @@ export function parseFinanceDataRows(
     const subRaw =
       iSubcategory >= 0 && r[iSubcategory] ? r[iSubcategory].trim() : "";
     let subcategory = parseInstallationSubcategory(subRaw);
-    if (!subcategory && category === "installation") {
+    if (!subcategory && categoryHasSubcategories(category)) {
       subcategory =
         parseInstallationSubcategory(categoryRaw) ??
         inferInstallationSubcategory(deadline);
@@ -328,6 +329,8 @@ export function parseFinanceDataRows(
       pushLine(projectName, "income", income, date, deadline, isActual);
     }
     if (expense > 0) {
+      const resolvedCategory =
+        category ?? inferExpenseCategory(deadline);
       pushLine(
         projectName,
         "expense",
@@ -336,11 +339,7 @@ export function parseFinanceDataRows(
         deadline,
         isActual,
         category,
-        category === "installation" ||
-          (category == null &&
-            inferExpenseCategory(deadline) === "installation")
-          ? subcategory
-          : undefined,
+        categoryHasSubcategories(resolvedCategory) ? subcategory : undefined,
       );
     }
 

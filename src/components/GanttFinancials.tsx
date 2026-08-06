@@ -8,7 +8,6 @@ import {
   projectLinkableDeadlines,
 } from "@/lib/gantt-finance";
 import {
-  INSTALLATION_SUBCATEGORIES,
   INSTALLATION_SUBCATEGORY_LABELS,
   InstallationSubcategory,
   PROJECT_EXPENSE_CATEGORIES,
@@ -19,10 +18,12 @@ import {
   ProjectPayment,
   amountExFromInc,
   amountIncFromEx,
+  categoryHasSubcategories,
   expensePercentBase,
   formatExpenseCategoryLabel,
   inferExpenseCategory,
   normalizeProjectExpense,
+  subcategoriesForCategory,
   todayDate,
 } from "@/lib/types";
 
@@ -207,7 +208,10 @@ function CashItemRow({
 
   function handleCategoryChange(next: ProjectExpenseCategory) {
     setCategory(next);
-    if (next === "installation" && !subcategory) setSubcategory("fuel");
+    if (categoryHasSubcategories(next)) {
+      const allowed = subcategoriesForCategory(next);
+      if (!allowed.includes(subcategory)) setSubcategory(allowed[0]!);
+    }
     const pct = parseOptionalNumber(percent);
     if (pct != null && financials) {
       const base = expensePercentBase(next, financials);
@@ -259,7 +263,7 @@ function CashItemRow({
         dueDate: date,
         label,
         category,
-        subcategory: category === "installation" ? subcategory : null,
+        subcategory: categoryHasSubcategories(category) ? subcategory : null,
         ...(linked ? { milestoneId: linked.id } : {}),
         actualDate: actualDate.trim() ? actualDate.trim() : null,
       });
@@ -355,7 +359,7 @@ function CashItemRow({
                   ))}
                 </select>
               </div>
-              {category === "installation" && (
+              {categoryHasSubcategories(category) && (
                 <div>
                   <span className={labelTiny}>Subcategory</span>
                   <select
@@ -365,7 +369,7 @@ function CashItemRow({
                     }
                     className={inputCls}
                   >
-                    {INSTALLATION_SUBCATEGORIES.map((s) => (
+                    {subcategoriesForCategory(category).map((s) => (
                       <option key={s} value={s}>
                         {INSTALLATION_SUBCATEGORY_LABELS[s]}
                       </option>
@@ -438,8 +442,9 @@ function CashItemRow({
       dueDate: exp.dueDate,
       label: exp.label ?? "",
       category: exp.category ?? "materials",
-      subcategory:
-        exp.category === "installation" ? (exp.subcategory ?? null) : null,
+      subcategory: categoryHasSubcategories(exp.category)
+        ? (exp.subcategory ?? null)
+        : null,
       ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
       actualDate: todayDate(),
     });
@@ -466,8 +471,9 @@ function CashItemRow({
       dueDate: exp.dueDate,
       label: exp.label ?? "",
       category: exp.category ?? "materials",
-      subcategory:
-        exp.category === "installation" ? (exp.subcategory ?? null) : null,
+      subcategory: categoryHasSubcategories(exp.category)
+        ? (exp.subcategory ?? null)
+        : null,
       ...(exp.milestoneId ? { milestoneId: exp.milestoneId } : {}),
       actualDate: null,
     });
@@ -502,7 +508,8 @@ function CashItemRow({
           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
             displayCategory === "man-hr"
               ? "bg-muted/20 text-muted"
-              : displayCategory === "installation"
+              : displayCategory === "installation" ||
+                  displayCategory === "maintenance"
                 ? "bg-amber-accent/15 text-amber-accent"
                 : "bg-deep/10 text-deep"
           }`}
@@ -662,7 +669,10 @@ function AddCashForm({
 
   function handleCategoryChange(next: ProjectExpenseCategory) {
     setCategory(next);
-    if (next === "installation") setSubcategory("fuel");
+    if (categoryHasSubcategories(next)) {
+      const allowed = subcategoriesForCategory(next);
+      if (!allowed.includes(subcategory)) setSubcategory(allowed[0]!);
+    }
     setError(null);
     const pct = parseOptionalNumber(percent);
     if (pct != null && financials) {
@@ -750,7 +760,7 @@ function AddCashForm({
         dueDate,
         label,
         category,
-        ...(category === "installation" ? { subcategory } : {}),
+        ...(categoryHasSubcategories(category) ? { subcategory } : {}),
         ...(linked ? { milestoneId: linked.id } : {}),
         ...(actualDate.trim() ? { actualDate: actualDate.trim() } : {}),
       });
@@ -869,7 +879,7 @@ function AddCashForm({
                 handleCategoryChange(e.target.value as ProjectExpenseCategory)
               }
               className={inputCls}
-              title="Man-hrs is for project analysis only; manufacture materials & installation hit cashflow"
+              title="Man-hrs is for project analysis only; manufacture materials, installation & maintenance hit cashflow"
             >
               {PROJECT_EXPENSE_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -878,7 +888,7 @@ function AddCashForm({
               ))}
             </select>
           </div>
-          {category === "installation" && (
+          {categoryHasSubcategories(category) && (
             <div>
               <span className={labelTiny}>Subcategory</span>
               <select
@@ -888,7 +898,7 @@ function AddCashForm({
                 }
                 className={inputCls}
               >
-                {INSTALLATION_SUBCATEGORIES.map((s) => (
+                {subcategoriesForCategory(category).map((s) => (
                   <option key={s} value={s}>
                     {INSTALLATION_SUBCATEGORY_LABELS[s]}
                   </option>
@@ -1024,10 +1034,10 @@ export default function GanttFinancials({
             Expenses
           </h4>
           <p className="mb-2 text-[10px] text-muted">
-            Manufacture materials &amp; installation hit company cash (with
-            VAT). Man-hrs is for project analysis only. Expense % uses max
-            Manufacture materials / Man-hrs caps (installation % uses contract
-            value). VAT auto-calcs at 20%.
+            Manufacture materials, installation &amp; maintenance hit company
+            cash (with VAT). Man-hrs is for project analysis only. Expense %
+            uses max Manufacture materials / Man-hrs caps (installation &amp;
+            maintenance % use contract value). VAT auto-calcs at 20%.
           </p>
           <div className="mb-3 grid grid-cols-2 gap-2">
             <label className="block">

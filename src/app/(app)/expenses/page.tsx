@@ -10,7 +10,6 @@ import { isFileOwnedFinanceId } from "@/lib/finance-import";
 import ProjectMultiSelect from "@/components/ProjectMultiSelect";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import {
-  INSTALLATION_SUBCATEGORIES,
   INSTALLATION_SUBCATEGORY_LABELS,
   InstallationSubcategory,
   PROJECT_EXPENSE_CATEGORIES,
@@ -18,8 +17,10 @@ import {
   ProjectExpenseCategory,
   amountExFromInc,
   amountIncFromEx,
+  categoryHasSubcategories,
   formatExpenseCategoryLabel,
   normalizeProjectExpense,
+  subcategoriesForCategory,
   todayDate,
 } from "@/lib/types";
 
@@ -242,12 +243,11 @@ export default function ExpensesPage() {
     const label = patch.label ?? row.label;
     const milestoneId =
       patch.milestoneId !== undefined ? patch.milestoneId : row.milestoneId;
-    const subcategory =
-      category === "installation"
-        ? patch.subcategory !== undefined
-          ? patch.subcategory
-          : (row.subcategory ?? null)
-        : null;
+    const subcategory = categoryHasSubcategories(category)
+      ? patch.subcategory !== undefined
+        ? patch.subcategory
+        : (row.subcategory ?? null)
+      : null;
 
     const expensePatch = {
       amount,
@@ -324,7 +324,7 @@ export default function ExpensesPage() {
       amount: inc,
       ...(ex != null && ex > 0 ? { amountExVat: ex } : {}),
       category: draftCategory,
-      ...(draftCategory === "installation"
+      ...(categoryHasSubcategories(draftCategory)
         ? { subcategory: draftSubcategory }
         : {}),
       dueDate,
@@ -365,8 +365,9 @@ export default function ExpensesPage() {
         </h1>
         <p className="mt-1 max-w-3xl text-[11px] text-muted">
           Daily project expenses across the portfolio. Edits sync with each
-          project&apos;s expense section and cashflow (materials &amp;
-          installation use the with-VAT amount). VAT auto-calcs at 20%.
+          project&apos;s expense section and cashflow (manufacture materials,
+          installation &amp; maintenance use the with-VAT amount). VAT
+          auto-calcs at 20%.
         </p>
       </div>
 
@@ -550,11 +551,16 @@ export default function ExpensesPage() {
                   <div className="flex flex-col gap-1">
                     <select
                       value={draftCategory}
-                      onChange={(e) =>
-                        setDraftCategory(
-                          e.target.value as ProjectExpenseCategory,
-                        )
-                      }
+                      onChange={(e) => {
+                        const next = e.target.value as ProjectExpenseCategory;
+                        setDraftCategory(next);
+                        if (categoryHasSubcategories(next)) {
+                          const allowed = subcategoriesForCategory(next);
+                          if (!allowed.includes(draftSubcategory)) {
+                            setDraftSubcategory(allowed[0]!);
+                          }
+                        }
+                      }}
                       className={inputCls}
                     >
                       {PROJECT_EXPENSE_CATEGORIES.map((c) => (
@@ -563,7 +569,7 @@ export default function ExpensesPage() {
                         </option>
                       ))}
                     </select>
-                    {draftCategory === "installation" && (
+                    {categoryHasSubcategories(draftCategory) && (
                       <select
                         value={draftSubcategory}
                         onChange={(e) =>
@@ -573,7 +579,7 @@ export default function ExpensesPage() {
                         }
                         className={inputCls}
                       >
-                        {INSTALLATION_SUBCATEGORIES.map((s) => (
+                        {subcategoriesForCategory(draftCategory).map((s) => (
                           <option key={s} value={s}>
                             {INSTALLATION_SUBCATEGORY_LABELS[s]}
                           </option>
@@ -700,12 +706,17 @@ export default function ExpensesPage() {
                           onChange={(e) => {
                             const category = e.target
                               .value as ProjectExpenseCategory;
+                            const nextSub = categoryHasSubcategories(category)
+                              ? row.subcategory &&
+                                subcategoriesForCategory(category).includes(
+                                  row.subcategory,
+                                )
+                                ? row.subcategory
+                                : subcategoriesForCategory(category)[0]!
+                              : null;
                             saveRow(row, {
                               category,
-                              subcategory:
-                                category === "installation"
-                                  ? (row.subcategory ?? "fuel")
-                                  : null,
+                              subcategory: nextSub,
                             });
                           }}
                           className={inputCls}
@@ -720,7 +731,7 @@ export default function ExpensesPage() {
                             </option>
                           ))}
                         </select>
-                        {row.category === "installation" && (
+                        {categoryHasSubcategories(row.category) && (
                           <select
                             value={row.subcategory ?? ""}
                             onChange={(e) =>
@@ -734,7 +745,7 @@ export default function ExpensesPage() {
                             <option value="" disabled>
                               Subcategory…
                             </option>
-                            {INSTALLATION_SUBCATEGORIES.map((s) => (
+                            {subcategoriesForCategory(row.category).map((s) => (
                               <option key={s} value={s}>
                                 {INSTALLATION_SUBCATEGORY_LABELS[s]}
                               </option>

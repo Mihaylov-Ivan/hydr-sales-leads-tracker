@@ -177,8 +177,8 @@ function collectFlows(
       const expectedDate = linked?.date ?? exp.dueDate;
       const received = Boolean(exp.actualDate);
       const typeLabel =
-        category === "installation"
-          ? formatExpenseCategoryLabel("installation", exp.subcategory)
+        category === "installation" || category === "maintenance"
+          ? formatExpenseCategoryLabel(category, exp.subcategory)
           : "Manufacture materials";
       list.push({
         id: `out-${p.id}-${exp.id}`,

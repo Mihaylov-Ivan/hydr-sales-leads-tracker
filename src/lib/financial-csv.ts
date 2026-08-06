@@ -196,7 +196,8 @@ export function buildFinancialCsv(
       r.created_at = exp.createdAt ?? "";
       r.category = exp.category ?? inferExpenseCategory(exp.label);
       r.subcategory =
-        exp.category === "installation" && exp.subcategory
+        (exp.category === "installation" || exp.category === "maintenance") &&
+        exp.subcategory
           ? exp.subcategory
           : "";
       lines.push(rowLine(r));
@@ -508,7 +509,7 @@ export function parseFinancialCsv(text: string):
           : inferExpenseCategory(label));
       expense.category = category;
       const subRaw = cell(row, "subcategory");
-      if (category === "installation") {
+      if (category === "installation" || category === "maintenance") {
         const sub =
           parseInstallationSubcategory(subRaw) ??
           (isInstallationSubcategory(subRaw) ? subRaw : undefined) ??

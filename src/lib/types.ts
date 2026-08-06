@@ -214,13 +214,19 @@ export interface ProjectPayment {
  * - man-hr: allocated labour (for project margin later — not company cash)
  * - materials: manufacture materials that hit cash
  * - installation: site/install costs that hit cash (see subcategories)
+ * - maintenance: maintenance costs that hit cash (see subcategories)
  */
-export type ProjectExpenseCategory = "man-hr" | "materials" | "installation";
+export type ProjectExpenseCategory =
+  | "man-hr"
+  | "materials"
+  | "installation"
+  | "maintenance";
 
 export const PROJECT_EXPENSE_CATEGORIES: ProjectExpenseCategory[] = [
   "materials",
   "man-hr",
   "installation",
+  "maintenance",
 ];
 
 export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
@@ -230,19 +236,34 @@ export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
   materials: "Manufacture materials",
   "man-hr": "Man-hrs",
   installation: "Installation",
+  maintenance: "Maintenance",
 };
 
-/** Installation-only subcategories */
-export type InstallationSubcategory =
+/** Categories that use the Fuel / Tickets / Hotels / … subcategory list */
+export type SubcategorizedExpenseCategory = "installation" | "maintenance";
+
+export function categoryHasSubcategories(
+  category: ProjectExpenseCategory | undefined,
+): category is SubcategorizedExpenseCategory {
+  return category === "installation" || category === "maintenance";
+}
+
+/**
+ * Shared travel/site subcategories plus category-specific parts line.
+ * Installation uses installation-equipment; Maintenance uses maintenance-parts.
+ */
+export type ProjectExpenseSubcategory =
   | "fuel"
   | "tickets"
   | "hotels"
   | "travel-allowance"
-  | "installation-equipment";
+  | "installation-equipment"
+  | "maintenance-parts";
 
-export type ProjectExpenseSubcategory = InstallationSubcategory;
+/** @deprecated Prefer ProjectExpenseSubcategory */
+export type InstallationSubcategory = ProjectExpenseSubcategory;
 
-export const INSTALLATION_SUBCATEGORIES: InstallationSubcategory[] = [
+export const INSTALLATION_SUBCATEGORIES: ProjectExpenseSubcategory[] = [
   "fuel",
   "tickets",
   "hotels",
@@ -250,8 +271,16 @@ export const INSTALLATION_SUBCATEGORIES: InstallationSubcategory[] = [
   "installation-equipment",
 ];
 
-export const INSTALLATION_SUBCATEGORY_LABELS: Record<
-  InstallationSubcategory,
+export const MAINTENANCE_SUBCATEGORIES: ProjectExpenseSubcategory[] = [
+  "fuel",
+  "tickets",
+  "hotels",
+  "travel-allowance",
+  "maintenance-parts",
+];
+
+export const PROJECT_EXPENSE_SUBCATEGORY_LABELS: Record<
+  ProjectExpenseSubcategory,
   string
 > = {
   fuel: "Fuel",
@@ -259,31 +288,56 @@ export const INSTALLATION_SUBCATEGORY_LABELS: Record<
   hotels: "Hotels",
   "travel-allowance": "Travel Allowance",
   "installation-equipment": "Installation equipment",
+  "maintenance-parts": "Maintenance parts",
 };
+
+/** @deprecated Prefer PROJECT_EXPENSE_SUBCATEGORY_LABELS */
+export const INSTALLATION_SUBCATEGORY_LABELS = PROJECT_EXPENSE_SUBCATEGORY_LABELS;
+
+export function subcategoriesForCategory(
+  category: SubcategorizedExpenseCategory,
+): ProjectExpenseSubcategory[] {
+  return category === "maintenance"
+    ? MAINTENANCE_SUBCATEGORIES
+    : INSTALLATION_SUBCATEGORIES;
+}
+
+export function subcategoryLabel(
+  subcategory: ProjectExpenseSubcategory,
+): string {
+  return PROJECT_EXPENSE_SUBCATEGORY_LABELS[subcategory];
+}
 
 /** Categories that leave the company bank account */
 export const CASH_EXPENSE_CATEGORIES: ReadonlySet<ProjectExpenseCategory> =
-  new Set(["materials", "installation"]);
+  new Set(["materials", "installation", "maintenance"]);
 
 export function isProjectExpenseCategory(
   value: unknown,
 ): value is ProjectExpenseCategory {
   return (
-    value === "man-hr" || value === "materials" || value === "installation"
+    value === "man-hr" ||
+    value === "materials" ||
+    value === "installation" ||
+    value === "maintenance"
   );
 }
 
-export function isInstallationSubcategory(
+export function isProjectExpenseSubcategory(
   value: unknown,
-): value is InstallationSubcategory {
+): value is ProjectExpenseSubcategory {
   return (
     value === "fuel" ||
     value === "tickets" ||
     value === "hotels" ||
     value === "travel-allowance" ||
-    value === "installation-equipment"
+    value === "installation-equipment" ||
+    value === "maintenance-parts"
   );
 }
+
+/** @deprecated Prefer isProjectExpenseSubcategory */
+export const isInstallationSubcategory = isProjectExpenseSubcategory;
 
 /** Parse category cell from CSV/Excel (ids or display labels). */
 export function parseProjectExpenseCategory(
@@ -310,10 +364,14 @@ export function parseProjectExpenseCategory(
     return "man-hr";
   }
   if (t === "installation" || t === "install") return "installation";
-  // Combined "installation / fuel" or "installation:fuel"
+  if (t === "maintenance" || t === "maintain") return "maintenance";
+  // Combined "installation / fuel" or "maintenance:fuel"
   const slash = t.split(/[/:]/).map((s) => s.trim());
   if (slash[0] === "installation" || slash[0] === "install") {
     return "installation";
+  }
+  if (slash[0] === "maintenance" || slash[0] === "maintain") {
+    return "maintenance";
   }
   return isProjectExpenseCategory(raw?.trim())
     ? (raw!.trim() as ProjectExpenseCategory)
@@ -321,9 +379,9 @@ export function parseProjectExpenseCategory(
 }
 
 /** Parse subcategory cell (ids or display labels). */
-export function parseInstallationSubcategory(
+export function parseProjectExpenseSubcategory(
   raw: string | null | undefined,
-): InstallationSubcategory | undefined {
+): ProjectExpenseSubcategory | undefined {
   const t = (raw ?? "").trim().toLowerCase().replace(/_/g, " ").replace(/-/g, " ");
   if (!t) return undefined;
   if (t === "fuel") return "fuel";
@@ -337,32 +395,42 @@ export function parseInstallationSubcategory(
     return "travel-allowance";
   }
   if (
+    t === "maintenance parts" ||
+    t === "maintenance part" ||
+    t === "maint parts"
+  ) {
+    return "maintenance-parts";
+  }
+  if (
     t === "installation equipment" ||
     t === "install equipment" ||
     t === "equipment"
   ) {
     return "installation-equipment";
   }
-  return isInstallationSubcategory(raw?.trim())
-    ? (raw!.trim() as InstallationSubcategory)
+  return isProjectExpenseSubcategory(raw?.trim())
+    ? (raw!.trim() as ProjectExpenseSubcategory)
     : undefined;
 }
 
-/** Display label for category (+ subcategory when installation). */
+/** @deprecated Prefer parseProjectExpenseSubcategory */
+export const parseInstallationSubcategory = parseProjectExpenseSubcategory;
+
+/** Display label for category (+ subcategory when applicable). */
 export function formatExpenseCategoryLabel(
   category: ProjectExpenseCategory,
-  subcategory?: InstallationSubcategory | null,
+  subcategory?: ProjectExpenseSubcategory | null,
 ): string {
   const base = PROJECT_EXPENSE_CATEGORY_LABELS[category];
-  if (category === "installation" && subcategory) {
-    return `${base} · ${INSTALLATION_SUBCATEGORY_LABELS[subcategory]}`;
+  if (categoryHasSubcategories(category) && subcategory) {
+    return `${base} · ${subcategoryLabel(subcategory)}`;
   }
   return base;
 }
 
 /**
  * Base amount for expense % → € conversion.
- * Materials / Man-hr use their project max caps; installation falls back to contract value.
+ * Materials / Man-hr use their project max caps; installation/maintenance fall back to contract value.
  */
 export function expensePercentBase(
   category: ProjectExpenseCategory | undefined,
@@ -402,6 +470,9 @@ export function inferExpenseCategory(
   ) {
     return "man-hr";
   }
+  if (/\bmaint/.test(t) || /\bmaintenance\s*parts?\b/.test(t)) {
+    return "maintenance";
+  }
   if (
     /\binstall/.test(t) ||
     /\bfuel\b/.test(t) ||
@@ -414,9 +485,10 @@ export function inferExpenseCategory(
   return "materials";
 }
 
-export function inferInstallationSubcategory(
+export function inferProjectExpenseSubcategory(
   label?: string | null,
-): InstallationSubcategory | undefined {
+  category?: ProjectExpenseCategory,
+): ProjectExpenseSubcategory | undefined {
   const t = (label ?? "").trim().toLowerCase();
   if (!t) return undefined;
   if (/\bfuel\b/.test(t)) return "fuel";
@@ -425,16 +497,27 @@ export function inferInstallationSubcategory(
   if (/\btravel\s*allowance\b/.test(t) || /\ballowance\b/.test(t)) {
     return "travel-allowance";
   }
-  if (/\binstallation\s*equipment\b/.test(t) || /\bequipment\b/.test(t)) {
-    return "installation-equipment";
+  if (/\bmaintenance\s*parts?\b/.test(t)) return "maintenance-parts";
+  if (/\binstallation\s*equipment\b/.test(t)) return "installation-equipment";
+  if (/\bequipment\b/.test(t) || /\bparts?\b/.test(t)) {
+    return category === "maintenance"
+      ? "maintenance-parts"
+      : "installation-equipment";
   }
   return undefined;
+}
+
+/** @deprecated Prefer inferProjectExpenseSubcategory */
+export function inferInstallationSubcategory(
+  label?: string | null,
+): ProjectExpenseSubcategory | undefined {
+  return inferProjectExpenseSubcategory(label, "installation");
 }
 
 /** A scheduled project cost / outflow */
 export interface ProjectExpenseItem {
   id: string;
-  /** Amount with VAT — used for cashflow (materials / installation) */
+  /** Amount with VAT — used for cashflow (materials / installation / maintenance) */
   amount: number;
   /** Amount without VAT */
   amountExVat?: number;
@@ -449,12 +532,12 @@ export interface ProjectExpenseItem {
   actualDate?: string;
   label?: string;
   /**
-   * man-hr is for project analysis only; materials + installation hit cashflow.
+   * man-hr is for project analysis only; materials + installation + maintenance hit cashflow.
    * Missing on legacy rows — treat via `normalizeProjectExpense`.
    */
   category?: ProjectExpenseCategory;
-  /** Only when category is installation */
-  subcategory?: InstallationSubcategory;
+  /** Only when category is installation or maintenance */
+  subcategory?: ProjectExpenseSubcategory;
   milestoneId?: string;
   createdAt: string; // ISO
 }
@@ -484,11 +567,21 @@ export function normalizeProjectExpense(
     ? item.category
     : inferExpenseCategory(item.label);
   const next: ProjectExpenseItem = { ...item, category };
-  if (category === "installation") {
-    const sub = isInstallationSubcategory(item.subcategory)
+  if (categoryHasSubcategories(category)) {
+    const allowed = new Set(subcategoriesForCategory(category));
+    let sub = isProjectExpenseSubcategory(item.subcategory)
       ? item.subcategory
-      : inferInstallationSubcategory(item.label);
-    if (sub) next.subcategory = sub;
+      : undefined;
+    // Map parts/equipment across install ↔ maintenance if needed
+    if (sub === "installation-equipment" && category === "maintenance") {
+      sub = "maintenance-parts";
+    } else if (sub === "maintenance-parts" && category === "installation") {
+      sub = "installation-equipment";
+    }
+    if (!sub || !allowed.has(sub)) {
+      sub = inferProjectExpenseSubcategory(item.label, category);
+    }
+    if (sub && allowed.has(sub)) next.subcategory = sub;
     else delete next.subcategory;
   } else {
     delete next.subcategory;

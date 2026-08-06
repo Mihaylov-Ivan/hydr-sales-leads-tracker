@@ -38,6 +38,7 @@ import {
   emptySchedule,
   defaultFinanceSettings,
   defaultMetricsSettings,
+  categoryHasSubcategories,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   normalizeStage,
@@ -336,7 +337,7 @@ export interface PaymentInput {
 /** Dated project outflow; category drives cash vs margin-only handling */
 export interface ExpenseInput extends PaymentInput {
   category: ProjectExpenseCategory;
-  /** Installation subcategory; ignored unless category is installation */
+  /** Installation/maintenance subcategory; ignored for other categories */
   subcategory?: InstallationSubcategory | null;
   /** Amount without VAT; pass `null` to clear on update */
   amountExVat?: number | null;
@@ -2168,7 +2169,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         dueDate,
         ...(input.actualDate ? { actualDate: input.actualDate } : {}),
         ...(input.label?.trim() ? { label: input.label.trim() } : {}),
-        ...(input.category === "installation" &&
+        ...(categoryHasSubcategories(input.category) &&
         input.subcategory &&
         input.subcategory !== null
           ? { subcategory: input.subcategory }
@@ -2230,7 +2231,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             next.actualDate = e.actualDate;
           }
 
-          if (patch.category === "installation") {
+          if (categoryHasSubcategories(patch.category)) {
             if (patch.subcategory) next.subcategory = patch.subcategory;
             else if (patch.subcategory === null) {
               // cleared

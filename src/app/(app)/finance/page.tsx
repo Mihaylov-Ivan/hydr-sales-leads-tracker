@@ -702,8 +702,9 @@ export default function FinancePage() {
             </h2>
             <p className="mt-1 max-w-2xl text-[11px] text-muted">
               Filter projects like the chart (All / Clear / pick). Company fixed
-              monthly always stays; project income, materials, and installation
-              follow the selection. Man-hr stays on projects for analysis only.
+              monthly always stays; project income, materials, installation, and
+              maintenance follow the selection. Man-hr stays on projects for
+              analysis only.
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -754,7 +755,7 @@ export default function FinancePage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-left text-[11px]">
+          <table className="w-full min-w-[1000px] border-collapse text-left text-[11px]">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-wide text-muted">
                 <th className="sticky left-0 z-10 bg-panel px-2 py-1.5">
@@ -766,7 +767,7 @@ export default function FinancePage() {
                 </th>
                 <th
                   className="border-l border-line bg-amber-accent/5 px-2 py-1.5 text-right text-amber-accent"
-                  colSpan={2}
+                  colSpan={3}
                 >
                   Project out
                 </th>
@@ -793,6 +794,9 @@ export default function FinancePage() {
                 </th>
                 <th className="bg-amber-accent/5 px-2 py-1 text-right">
                   Install
+                </th>
+                <th className="bg-amber-accent/5 px-2 py-1 text-right">
+                  Maintain
                 </th>
                 <th className="border-l border-line bg-muted/10 px-2 py-1 text-right">
                   Fixed monthly
@@ -856,6 +860,12 @@ export default function FinancePage() {
                       amount={row.installationOut}
                       items={row.installationByProject}
                       title={`${row.label} · Installation`}
+                      className="px-2 py-1 text-right tabular-nums text-amber-accent"
+                    />
+                    <ProjectBreakdownCell
+                      amount={row.maintenanceOut}
+                      items={row.maintenanceByProject}
+                      title={`${row.label} · Maintenance`}
                       className="px-2 py-1 text-right tabular-nums text-amber-accent"
                     />
                     <td className="border-l border-line px-1.5 py-1">

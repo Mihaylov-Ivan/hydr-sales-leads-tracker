@@ -10,9 +10,9 @@
  * Sheet "Projects":
  *   Project | Max Materials | Max Man-hr
  *
- * Category: materials | man-hr | installation
- * Subcategory (installation): fuel | tickets | hotels | travel-allowance |
- *   installation-equipment
+ * Category: materials | man-hr | installation | maintenance
+ * Subcategory (installation/maintenance): fuel | tickets | hotels |
+ *   travel-allowance | installation-equipment | maintenance-parts
  */
 
 import * as XLSX from "xlsx";
@@ -109,7 +109,10 @@ export function buildFinanceExportRows(
       const deadline = exp.label?.trim() || linked?.label || "";
       const category = exp.category ?? inferExpenseCategory(exp.label);
       const subcategory =
-        category === "installation" && exp.subcategory ? exp.subcategory : "";
+        (category === "installation" || category === "maintenance") &&
+        exp.subcategory
+          ? exp.subcategory
+          : "";
       bump(p.name, date, deadline, "expense", exp.amount, category, subcategory);
     }
   }
