@@ -366,7 +366,7 @@ export default function ExpensesPage() {
         <p className="mt-1 max-w-3xl text-[11px] text-muted">
           Daily project expenses across the portfolio. Edits sync with each
           project&apos;s expense section and cashflow (manufacture materials,
-          installation &amp; maintenance use the with-VAT amount). VAT
+          installation, maintenance &amp; admin use the with-VAT amount). VAT
           auto-calcs at 20%.
         </p>
       </div>

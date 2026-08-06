@@ -509,7 +509,8 @@ function CashItemRow({
             displayCategory === "man-hr"
               ? "bg-muted/20 text-muted"
               : displayCategory === "installation" ||
-                  displayCategory === "maintenance"
+                  displayCategory === "maintenance" ||
+                  displayCategory === "admin"
                 ? "bg-amber-accent/15 text-amber-accent"
                 : "bg-deep/10 text-deep"
           }`}
@@ -879,7 +880,7 @@ function AddCashForm({
                 handleCategoryChange(e.target.value as ProjectExpenseCategory)
               }
               className={inputCls}
-              title="Man-hrs is for project analysis only; manufacture materials, installation & maintenance hit cashflow"
+              title="Man-hrs is for project analysis only; manufacture materials, installation, maintenance & admin hit cashflow"
             >
               {PROJECT_EXPENSE_CATEGORIES.map((c) => (
                 <option key={c} value={c}>
@@ -1034,10 +1035,11 @@ export default function GanttFinancials({
             Expenses
           </h4>
           <p className="mb-2 text-[10px] text-muted">
-            Manufacture materials, installation &amp; maintenance hit company
-            cash (with VAT). Man-hrs is for project analysis only. Expense %
-            uses max Manufacture materials / Man-hrs caps (installation &amp;
-            maintenance % use contract value). VAT auto-calcs at 20%.
+            Manufacture materials, installation, maintenance &amp; admin hit
+            company cash (with VAT). Man-hrs is for project analysis only.
+            Expense % uses max Manufacture materials / Man-hrs caps
+            (installation, maintenance &amp; admin % use contract value). VAT
+            auto-calcs at 20%.
           </p>
           <div className="mb-3 grid grid-cols-2 gap-2">
             <label className="block">

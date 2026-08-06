@@ -77,7 +77,7 @@ type CashEvent = {
   /** Set for cash-affecting project outflows */
   expenseCategory?: Extract<
     ProjectExpenseCategory,
-    "materials" | "installation" | "maintenance"
+    "materials" | "installation" | "maintenance" | "admin"
   >;
 };
 
@@ -116,7 +116,11 @@ function collectEvents(project: Project): CashEvent[] {
       actualMonth: e.actualDate ? monthKey(e.actualDate) : null,
       dueDate: due,
       ...(e.actualDate ? { actualDate: e.actualDate } : {}),
-      expenseCategory: category as "materials" | "installation" | "maintenance",
+      expenseCategory: category as
+        | "materials"
+        | "installation"
+        | "maintenance"
+        | "admin",
     });
   }
   return events;
@@ -140,11 +144,13 @@ export type MonthlyPlanRow = {
   materialsOut: number;
   installationOut: number;
   maintenanceOut: number;
+  adminOut: number;
   projectInByProject: MonthlyProjectBreakdown[];
   materialsByProject: MonthlyProjectBreakdown[];
   installationByProject: MonthlyProjectBreakdown[];
   maintenanceByProject: MonthlyProjectBreakdown[];
-  /** projectIn − materials − install − maintenance − fixedMonthly */
+  adminByProject: MonthlyProjectBreakdown[];
+  /** projectIn − materials − install − maintenance − admin − fixedMonthly */
   net: number;
   /** Opening + net */
   closingCash: number;
@@ -258,7 +264,7 @@ export function estimateFixedMonthlyAverage(
 
 /**
  * Baseline (`openingCash` at `openingCashAsOf`) is cash at that month's open.
- * Firm cash out = company fixed monthly + project materials + installation + maintenance.
+ * Firm cash out = company fixed monthly + project materials + installation + maintenance + admin.
  * Project man-hr is excluded (covered by company fixed monthly / payroll).
  * Pipeline project cash is included at face value (no win-probability weighting).
  * `fromMonth`/`toMonth` only control which months are visible — independent of baseline.
@@ -296,10 +302,12 @@ export function buildMonthlyPlan(
     materialsOut: number;
     installationOut: number;
     maintenanceOut: number;
+    adminOut: number;
     projectInById: Map<string, MonthlyProjectBreakdown>;
     materialsById: Map<string, MonthlyProjectBreakdown>;
     installationById: Map<string, MonthlyProjectBreakdown>;
     maintenanceById: Map<string, MonthlyProjectBreakdown>;
+    adminById: Map<string, MonthlyProjectBreakdown>;
   };
 
   const emptyBucket = (): Bucket => ({
@@ -308,10 +316,12 @@ export function buildMonthlyPlan(
     materialsOut: 0,
     installationOut: 0,
     maintenanceOut: 0,
+    adminOut: 0,
     projectInById: new Map(),
     materialsById: new Map(),
     installationById: new Map(),
     maintenanceById: new Map(),
+    adminById: new Map(),
   });
 
   const buckets = new Map<string, Bucket>();
@@ -326,7 +336,8 @@ export function buildMonthlyPlan(
       field === "projectInById" ||
       field === "materialsById" ||
       field === "installationById" ||
-      field === "maintenanceById"
+      field === "maintenanceById" ||
+      field === "adminById"
     ) {
       return;
     }
@@ -416,6 +427,17 @@ export function buildMonthlyPlan(
           ev.amount,
         );
       }
+    } else if (ev.expenseCategory === "admin") {
+      add(month, "adminOut", ev.amount);
+      if (b) {
+        addProject(
+          month,
+          b.adminById,
+          ev.projectId,
+          ev.projectName,
+          ev.amount,
+        );
+      }
     }
   }
 
@@ -456,10 +478,12 @@ export function buildMonthlyPlan(
           materialsOut: 0,
           installationOut: 0,
           maintenanceOut: 0,
+          adminOut: 0,
           projectInByProject: [],
           materialsByProject: [],
           installationByProject: [],
           maintenanceByProject: [],
+          adminByProject: [],
           net: 0,
           closingCash: opening,
           belowMinWorkingCapital: opening < minWc,
@@ -473,6 +497,7 @@ export function buildMonthlyPlan(
       b.materialsOut +
       b.installationOut +
       b.maintenanceOut +
+      b.adminOut +
       b.fixedMonthly;
     const net = b.projectIn - out;
     const closingCash = opening + net;
@@ -488,10 +513,12 @@ export function buildMonthlyPlan(
         materialsOut: b.materialsOut,
         installationOut: b.installationOut,
         maintenanceOut: b.maintenanceOut,
+        adminOut: b.adminOut,
         projectInByProject: sortedBreakdown(b.projectInById),
         materialsByProject: sortedBreakdown(b.materialsById),
         installationByProject: sortedBreakdown(b.installationById),
         maintenanceByProject: sortedBreakdown(b.maintenanceById),
+        adminByProject: sortedBreakdown(b.adminById),
         net,
         closingCash,
         belowMinWorkingCapital: closingCash < minWc,

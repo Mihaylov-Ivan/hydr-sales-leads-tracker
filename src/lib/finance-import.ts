@@ -3,8 +3,8 @@
  *
  * Sheet "Data":
  *   Project | Date | Income | Expense | Deadline | Category | Subcategory
- *   Category (optional, expenses): materials | man-hr | installation | maintenance
- *     (also accepts "Manufacture materials", "Man-hrs", "Maintenance")
+ *   Category (optional, expenses): materials | man-hr | installation | maintenance | admin
+ *     (also accepts "Manufacture materials", "Man-hrs", "Maintenance", "Admin")
  *   Subcategory (optional, installation/maintenance): fuel | tickets | hotels |
  *     travel-allowance | installation-equipment | maintenance-parts
  *   Missing category → inferred from Deadline/label.

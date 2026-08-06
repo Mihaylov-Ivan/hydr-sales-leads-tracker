@@ -10,7 +10,7 @@
  * Sheet "Projects":
  *   Project | Max Materials | Max Man-hr
  *
- * Category: materials | man-hr | installation | maintenance
+ * Category: materials | man-hr | installation | maintenance | admin
  * Subcategory (installation/maintenance): fuel | tickets | hotels |
  *   travel-allowance | installation-equipment | maintenance-parts
  */

@@ -179,7 +179,9 @@ function collectFlows(
       const typeLabel =
         category === "installation" || category === "maintenance"
           ? formatExpenseCategoryLabel(category, exp.subcategory)
-          : "Manufacture materials";
+          : category === "admin"
+            ? "Admin"
+            : "Manufacture materials";
       list.push({
         id: `out-${p.id}-${exp.id}`,
         kind: "expense",

@@ -215,18 +215,21 @@ export interface ProjectPayment {
  * - materials: manufacture materials that hit cash
  * - installation: site/install costs that hit cash (see subcategories)
  * - maintenance: maintenance costs that hit cash (see subcategories)
+ * - admin: administrative costs that hit cash
  */
 export type ProjectExpenseCategory =
   | "man-hr"
   | "materials"
   | "installation"
-  | "maintenance";
+  | "maintenance"
+  | "admin";
 
 export const PROJECT_EXPENSE_CATEGORIES: ProjectExpenseCategory[] = [
   "materials",
   "man-hr",
   "installation",
   "maintenance",
+  "admin",
 ];
 
 export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
@@ -237,6 +240,7 @@ export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
   "man-hr": "Man-hrs",
   installation: "Installation",
   maintenance: "Maintenance",
+  admin: "Admin",
 };
 
 /** Categories that use the Fuel / Tickets / Hotels / … subcategory list */
@@ -310,7 +314,7 @@ export function subcategoryLabel(
 
 /** Categories that leave the company bank account */
 export const CASH_EXPENSE_CATEGORIES: ReadonlySet<ProjectExpenseCategory> =
-  new Set(["materials", "installation", "maintenance"]);
+  new Set(["materials", "installation", "maintenance", "admin"]);
 
 export function isProjectExpenseCategory(
   value: unknown,
@@ -319,7 +323,8 @@ export function isProjectExpenseCategory(
     value === "man-hr" ||
     value === "materials" ||
     value === "installation" ||
-    value === "maintenance"
+    value === "maintenance" ||
+    value === "admin"
   );
 }
 
@@ -365,6 +370,9 @@ export function parseProjectExpenseCategory(
   }
   if (t === "installation" || t === "install") return "installation";
   if (t === "maintenance" || t === "maintain") return "maintenance";
+  if (t === "admin" || t === "administrative" || t === "administration") {
+    return "admin";
+  }
   // Combined "installation / fuel" or "maintenance:fuel"
   const slash = t.split(/[/:]/).map((s) => s.trim());
   if (slash[0] === "installation" || slash[0] === "install") {
@@ -372,6 +380,9 @@ export function parseProjectExpenseCategory(
   }
   if (slash[0] === "maintenance" || slash[0] === "maintain") {
     return "maintenance";
+  }
+  if (slash[0] === "admin" || slash[0] === "administrative") {
+    return "admin";
   }
   return isProjectExpenseCategory(raw?.trim())
     ? (raw!.trim() as ProjectExpenseCategory)
@@ -430,7 +441,7 @@ export function formatExpenseCategoryLabel(
 
 /**
  * Base amount for expense % → € conversion.
- * Materials / Man-hr use their project max caps; installation/maintenance fall back to contract value.
+ * Materials / Man-hr use their project max caps; installation/maintenance/admin fall back to contract value.
  */
 export function expensePercentBase(
   category: ProjectExpenseCategory | undefined,
@@ -472,6 +483,9 @@ export function inferExpenseCategory(
   }
   if (/\bmaint/.test(t) || /\bmaintenance\s*parts?\b/.test(t)) {
     return "maintenance";
+  }
+  if (/\badmin\b/.test(t) || /\badministrative\b/.test(t)) {
+    return "admin";
   }
   if (
     /\binstall/.test(t) ||
@@ -517,7 +531,7 @@ export function inferInstallationSubcategory(
 /** A scheduled project cost / outflow */
 export interface ProjectExpenseItem {
   id: string;
-  /** Amount with VAT — used for cashflow (materials / installation / maintenance) */
+  /** Amount with VAT — used for cashflow (materials / installation / maintenance / admin) */
   amount: number;
   /** Amount without VAT */
   amountExVat?: number;
@@ -532,7 +546,7 @@ export interface ProjectExpenseItem {
   actualDate?: string;
   label?: string;
   /**
-   * man-hr is for project analysis only; materials + installation + maintenance hit cashflow.
+   * man-hr is for project analysis only; materials + installation + maintenance + admin hit cashflow.
    * Missing on legacy rows — treat via `normalizeProjectExpense`.
    */
   category?: ProjectExpenseCategory;
