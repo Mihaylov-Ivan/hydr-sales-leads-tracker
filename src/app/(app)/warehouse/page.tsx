@@ -19,6 +19,10 @@ import {
   stockValueAtLocation,
   totalStockValue,
 } from "@/lib/warehouse";
+import {
+  buildProjectWarehouseMetrics,
+  projectsWithWarehouseActivity,
+} from "@/lib/warehouse-metrics";
 
 const inputCls =
   "w-full rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none focus:border-teal-accent";
@@ -31,6 +35,15 @@ function formatMoney(n: number): string {
     currency: "EUR",
     maximumFractionDigits: n % 1 === 0 ? 0 : 2,
   }).format(n);
+}
+
+function formatQty(n: number): string {
+  if (!(n > 0)) return "—";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function roundMoneyDisplay(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function parseNum(raw: string): number | null {
@@ -115,6 +128,8 @@ export default function WarehousePage() {
   const [editKind, setEditKind] =
     useState<WarehouseMaterialKind>("materials");
   const [editError, setEditError] = useState<string | null>(null);
+  const [analysisProjectId, setAnalysisProjectId] = useState("");
+  const [pageTab, setPageTab] = useState<"stock" | "analysis">("stock");
 
   useEffect(() => {
     if (ready) ensureWarehouseHoldingProject();
@@ -164,6 +179,33 @@ export default function WarehousePage() {
     const open = openLotsCount(warehouse.lots, warehouse.balances);
     return { total, spares, buffer, open };
   }, [warehouse.lots, warehouse.balances]);
+
+  const analysisProjects = useMemo(
+    () =>
+      projectsWithWarehouseActivity(
+        projects,
+        warehouse,
+        warehouse.holdingProjectId,
+      ),
+    [projects, warehouse],
+  );
+
+  useEffect(() => {
+    if (
+      analysisProjectId &&
+      analysisProjects.some((p) => p.id === analysisProjectId)
+    ) {
+      return;
+    }
+    setAnalysisProjectId(analysisProjects[0]?.id ?? "");
+  }, [analysisProjects, analysisProjectId]);
+
+  const projectMetrics = useMemo(() => {
+    if (!analysisProjectId) return null;
+    const p = projects.find((x) => x.id === analysisProjectId);
+    if (!p) return null;
+    return buildProjectWarehouseMetrics(p.id, p.name, warehouse);
+  }, [analysisProjectId, projects, warehouse]);
 
   const stockRows = useMemo(() => {
     const rows: StockRow[] = [];
@@ -503,18 +545,45 @@ export default function WarehousePage() {
         <div>
           <h1 className="text-lg font-bold text-ink">Warehouse</h1>
           <p className="text-[11px] text-muted">
-            Track receipts, dedicated use, leftovers, and transfers. Materials
-            cost moves with stock; purchase dates stay on the original buy.
+            {pageTab === "stock"
+              ? "Track receipts, dedicated use, leftovers, and transfers. Materials cost moves with stock; purchase dates stay on the original buy."
+              : "Parts ordered, used, sent to Spares, and spare parts drawn into each project — with actual vs construction spend."}
           </p>
         </div>
-        <input
-          className={`${inputCls} max-w-xs`}
-          placeholder="Filter stock…"
-          value={filterQ}
-          onChange={(e) => setFilterQ(e.target.value)}
-        />
+        {pageTab === "stock" && (
+          <input
+            className={`${inputCls} max-w-xs`}
+            placeholder="Filter stock…"
+            value={filterQ}
+            onChange={(e) => setFilterQ(e.target.value)}
+          />
+        )}
       </div>
 
+      <div className="flex gap-1 border-b border-line">
+        {(
+          [
+            { id: "stock" as const, label: "Stock" },
+            { id: "analysis" as const, label: "Analysis" },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setPageTab(t.id)}
+            className={`-mb-px border-b-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide transition-colors ${
+              pageTab === t.id
+                ? "border-teal-accent text-teal-accent"
+                : "border-transparent text-muted hover:text-ink"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {pageTab === "stock" && (
+        <>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {[
           { label: "Stock value", value: formatMoney(kpis.total) },
@@ -1192,6 +1261,214 @@ export default function WarehousePage() {
               })}
           </ul>
         </section>
+      )}
+        </>
+      )}
+
+      {pageTab === "analysis" && (
+      <section className="rounded-lg border border-line bg-panel p-3">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xs font-bold uppercase tracking-wide text-deep">
+              Project analysis
+            </h2>
+            <p className="mt-0.5 max-w-xl text-[10px] text-muted">
+              Parts ordered, used, sent to Spares, and spare parts drawn back
+              into the project. Construction spend = used value minus spare
+              parts used on site.
+            </p>
+          </div>
+          <div className="min-w-[200px]">
+            <label className={labelCls}>Project</label>
+            <select
+              className={inputCls}
+              value={analysisProjectId}
+              onChange={(e) => setAnalysisProjectId(e.target.value)}
+              disabled={analysisProjects.length === 0}
+            >
+              {analysisProjects.length === 0 ? (
+                <option value="">No warehouse activity yet</option>
+              ) : (
+                analysisProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
+
+        {!projectMetrics || projectMetrics.lines.length === 0 ? (
+          <p className="text-[11px] text-muted">
+            {analysisProjects.length === 0
+              ? "Receive or move stock to a project to unlock analysis."
+              : "No part movements for this project yet."}
+          </p>
+        ) : (
+          <>
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                {
+                  label: "Ordered",
+                  value: formatQty(projectMetrics.totals.orderedQty),
+                  sub: formatMoney(projectMetrics.totals.orderedValue),
+                },
+                {
+                  label: "Used",
+                  value: formatQty(projectMetrics.totals.usedQty),
+                  sub: formatMoney(projectMetrics.totals.usedValue),
+                },
+                {
+                  label: "→ Spares",
+                  value: formatQty(projectMetrics.totals.toSparesQty),
+                  sub: formatMoney(projectMetrics.totals.toSparesValue),
+                },
+                {
+                  label: "Spares used",
+                  value: formatQty(projectMetrics.totals.spareUsedQty),
+                  sub: formatMoney(projectMetrics.totals.spareUsedValue),
+                },
+                {
+                  label: "Actual used cost",
+                  value: formatMoney(projectMetrics.totals.usedValue),
+                  sub: "All parts used",
+                },
+                {
+                  label: "Construction",
+                  value: formatMoney(projectMetrics.totals.constructionValue),
+                  sub: "Excl. spares used",
+                },
+              ].map((k) => (
+                <div
+                  key={k.label}
+                  className="rounded-lg border border-line/80 bg-surface px-2.5 py-2"
+                >
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-muted">
+                    {k.label}
+                  </div>
+                  <div className="text-sm font-bold tabular-nums text-ink">
+                    {k.value}
+                  </div>
+                  <div className="text-[9px] tabular-nums text-muted">
+                    {k.sub}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-[11px]">
+                <thead>
+                  <tr className="border-b border-line text-[9px] uppercase tracking-wide text-muted">
+                    <th className="px-2 py-1.5 font-semibold">Part</th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      Ordered
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      Used
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      → Spares
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      From spares
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      Spares used
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      On hand
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      Used €
+                    </th>
+                    <th className="px-2 py-1.5 font-semibold text-right">
+                      Constr. €
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectMetrics.lines.map((line) => {
+                    const constr = roundMoneyDisplay(
+                      line.usedValue - line.spareUsedValue,
+                    );
+                    return (
+                      <tr
+                        key={line.itemId}
+                        className="border-b border-line/50 hover:bg-surface/70"
+                      >
+                        <td className="px-2 py-1.5">
+                          <div className="font-semibold text-ink">
+                            {line.itemName}
+                          </div>
+                          <div className="text-[9px] text-muted">
+                            {line.sku ? `${line.sku} · ` : ""}
+                            {line.unit}
+                          </div>
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.orderedQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.usedQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.toSparesQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.fromSparesQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.spareUsedQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatQty(line.onHandQty)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatMoney(line.usedValue)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-medium">
+                          {formatMoney(constr)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-line text-[11px] font-semibold">
+                    <td className="px-2 py-2">Total</td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.orderedQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.usedQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.toSparesQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.fromSparesQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.spareUsedQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatQty(projectMetrics.totals.onHandQty)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatMoney(projectMetrics.totals.usedValue)}
+                    </td>
+                    <td className="px-2 py-2 text-right tabular-nums">
+                      {formatMoney(projectMetrics.totals.constructionValue)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
       )}
     </div>
   );

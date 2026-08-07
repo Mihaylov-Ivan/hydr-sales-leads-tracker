@@ -2,13 +2,10 @@ Update the csv and import/export accordingly. Latest one is, if you update it ad
 Update the database schema if required, ensruing the update is only additive/reorganisation so no data is lost. The current schema is: 
 
 
-- the total project expense comes from the expenses table, not from the expense section of the project in Board page. Please adapt the code.
-- statistic and metrics showing for the projects - how many parts were ordered and what, how many were used and how many went to Spares, how many spare parts were used in the project; also, for each project, we should see how much money it cost actually (all parts used and their value), and how much was spent during construction considering spare parts usage (so excluding the spare parts used value for the project)
-
-- System which tracks the warehouse - what has entered (along with its dedicated use, date, cost and all else, synced expenses section), what is being used right now, what is leftover, what has moved from one to another dedicated use, tacking the full history of components movement
 - lets add a new page called 'Strategy' where we will can create strategies for different 'Markets'. Please add things like planning, manufacturing, consortium and subcontracting, structure ...
 - add new page called RnD and Networking which will be for business trips to expos and events + RnD projects which have pure expenses for now. For now, lets not add them to the overall company expenses and cash flow tracking, but just leave them as place to collect the data. Later we will add estimation of RnD project success and IRR that we can later also add as projected additional revenue and value
 - how to deal with VAT for income and expenses in the cashflow?
 - expense and WH analysis for each project, able to give predictions of what expenses are expected for future project; the analysis is done on specific category project, ie 500kW E-series, 1000kW E-series etc... and a pattern is recognised of expense amounts, parts ordering and Bill of materials for such a project, and suggestion is made for future similar projects of what parts and expense schedule is expected 
+- add MH as product category
 
 - Add to projects: Dress&Sommmer, EU funding
