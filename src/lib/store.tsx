@@ -34,6 +34,7 @@ import {
   ChangeEvent,
   FinancialHistoryEntry,
   WarehouseItem,
+  WarehouseGroup,
   WarehouseLocation,
   WarehouseLot,
   WarehouseMaterialKind,
@@ -685,6 +686,17 @@ interface ProjectsApi {
     /** Pass string to set, `null` to clear, omit to leave unchanged */
     groupId?: string | null;
   }) => string;
+  /** Create or rename a catalog group (type taxonomy). */
+  upsertWarehouseGroup: (input: {
+    id?: string;
+    name: string;
+    /** Pass string to set parent, `null` to clear, omit to leave unchanged on update */
+    parentId?: string | null;
+  }) => { ok: true; id: string } | { ok: false; error: string };
+  /** Remove a catalog group; clears item links and promotes child groups. */
+  deleteWarehouseGroup: (
+    groupId: string,
+  ) => { ok: true } | { ok: false; error: string };
   /** Replace inventory from MoneyWorks CSV import (keeps holdingProjectId). */
   importMoneyWorksWarehouse: () => Promise<
     | {
@@ -4754,6 +4766,103 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const upsertWarehouseGroup = useCallback(
+    (input: {
+      id?: string;
+      name: string;
+      parentId?: string | null;
+    }): { ok: true; id: string } | { ok: false; error: string } => {
+      const name = input.name.trim();
+      if (!name) return { ok: false, error: "Enter a group name" };
+
+      if (input.id) {
+        const existing = warehouseRef.current.groups.find(
+          (g) => g.id === input.id,
+        );
+        if (!existing) return { ok: false, error: "Group not found" };
+        if (input.parentId) {
+          const parent = warehouseRef.current.groups.find(
+            (g) => g.id === input.parentId,
+          );
+          if (!parent || parent.id === input.id || parent.parentId) {
+            return { ok: false, error: "Invalid parent group" };
+          }
+          const hasChildren = warehouseRef.current.groups.some(
+            (g) => g.parentId === input.id,
+          );
+          if (hasChildren) {
+            return {
+              ok: false,
+              error: "Move or remove subgroups before nesting this group",
+            };
+          }
+        }
+        setWarehouse((prev) => ({
+          ...prev,
+          groups: prev.groups.map((g) => {
+            if (g.id !== input.id) return g;
+            const next: WarehouseGroup = { ...g, name };
+            if (input.parentId !== undefined) {
+              if (input.parentId) next.parentId = input.parentId;
+              else delete next.parentId;
+            }
+            return next;
+          }),
+        }));
+        return { ok: true, id: input.id };
+      }
+
+      if (input.parentId) {
+        const parent = warehouseRef.current.groups.find(
+          (g) => g.id === input.parentId,
+        );
+        if (!parent || parent.parentId) {
+          return { ok: false, error: "Parent group not found" };
+        }
+      }
+
+      const id = crypto.randomUUID();
+      const group: WarehouseGroup = {
+        id,
+        name,
+        ...(input.parentId ? { parentId: input.parentId } : {}),
+        createdAt: new Date().toISOString(),
+      };
+      setWarehouse((prev) => ({
+        ...prev,
+        groups: [...prev.groups, group],
+      }));
+      return { ok: true, id };
+    },
+    [],
+  );
+
+  const deleteWarehouseGroup = useCallback(
+    (groupId: string): { ok: true } | { ok: false; error: string } => {
+      const existing = warehouseRef.current.groups.find((g) => g.id === groupId);
+      if (!existing) return { ok: false, error: "Group not found" };
+      setWarehouse((prev) => ({
+        ...prev,
+        groups: prev.groups
+          .filter((g) => g.id !== groupId)
+          .map((g) => {
+            if (g.parentId !== groupId) return g;
+            const next = { ...g };
+            delete next.parentId;
+            return next;
+          }),
+        items: prev.items.map((it) => {
+          if (it.groupId !== groupId) return it;
+          const next = { ...it };
+          delete next.groupId;
+          return next;
+        }),
+      }));
+      return { ok: true };
+    },
+    [],
+  );
+
   const importMoneyWorksWarehouse = useCallback(async (): Promise<
     | {
         ok: true;
@@ -6212,6 +6321,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateWarehouseLot,
         deleteWarehouseLot,
         upsertWarehouseItem,
+        upsertWarehouseGroup,
+        deleteWarehouseGroup,
         importMoneyWorksWarehouse,
         applySystemSkladMapping,
         linkProjectWarehouseExpenses,

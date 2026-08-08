@@ -37,6 +37,7 @@ import {
 } from "@/lib/warehouse-bom";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import CatalogItemSearchSelect from "@/components/CatalogItemSearchSelect";
+import WarehouseGroupSelect from "@/components/WarehouseGroupSelect";
 import type { WarehouseBomLineInput } from "@/lib/types";
 
 const inputCls =
@@ -149,6 +150,8 @@ export default function WarehousePage() {
     updateWarehouseLot,
     deleteWarehouseLot,
     upsertWarehouseItem,
+    upsertWarehouseGroup,
+    deleteWarehouseGroup,
     ensureWarehouseHoldingProject,
     importMoneyWorksWarehouse,
     applySystemSkladMapping,
@@ -318,37 +321,6 @@ export default function WarehousePage() {
   const groupById = useMemo(() => {
     const m = new Map(warehouse.groups.map((g) => [g.id, g]));
     return m;
-  }, [warehouse.groups]);
-
-  /** Roots then children — for group <select> options */
-  const groupsForSelect = useMemo(() => {
-    const roots = warehouse.groups
-      .filter((g) => !g.parentId)
-      .sort((a, b) => a.name.localeCompare(b.name, "bg"));
-    const byParent = new Map<string, typeof warehouse.groups>();
-    for (const g of warehouse.groups) {
-      if (!g.parentId) continue;
-      if (!byParent.has(g.parentId)) byParent.set(g.parentId, []);
-      byParent.get(g.parentId)!.push(g);
-    }
-    for (const list of byParent.values()) {
-      list.sort((a, b) => a.name.localeCompare(b.name, "bg"));
-    }
-    const out: { id: string; label: string }[] = [];
-    const seen = new Set<string>();
-    for (const root of roots) {
-      out.push({ id: root.id, label: root.name });
-      seen.add(root.id);
-      for (const ch of byParent.get(root.id) ?? []) {
-        out.push({ id: ch.id, label: `↳ ${ch.name}` });
-        seen.add(ch.id);
-      }
-    }
-    for (const g of warehouse.groups) {
-      if (seen.has(g.id)) continue;
-      out.push({ id: g.id, label: g.name });
-    }
-    return out;
   }, [warehouse.groups]);
 
   const analysisProjects = useMemo(
@@ -1459,18 +1431,15 @@ export default function WarehousePage() {
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Group</label>
-                <select
-                  className={inputCls}
+                <WarehouseGroupSelect
+                  groups={warehouse.groups}
                   value={recvGroupId}
-                  onChange={(e) => setRecvGroupId(e.target.value)}
-                >
-                  <option value="">No group…</option>
-                  {groupsForSelect.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setRecvGroupId}
+                  onUpsert={upsertWarehouseGroup}
+                  onDelete={deleteWarehouseGroup}
+                  inputClassName={inputCls}
+                  labelClassName={labelCls}
+                />
               </div>
             </>
           ) : (
@@ -1496,19 +1465,16 @@ export default function WarehousePage() {
               </div>
               <div className="col-span-2">
                 <label className={labelCls}>Group</label>
-                <select
-                  className={inputCls}
+                <WarehouseGroupSelect
+                  groups={warehouse.groups}
                   value={recvGroupId}
-                  onChange={(e) => setRecvGroupId(e.target.value)}
+                  onChange={setRecvGroupId}
+                  onUpsert={upsertWarehouseGroup}
+                  onDelete={deleteWarehouseGroup}
+                  inputClassName={inputCls}
+                  labelClassName={labelCls}
                   disabled={!recvItemId}
-                >
-                  <option value="">No group…</option>
-                  {groupsForSelect.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             </>
           )}
@@ -2177,18 +2143,15 @@ export default function WarehousePage() {
                   </div>
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Group</label>
-                    <select
-                      className={inputCls}
+                    <WarehouseGroupSelect
+                      groups={warehouse.groups}
                       value={editGroupId}
-                      onChange={(e) => setEditGroupId(e.target.value)}
-                    >
-                      <option value="">No group…</option>
-                      {groupsForSelect.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setEditGroupId}
+                      onUpsert={upsertWarehouseGroup}
+                      onDelete={deleteWarehouseGroup}
+                      inputClassName={inputCls}
+                      labelClassName={labelCls}
+                    />
                   </div>
                   <div>
                     <label className={labelCls}>On-hand qty (this line)</label>
