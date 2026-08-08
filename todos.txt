@@ -2,10 +2,16 @@ Update the csv and import/export accordingly. Latest one is, if you update it ad
 Update the database schema if required, ensruing the update is only additive/reorganisation so no data is lost. The current schema is: 
 
 
+- Mechanism of tracking all project related expenses in the company, so they can be entered in the app.
+  - debit card purchases and cash payments
+
+
+- What are the groups and the categories fields?
+- Lets analyse all the data and lets try to reorganise it (without losing any data) in a much better naming and ordering practice. It feels all over the place right now, there should be standardised components for the ones that repeat or are similar. Lets think about that and see how we can improve the overall database of items, when we are done, we will make full report on what we changed
 - lets add a new page called 'Strategy' where we will can create strategies for different 'Markets'. Please add things like planning, manufacturing, consortium and subcontracting, structure ...
 - add new page called RnD and Networking which will be for business trips to expos and events + RnD projects which have pure expenses for now. For now, lets not add them to the overall company expenses and cash flow tracking, but just leave them as place to collect the data. Later we will add estimation of RnD project success and IRR that we can later also add as projected additional revenue and value
 - how to deal with VAT for income and expenses in the cashflow?
 - expense and WH analysis for each project, able to give predictions of what expenses are expected for future project; the analysis is done on specific category project, ie 500kW E-series, 1000kW E-series etc... and a pattern is recognised of expense amounts, parts ordering and Bill of materials for such a project, and suggestion is made for future similar projects of what parts and expense schedule is expected 
 - add MH as product category
 
-- Add to projects: Dress&Sommmer, EU funding
+- Add to projects: Dress&Sommmer, EU funding, Polish tender from Jersey for H2 unloading and usage in a plant..., 

@@ -606,25 +606,65 @@ export const WAREHOUSE_MATERIAL_KIND_LABELS: Record<
   maintenance: "Maintenance parts",
 };
 
+/** Physical campus (MoneyWorks main sites). */
+export type WarehouseSite = "ELX" | "MH" | "Van";
+
+/** Role of stock at a site. Project slot requires projectId. */
+export type WarehouseSlot = "project" | "spare" | "buffer";
+
+/** @deprecated Use WarehouseSlot; kept for migration of old local data. */
 export type WarehouseLocationType =
   | "project"
   | "spare"
   | "buffer"
   | "unallocated";
 
+export const WAREHOUSE_SITES: WarehouseSite[] = ["ELX", "MH", "Van"];
+
+export const WAREHOUSE_SITE_LABELS: Record<WarehouseSite, string> = {
+  ELX: "ELX",
+  MH: "MH",
+  Van: "Van",
+};
+
+export const WAREHOUSE_SLOT_LABELS: Record<WarehouseSlot, string> = {
+  project: "Project",
+  spare: "Spare",
+  buffer: "Buffer",
+};
+
+/**
+ * Stock location = site × slot.
+ * Example: { site: "ELX", slot: "project", projectId: "…" }
+ */
 export interface WarehouseLocation {
-  type: WarehouseLocationType;
-  /** Required when type is "project" */
+  site: WarehouseSite;
+  slot: WarehouseSlot;
+  /** Required when slot is "project" */
   projectId?: string;
+}
+
+export interface WarehouseGroup {
+  id: string;
+  name: string;
+  parentId?: string;
+  /** MoneyWorks GRUPI name / key for import idempotency */
+  sourceKey?: string;
+  createdAt: string;
 }
 
 export interface WarehouseItem {
   id: string;
   name: string;
   sku?: string;
+  barcode?: string;
   /** e.g. pcs, kg, m */
   unit: string;
   defaultMaterialKind: WarehouseMaterialKind;
+  groupId?: string;
+  minQty?: number;
+  maxQty?: number;
+  tracksSerial?: boolean;
   createdAt: string;
 }
 
@@ -638,13 +678,18 @@ export interface WarehouseLot {
   receivedAt: string;
   /** Project where the purchase was originally booked */
   purchaseProjectId: string;
-  /** Expense id created or linked at receipt (may later be split across projects) */
-  expenseId: string;
+  /**
+   * Expense id created or linked at receipt (may later be split across projects).
+   * Optional for imported MoneyWorks stock until expense linking.
+   */
+  expenseId?: string;
   category: ProjectExpenseCategory;
   subcategory?: ProjectExpenseSubcategory;
   supplier?: string;
   notes?: string;
   label?: string;
+  /** Original MoneyWorks SKLAD name (for System-* remap later) */
+  sourceSklad?: string;
   createdAt: string;
 }
 
@@ -653,6 +698,22 @@ export interface WarehouseBalance {
   lotId: string;
   location: WarehouseLocation;
   qty: number;
+  /** Original MoneyWorks SKLAD when parked pending project map */
+  sourceSklad?: string;
+}
+
+export type WarehouseSerialStatus = "in_stock" | "consumed" | "disposed";
+
+export interface WarehouseSerial {
+  id: string;
+  itemId: string;
+  lotId?: string;
+  serial: string;
+  location: WarehouseLocation;
+  qty: number;
+  status: WarehouseSerialStatus;
+  sourceSklad?: string;
+  createdAt: string;
 }
 
 export type WarehouseMovementAction =
@@ -678,6 +739,8 @@ export interface WarehouseState {
   lots: WarehouseLot[];
   balances: WarehouseBalance[];
   movements: WarehouseMovement[];
+  groups: WarehouseGroup[];
+  serials: WarehouseSerial[];
   holdingProjectId: string | null;
 }
 
@@ -689,6 +752,8 @@ export function emptyWarehouseState(): WarehouseState {
     lots: [],
     balances: [],
     movements: [],
+    groups: [],
+    serials: [],
     holdingProjectId: null,
   };
 }

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import { downloadFinancialCsv, downloadFinancialHistoryCsv } from "@/lib/financial-csv";
+import { buildDefaultSkladMaps } from "@/lib/warehouse-sklad-map";
 
 export default function Header() {
   const router = useRouter();
@@ -172,6 +173,8 @@ export default function Header() {
                 financeSettings,
                 financialHistory,
                 warehouse,
+                undefined,
+                buildDefaultSkladMaps(projects),
               )
             }
             title="Download financial data CSV (includes history rows)"

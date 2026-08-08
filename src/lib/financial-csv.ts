@@ -7,13 +7,16 @@
  *   - payment       — income line
  *   - expense       — expense schedule line (optional warehouse_lot_id)
  *   - warehouse_lot — lot unit costs / receipt meta (links to expenses via id)
+ *   - warehouse_sklad_map — MoneyWorks System-* SKLAD → project (site×slot)
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
  *   - company_opex  — company fixed monthly cost
  *   - history       — append-only financial change snapshots (amounts OK here)
  */
 
-import { sanitizeAppFinancials } from "./finance-import";
+import {
+  sanitizeAppFinancials,
+} from "./finance-import";
 import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
@@ -27,7 +30,10 @@ import {
   ProjectMilestone,
   ProjectPayment,
   WarehouseLot,
+  WarehouseSite,
+  WarehouseSlot,
   WarehouseState,
+  WAREHOUSE_SITES,
   amountExFromInc,
   amountIncFromEx,
   companyMonthlyCashTotal,
@@ -43,6 +49,7 @@ import {
   parseProjectExpenseCategory,
   parseProjectExpenseSubcategory,
 } from "./types";
+import type { WarehouseSkladMap } from "./warehouse-sklad-map";
 
 export const FINANCIAL_CSV_HEADERS = [
   "type",
@@ -83,6 +90,9 @@ export const FINANCIAL_CSV_HEADERS = [
   "qty",
   "is_maintenance",
   "budget_amount",
+  "source_sklad",
+  "wh_site",
+  "wh_slot",
   // History rows (type=history); empty on snapshot rows
   "event_id",
   "intentional",
@@ -111,6 +121,8 @@ export type FinancialCsvBundle = {
   history: FinancialHistoryEntry[];
   /** Lot unit costs / receipt meta from type=warehouse_lot rows */
   warehouseLots: WarehouseLotCsvRow[];
+  /** MoneyWorks SKLAD → project maps from type=warehouse_sklad_map */
+  warehouseSkladMaps: WarehouseSkladMapCsvRow[];
 };
 
 /** Portable warehouse lot financial snapshot (CSV). */
@@ -127,6 +139,16 @@ export type WarehouseLotCsvRow = {
   subcategory?: string;
   label?: string;
   createdAt?: string;
+  sourceSklad?: string;
+};
+
+export type WarehouseSkladMapCsvRow = {
+  id?: string;
+  sourceSklad: string;
+  projectId: string;
+  projectName?: string;
+  site: WarehouseSite;
+  slot: WarehouseSlot;
 };
 
 function escCell(value: string | number | null | undefined): string {
@@ -158,6 +180,7 @@ export function buildFinancialCsv(
   financeSettings: CompanyFinanceSettings,
   history: FinancialHistoryEntry[] = [],
   warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
+  skladMaps: WarehouseSkladMap[] = [],
 ): string {
   const lines: string[] = [FINANCIAL_CSV_HEADERS.join(",")];
 
@@ -279,7 +302,7 @@ export function buildFinancialCsv(
     r.project_id = lot.purchaseProjectId;
     const proj = projects.find((p) => p.id === lot.purchaseProjectId);
     r.project_name = proj?.name ?? "";
-    r.entity_id = lot.expenseId;
+    r.entity_id = lot.expenseId ?? "";
     r.amount = numStr(lot.unitCostIncVat);
     r.amount_ex_vat = numStr(lot.unitCostExVat);
     r.vat_rate = numStr(DEFAULT_VAT_RATE);
@@ -289,6 +312,22 @@ export function buildFinancialCsv(
     r.category = lot.category;
     r.subcategory = lot.subcategory ?? "";
     r.label = lot.label ?? "";
+    r.source_sklad = lot.sourceSklad ?? "";
+    lines.push(rowLine(r));
+  }
+
+  for (const map of skladMaps) {
+    const r = emptyRow();
+    r.type = "warehouse_sklad_map";
+    r.id = map.id;
+    r.source_sklad = map.sourceSklad;
+    r.project_id = map.projectId;
+    r.project_name =
+      projects.find((p) => p.id === map.projectId)?.name ?? "";
+    r.wh_site = map.site;
+    r.wh_slot = map.slot;
+    r.created_at = map.createdAt;
+    r.label = map.sourceSklad;
     lines.push(rowLine(r));
   }
 
@@ -325,8 +364,15 @@ export function downloadFinancialCsv(
   history: FinancialHistoryEntry[] = [],
   warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
   filename = `financial-data-${new Date().toISOString().slice(0, 10)}.csv`,
+  skladMaps: WarehouseSkladMap[] = [],
 ): void {
-  const csv = buildFinancialCsv(projects, financeSettings, history, warehouse);
+  const csv = buildFinancialCsv(
+    projects,
+    financeSettings,
+    history,
+    warehouse,
+    skladMaps,
+  );
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -464,6 +510,7 @@ export function parseFinancialCsv(text: string):
   const opex: CompanyMonthlyExpense[] = [];
   const history: FinancialHistoryEntry[] = [];
   const warehouseLots: WarehouseLotCsvRow[] = [];
+  const warehouseSkladMaps: WarehouseSkladMapCsvRow[] = [];
 
   function touch(row: string[]): ProjectFinancials | null {
     const id = cell(row, "project_id");
@@ -727,7 +774,36 @@ export function parseFinancialCsv(text: string):
       if (label) snap.label = label;
       const createdAt = cell(row, "created_at");
       if (createdAt) snap.createdAt = createdAt;
+      const sourceSklad = cell(row, "source_sklad");
+      if (sourceSklad) snap.sourceSklad = sourceSklad;
       warehouseLots.push(snap);
+      continue;
+    }
+
+    if (type === "warehouse_sklad_map") {
+      const sourceSklad = cell(row, "source_sklad") || cell(row, "label");
+      const projectId = cell(row, "project_id");
+      if (!sourceSklad || !projectId) continue;
+      const siteRaw = cell(row, "wh_site") || "ELX";
+      const slotRaw = cell(row, "wh_slot") || "project";
+      const site = (WAREHOUSE_SITES as string[]).includes(siteRaw)
+        ? (siteRaw as WarehouseSite)
+        : "ELX";
+      const slot: WarehouseSlot =
+        slotRaw === "spare" || slotRaw === "buffer" || slotRaw === "project"
+          ? slotRaw
+          : "project";
+      const mapRow: WarehouseSkladMapCsvRow = {
+        sourceSklad,
+        projectId,
+        site,
+        slot,
+      };
+      const id = cell(row, "id");
+      if (id) mapRow.id = id;
+      const projectName = cell(row, "project_name");
+      if (projectName) mapRow.projectName = projectName;
+      warehouseSkladMaps.push(mapRow);
       continue;
     }
 
@@ -779,6 +855,7 @@ export function parseFinancialCsv(text: string):
       financeSettings,
       history,
       warehouseLots,
+      warehouseSkladMaps,
     },
   };
 }
@@ -811,6 +888,7 @@ export function applyWarehouseLotCsvRows(
         if (snap.label) next.label = snap.label;
       }
       if (snap.expenseId) next.expenseId = snap.expenseId;
+      if (snap.sourceSklad) next.sourceSklad = snap.sourceSklad;
       if (snap.category && isProjectExpenseCategory(snap.category)) {
         next.category = snap.category;
       }

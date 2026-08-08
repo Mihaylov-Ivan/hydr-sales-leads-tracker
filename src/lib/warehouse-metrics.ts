@@ -170,9 +170,9 @@ export function buildProjectWarehouseMetrics(
     if (!(qty > 0)) continue;
 
     const toProject =
-      m.to?.type === "project" && m.to.projectId === projectId;
+      m.to?.slot === "project" && m.to.projectId === projectId;
     const fromProject =
-      m.from?.type === "project" && m.from.projectId === projectId;
+      m.from?.slot === "project" && m.from.projectId === projectId;
 
     if (m.action === "receive" && toProject) {
       addQtyValue(line, "ordered", qty, cost);
@@ -182,14 +182,14 @@ export function buildProjectWarehouseMetrics(
 
     if (m.action === "transfer" || m.action === "allocate") {
       if (toProject) {
-        if (m.from?.type === "spare") {
+        if (m.from?.slot === "spare") {
           addQtyValue(line, "fromSpares", qty, cost);
           track.atProject = roundQty(track.atProject + qty);
           track.fromSpareAtProject = roundQty(
             track.fromSpareAtProject + qty,
           );
         } else {
-          // From buffer / other project / unallocated — counts as ordered in
+          // From buffer / other project — counts as ordered in
           addQtyValue(line, "ordered", qty, cost);
           track.atProject = roundQty(track.atProject + qty);
         }
@@ -197,7 +197,7 @@ export function buildProjectWarehouseMetrics(
       }
 
       if (fromProject) {
-        if (m.to?.type === "spare") {
+        if (m.to?.slot === "spare") {
           addQtyValue(line, "toSpares", qty, cost);
         }
         const leave = Math.min(qty, track.atProject);
@@ -226,7 +226,7 @@ export function buildProjectWarehouseMetrics(
 
   // Current on-hand at project from balances (authoritative)
   for (const b of state.balances) {
-    if (b.location.type !== "project" || b.location.projectId !== projectId) {
+    if (b.location.slot !== "project" || b.location.projectId !== projectId) {
       continue;
     }
     if (!(b.qty > 0)) continue;
@@ -304,15 +304,15 @@ export function projectsWithWarehouseActivity(
 ): Project[] {
   const activeIds = new Set<string>();
   for (const b of state.balances) {
-    if (b.location.type === "project" && b.location.projectId) {
+    if (b.location.slot === "project" && b.location.projectId) {
       activeIds.add(b.location.projectId);
     }
   }
   for (const m of state.movements) {
-    if (m.to?.type === "project" && m.to.projectId) {
+    if (m.to?.slot === "project" && m.to.projectId) {
       activeIds.add(m.to.projectId);
     }
-    if (m.from?.type === "project" && m.from.projectId) {
+    if (m.from?.slot === "project" && m.from.projectId) {
       activeIds.add(m.from.projectId);
     }
   }

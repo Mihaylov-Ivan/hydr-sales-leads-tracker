@@ -135,11 +135,20 @@ import {
   loadRemoteWarehouseState,
   mergeLocalWarehouseFallback,
   persistRemoteWarehouseState,
+  persistRemoteSkladMaps,
 } from "./warehouse-db";
+import {
+  applySkladMapsToWarehouseState,
+  buildDefaultSkladMaps,
+  SYSTEM_SKLAD_PROJECT_SEEDS,
+  type WarehouseSkladMap,
+} from "./warehouse-sklad-map";
+import { linkProjectSlotLotsToMaterialsExpenses } from "./warehouse-expense-link";
 import {
   expenseProjectIdForLocation,
   findBalance,
   applyBalanceDelta,
+  cloneLocation,
   isBudgetEnvelopeExpense,
   loadWarehouseState,
   locationLabel,
@@ -494,6 +503,11 @@ export interface WarehouseLotUpdateInput {
   supplier?: string | null;
   notes?: string | null;
   materialKind?: WarehouseMaterialKind;
+  purchaseProjectId?: string;
+  /** Link lot to an expense envelope; `null` clears. */
+  expenseId?: string | null;
+  /** Reassign catalog item for this lot. */
+  itemId?: string;
 }
 
 export interface FinanceSettingsPatch {
@@ -663,6 +677,44 @@ interface ProjectsApi {
     unit?: string;
     defaultMaterialKind?: WarehouseMaterialKind;
   }) => string;
+  /** Replace inventory from MoneyWorks CSV import (keeps holdingProjectId). */
+  importMoneyWorksWarehouse: () => Promise<
+    | {
+        ok: true;
+        stats: {
+          groups: number;
+          items: number;
+          lots: number;
+          balances: number;
+          serials: number;
+          parkedSystem: number;
+        };
+      }
+    | { ok: false; error: string }
+  >;
+  /** Ensure System-* projects exist, then remap parked WH stock to project slots. */
+  applySystemSkladMapping: () => Promise<
+    | {
+        ok: true;
+        createdProjects: string[];
+        movedBalances: number;
+        movedSerials: number;
+        maps: number;
+        unmatched: string[];
+        linkedLots: number;
+        createdExpenses: string[];
+      }
+    | { ok: false; error: string }
+  >;
+  /** Link project-slot WH lots to each project's first manufacture-materials expense. */
+  linkProjectWarehouseExpenses: () =>
+    | {
+        ok: true;
+        linkedLots: number;
+        createdExpenses: string[];
+        projectCount: number;
+      }
+    | { ok: false; error: string };
   addMilestone: (projectId: string, input: MilestoneInput) => void;
   updateMilestone: (
     projectId: string,
@@ -1420,12 +1472,43 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     summary: string;
   };
 
+  /** Resolves when a newly created project row is confirmed in Supabase (or immediately if offline). */
+  const projectInsertWaitersRef = useRef(
+    new Map<string, Promise<boolean>>(),
+  );
+
+  const persistChangeEventRemote = useCallback((event: ChangeEvent) => {
+    const client = supabase;
+    if (!client) return;
+    const row = changeEventToRow(event);
+    void client
+      .from("app_change_events")
+      .insert(row)
+      .then(async ({ error }) => {
+        // Project create races: event can arrive before projects row. Retry without FK.
+        if (
+          error &&
+          row.project_id &&
+          /app_change_events_project_id_fkey/i.test(error.message)
+        ) {
+          const { project_id: _drop, ...rest } = row;
+          void client
+            .from("app_change_events")
+            .insert({ ...rest, project_id: null })
+            .then(logDbError("change event insert (no project_id)"));
+          return;
+        }
+        logDbError("change event insert")({ error });
+      });
+  }, []);
+
   const recordChangeEvent = useCallback(
     (
       input: Omit<RecordChangeInput, "intentional" | "actorUserId" | "actorName"> & {
         intentional?: boolean;
       },
       financeSnapshot?: RecordFinanceSnapshot,
+      options?: { skipRemote?: boolean },
     ): ChangeEvent => {
       const authorInfo = (() => {
         const id = currentUserIdRef.current;
@@ -1444,11 +1527,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...authorInfo,
       });
       setChangeEvents((prev) => sortChangeEventsDesc([event, ...prev]));
-      if (supabase) {
-        void supabase
-          .from("app_change_events")
-          .insert(changeEventToRow(event))
-          .then(logDbError("change event insert"));
+      if (supabase && !options?.skipRemote) {
+        persistChangeEventRemote(event);
       }
       if (financeSnapshot) {
         const hist = buildFinancialHistoryEntry({
@@ -1463,7 +1543,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       return event;
     },
-    [],
+    [persistChangeEventRemote],
   );
 
   const updateFinanceSettings = useCallback(
@@ -1745,7 +1825,37 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (data.warehouseLots.length > 0) {
         setWarehouse((prev) => applyWarehouseLotCsvRows(prev, data.warehouseLots));
       }
-      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"}, ${data.warehouseLots.length} warehouse lot${data.warehouseLots.length === 1 ? "" : "s"})`;
+      if (data.warehouseSkladMaps.length > 0) {
+        const maps: WarehouseSkladMap[] = data.warehouseSkladMaps
+          .map((m) => {
+            const byId = projectsRef.current.find((p) => p.id === m.projectId);
+            const byName = m.projectName
+              ? projectsRef.current.find(
+                  (p) =>
+                    p.name.toLowerCase() === m.projectName!.toLowerCase(),
+                )
+              : undefined;
+            const projectId = byId?.id ?? byName?.id;
+            if (!projectId) return null;
+            return {
+              id: m.id || crypto.randomUUID(),
+              sourceSklad: m.sourceSklad,
+              projectId,
+              site: m.site,
+              slot: m.slot,
+              createdAt: new Date().toISOString(),
+            } satisfies WarehouseSkladMap;
+          })
+          .filter((m): m is WarehouseSkladMap => m != null);
+        if (maps.length > 0) {
+          setWarehouse((prev) => {
+            const result = applySkladMapsToWarehouseState(prev, maps);
+            return result.state;
+          });
+          void persistRemoteSkladMaps(maps);
+        }
+      }
+      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"}, ${data.warehouseLots.length} warehouse lot${data.warehouseLots.length === 1 ? "" : "s"}, ${data.warehouseSkladMaps.length} sklad map${data.warehouseSkladMaps.length === 1 ? "" : "s"})`;
       recordChangeEvent(
         {
           id: createEventId(),
@@ -1910,9 +2020,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       createdAt,
     };
     setProjects((prev) => [project, ...prev]);
+    // Keep change event local until projects row exists (FK on app_change_events).
+    const event = recordChangeEvent(
+      {
+        domain: "crm",
+        entityType: "project",
+        entityId: id,
+        projectId: id,
+        action: "create",
+        summary: `Created project ${project.name}`,
+        payloadJson: {
+          name: project.name,
+          stage: project.stage,
+          market: project.market,
+        },
+      },
+      undefined,
+      { skipRemote: Boolean(supabase) },
+    );
     if (supabase) {
-      // Insert the comment only after the project row exists (FK constraint).
-      void supabase
+      // Insert comment / history only after the project row exists (FK constraint).
+      const insertPromise = supabase
         .from("projects")
         .insert({
           id: project.id,
@@ -1946,22 +2074,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         })
         .then((res) => {
           logDbError("project insert")(res);
-          if (res.error || !initialComment) return;
-          void supabase!
-            .from("project_comments")
-            .insert({
-              id: initialComment.id,
-              project_id: id,
-              text: initialComment.text,
-              author: initialComment.author,
-              ...(supportsCommentAuthorId
-                ? { author_user_id: initialComment.authorUserId ?? null }
-                : {}),
-              stage_change: null,
-              created_at: initialComment.createdAt,
-            })
-            .then(logDbError("initial comment insert"));
-          if (!res.error && supportsMetricsFields) {
+          if (res.error) return false;
+          if (initialComment) {
+            void supabase!
+              .from("project_comments")
+              .insert({
+                id: initialComment.id,
+                project_id: id,
+                text: initialComment.text,
+                author: initialComment.author,
+                ...(supportsCommentAuthorId
+                  ? { author_user_id: initialComment.authorUserId ?? null }
+                  : {}),
+                stage_change: null,
+                created_at: initialComment.createdAt,
+              })
+              .then(logDbError("initial comment insert"));
+          }
+          if (supportsMetricsFields) {
             void supabase!
               .from("project_stage_history")
               .insert({
@@ -1971,21 +2101,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               })
               .then(logDbError("stage history insert"));
           }
+          persistChangeEventRemote(event);
+          return true;
         });
+      projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));
+    } else {
+      projectInsertWaitersRef.current.set(id, Promise.resolve(true));
     }
-    recordChangeEvent({
-      domain: "crm",
-      entityType: "project",
-      entityId: id,
-      projectId: id,
-      action: "create",
-      summary: `Created project ${project.name}`,
-      payloadJson: {
-        name: project.name,
-        stage: project.stage,
-        market: project.market,
-      },
-    });
     return id;
   }, [
     supportsOwnershipFields,
@@ -1993,6 +2115,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     supportsMetricsFields,
     resolveAuthor,
     recordChangeEvent,
+    persistChangeEventRemote,
   ]);
 
   const addComment = useCallback(
@@ -4498,8 +4621,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     };
     setProjects((prev) => [project, ...prev]);
     setWarehouse((prev) => ({ ...prev, holdingProjectId: id }));
+    const event = recordChangeEvent(
+      {
+        domain: "warehouse",
+        entityType: "holding_project",
+        entityId: id,
+        projectId: id,
+        action: "create",
+        summary: `Created ${WAREHOUSE_HOLDING_PROJECT_NAME}`,
+      },
+      undefined,
+      { skipRemote: Boolean(supabase) },
+    );
     if (supabase) {
-      void supabase
+      const insertPromise = supabase
         .from("projects")
         .insert({
           id: project.id,
@@ -4527,18 +4662,23 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               }
             : {}),
         })
-        .then(logDbError("warehouse holding project insert"));
+        .then((res) => {
+          logDbError("warehouse holding project insert")(res);
+          if (res.error) return false;
+          persistChangeEventRemote(event);
+          return true;
+        });
+      projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));
+    } else {
+      projectInsertWaitersRef.current.set(id, Promise.resolve(true));
     }
-    recordChangeEvent({
-      domain: "warehouse",
-      entityType: "holding_project",
-      entityId: id,
-      projectId: id,
-      action: "create",
-      summary: `Created ${WAREHOUSE_HOLDING_PROJECT_NAME}`,
-    });
     return id;
-  }, [recordChangeEvent, supportsMetricsFields, supportsWarehouseHolding]);
+  }, [
+    recordChangeEvent,
+    persistChangeEventRemote,
+    supportsMetricsFields,
+    supportsWarehouseHolding,
+  ]);
 
   const upsertWarehouseItem = useCallback(
     (input: {
@@ -4589,6 +4729,69 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     },
     [],
   );
+
+  const importMoneyWorksWarehouse = useCallback(async (): Promise<
+    | {
+        ok: true;
+        stats: {
+          groups: number;
+          items: number;
+          lots: number;
+          balances: number;
+          serials: number;
+          parkedSystem: number;
+        };
+      }
+    | { ok: false; error: string }
+  > => {
+    const holdingId = ensureWarehouseHoldingProject();
+    const holdingReady =
+      projectInsertWaitersRef.current.get(holdingId) ?? Promise.resolve(true);
+    try {
+      await holdingReady;
+      const res = await fetch("/api/warehouse/moneyworks-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ holdingProjectId: holdingId }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        stats?: {
+          groups: number;
+          items: number;
+          lots: number;
+          balances: number;
+          serials: number;
+          parkedSystem: number;
+        };
+        warehouse?: Omit<WarehouseState, "holdingProjectId">;
+      };
+      if (!res.ok || !data.ok || !data.warehouse || !data.stats) {
+        return { ok: false, error: data.error || "Import failed" };
+      }
+      setWarehouse((prev) => ({
+        ...data.warehouse!,
+        holdingProjectId: prev.holdingProjectId ?? holdingId,
+        movements: data.warehouse!.movements ?? [],
+      }));
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "lot",
+        entityId: "moneyworks-import",
+        projectId: holdingId,
+        action: "create",
+        summary: `Imported MoneyWorks stock: ${data.stats.balances} balances, ${data.stats.items} items, ${data.stats.serials} serials (${data.stats.parkedSystem} System-* parked in ELX/Buffer)`,
+        payloadJson: data.stats,
+      });
+      return { ok: true, stats: data.stats };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }, [ensureWarehouseHoldingProject, recordChangeEvent]);
 
   /** Move proportional materials expense with stock between projects. */
   const moveLotExpenseCost = useCallback(
@@ -4755,8 +4958,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         settled: boolean;
       }[] = [];
 
-      setProjects((prev) =>
-        prev.map((p) => {
+      setProjects(() => {
+        const base = projectsRef.current;
+        const nextProjects = base.map((p) => {
           let changed = false;
           const schedule = (p.financials.expenseSchedule ?? []).map((e) => {
             if (expenseIds && !expenseIds.includes(e.id)) return e;
@@ -4856,8 +5060,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             ...p,
             financials: { ...p.financials, expenseSchedule: schedule },
           };
-        }),
-      );
+        });
+        projectsRef.current = nextProjects;
+        return nextProjects;
+      });
 
       for (const c of changes) {
         const summary = c.settled
@@ -4895,6 +5101,189 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [recordChangeEvent],
   );
 
+  const linkProjectWarehouseExpenses = useCallback(():
+    | {
+        ok: true;
+        linkedLots: number;
+        createdExpenses: string[];
+        projectCount: number;
+      }
+    | { ok: false; error: string } => {
+    const linked = linkProjectSlotLotsToMaterialsExpenses(
+      projectsRef.current,
+      warehouseRef.current,
+    );
+    if (linked.projectCount === 0 && linked.linkedLots === 0) {
+      return {
+        ok: false,
+        error: "No project-slot stock found to link.",
+      };
+    }
+    setWarehouse(linked.state);
+    warehouseRef.current = linked.state;
+    setProjects(linked.projects);
+    projectsRef.current = linked.projects;
+    reconcileBudgetExpenses();
+    recordChangeEvent({
+      domain: "warehouse",
+      entityType: "expense_link",
+      entityId: "project-materials",
+      action: "update",
+      summary: `Linked ${linked.linkedLots} WH lots to manufacture-materials expenses (${linked.projectCount} projects)`,
+      payloadJson: {
+        linkedLots: linked.linkedLots,
+        createdExpenses: linked.createdExpenseProjectNames,
+        projectCount: linked.projectCount,
+      },
+    });
+    return {
+      ok: true,
+      linkedLots: linked.linkedLots,
+      createdExpenses: linked.createdExpenseProjectNames,
+      projectCount: linked.projectCount,
+    };
+  }, [recordChangeEvent, reconcileBudgetExpenses]);
+
+  const applySystemSkladMapping = useCallback(async (): Promise<
+    | {
+        ok: true;
+        createdProjects: string[];
+        movedBalances: number;
+        movedSerials: number;
+        maps: number;
+        unmatched: string[];
+        linkedLots: number;
+        createdExpenses: string[];
+      }
+    | { ok: false; error: string }
+  > => {
+    const createdProjects: string[] = [];
+    const createdLookup: { id: string; name: string }[] = [];
+    for (const seed of SYSTEM_SKLAD_PROJECT_SEEDS) {
+      const exists = projectsRef.current.some(
+        (p) => p.name.toLowerCase() === seed.name.toLowerCase(),
+      );
+      if (exists) continue;
+      const id = addProject({
+        name: seed.name,
+        client: seed.client,
+        country: seed.country,
+        city: seed.city,
+        series: seed.series,
+        market: seed.market,
+        sizeKw: seed.sizeKw,
+        stage: "under-development",
+        baseDescription: seed.baseDescription,
+      });
+      createdProjects.push(seed.name);
+      createdLookup.push({ id, name: seed.name });
+      const ready =
+        projectInsertWaitersRef.current.get(id) ?? Promise.resolve(true);
+      const ok = await ready;
+      if (!ok) {
+        return {
+          ok: false,
+          error: `Failed to create project "${seed.name}" in database before mapping.`,
+        };
+      }
+    }
+
+    const maps = buildDefaultSkladMaps([
+      ...projectsRef.current,
+      ...createdLookup,
+    ]);
+    if (maps.length === 0) {
+      return {
+        ok: false,
+        error:
+          "No System-* → project maps resolved. Create/match projects first.",
+      };
+    }
+
+    const result = applySkladMapsToWarehouseState(
+      warehouseRef.current,
+      maps,
+    );
+
+    // Newly created seeds may not be in projectsRef until next render.
+    const projectById = new Map(
+      projectsRef.current.map((p) => [p.id, p] as const),
+    );
+    for (const seed of SYSTEM_SKLAD_PROJECT_SEEDS) {
+      const created = createdLookup.find((c) => c.name === seed.name);
+      if (!created || projectById.has(created.id)) continue;
+      const createdAt = new Date().toISOString();
+      projectById.set(created.id, {
+        id: created.id,
+        name: seed.name,
+        client: seed.client,
+        country: seed.country,
+        city: seed.city,
+        series: seed.series,
+        market: seed.market,
+        sizeKw: seed.sizeKw,
+        stage: "under-development",
+        baseDescription: seed.baseDescription,
+        lastClientContactAt: createdAt.slice(0, 10),
+        emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
+        emailReminderEnabled: true,
+        ...initialMetricsFields({
+          stage: "under-development",
+          createdDate: createdAt.slice(0, 10),
+        }),
+        comments: [],
+        todos: [],
+        contacts: [],
+        files: [],
+        financials: emptyFinancials(),
+        schedule: emptySchedule(),
+        createdAt,
+      });
+    }
+
+    const linked = linkProjectSlotLotsToMaterialsExpenses(
+      [...projectById.values()],
+      result.state,
+    );
+
+    setWarehouse(linked.state);
+    warehouseRef.current = linked.state;
+    setProjects(linked.projects);
+    projectsRef.current = linked.projects;
+
+    await persistRemoteSkladMaps(maps);
+    reconcileBudgetExpenses();
+
+    recordChangeEvent({
+      domain: "warehouse",
+      entityType: "sklad_map",
+      entityId: "system-map",
+      action: "update",
+      summary: `Mapped System-* stock to projects: ${result.movedBalances} balances, ${result.movedSerials} serials (${maps.length} maps); linked ${linked.linkedLots} lots to materials expenses`,
+      payloadJson: {
+        maps: maps.map((m) => ({
+          sourceSklad: m.sourceSklad,
+          projectId: m.projectId,
+        })),
+        createdProjects,
+        unmatched: result.unmatched,
+        linkedLots: linked.linkedLots,
+        createdExpenses: linked.createdExpenseProjectNames,
+      },
+    });
+
+    return {
+      ok: true,
+      createdProjects,
+      movedBalances: result.movedBalances,
+      movedSerials: result.movedSerials,
+      maps: maps.length,
+      unmatched: result.unmatched,
+      linkedLots: linked.linkedLots,
+      createdExpenses: linked.createdExpenseProjectNames,
+    };
+  }, [addProject, recordChangeEvent, reconcileBudgetExpenses]);
+
   const receiveStock = useCallback(
     (
       input: WarehouseReceiveInput,
@@ -4906,7 +5295,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, error: "Unit cost is invalid" };
       }
       if (
-        input.destination.type === "project" &&
+        input.destination.slot === "project" &&
         !input.destination.projectId
       ) {
         return { ok: false, error: "Select a destination project" };
@@ -5070,10 +5459,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         label,
         createdAt: new Date().toISOString(),
       };
-      const destLoc: WarehouseLocation =
-        input.destination.type === "project"
-          ? { type: "project", projectId: input.destination.projectId }
-          : { type: input.destination.type };
+      const destLoc: WarehouseLocation = cloneLocation(input.destination);
       const balance: WarehouseBalance = {
         id: crypto.randomUUID(),
         lotId,
@@ -5103,13 +5489,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         entityType: "lot",
         entityId: lotId,
         projectId:
-          destLoc.type === "project" ? destLoc.projectId : holdingId,
+          destLoc.slot === "project" ? destLoc.projectId : holdingId,
         action: "receive",
         summary: movementSummary("receive", input.qty, undefined, toLabel),
         payloadJson: {
           itemId,
           qty: input.qty,
-          to: destLoc.type,
+          site: destLoc.site,
+          slot: destLoc.slot,
           ...(destLoc.projectId ? { projectId: destLoc.projectId } : {}),
         },
       });
@@ -5147,10 +5534,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (locationsEqual(input.from, input.to)) {
         return { ok: false, error: "Source and destination are the same" };
       }
-      if (input.to.type === "project" && !input.to.projectId) {
+      if (input.to.slot === "project" && !input.to.projectId) {
         return { ok: false, error: "Select a destination project" };
       }
-      if (input.from.type === "project" && !input.from.projectId) {
+      if (input.from.slot === "project" && !input.from.projectId) {
         return { ok: false, error: "Invalid source location" };
       }
 
@@ -5208,13 +5595,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         entityType: "lot",
         entityId: input.lotId,
         projectId:
-          input.to.type === "project" ? input.to.projectId : holdingId,
+          input.to.slot === "project" ? input.to.projectId : holdingId,
         action: "transfer",
         summary: movementSummary("transfer", input.qty, fromLabel, toLabel),
         payloadJson: {
           qty: input.qty,
-          from: input.from.type,
-          to: input.to.type,
+          fromSite: input.from.site,
+          fromSlot: input.from.slot,
+          toSite: input.to.site,
+          toSlot: input.to.slot,
           ...(input.from.projectId ? { fromProjectId: input.from.projectId } : {}),
           ...(input.to.projectId ? { toProjectId: input.to.projectId } : {}),
         },
@@ -5235,7 +5624,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       input: WarehouseConsumeInput,
     ): { ok: true } | { ok: false; error: string } => {
       if (!(input.qty > 0)) return { ok: false, error: "Quantity must be positive" };
-      if (input.from.type === "project" && !input.from.projectId) {
+      if (input.from.slot === "project" && !input.from.projectId) {
         return { ok: false, error: "Invalid location" };
       }
       const wh = warehouseRef.current;
@@ -5275,14 +5664,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         entityType: "lot",
         entityId: input.lotId,
         projectId:
-          input.from.type === "project"
+          input.from.slot === "project"
             ? input.from.projectId
             : warehouseRef.current.holdingProjectId ?? undefined,
         action: "consume",
         summary: movementSummary("consume", input.qty, fromLabel),
         payloadJson: {
           qty: input.qty,
-          from: input.from.type,
+          site: input.from.site,
+          slot: input.from.slot,
           ...(input.from.projectId ? { projectId: input.from.projectId } : {}),
         },
       });
@@ -5344,7 +5734,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         payloadJson: {
           fromQty: currentQty,
           toQty: input.newQty,
-          location: input.location.type,
+          location: `${input.location.site}/${input.location.slot}`,
         },
       });
 
@@ -5384,57 +5774,85 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               subcategory: lot.subcategory,
             };
 
+      if (input.itemId && !wh.items.some((i) => i.id === input.itemId)) {
+        return { ok: false, error: "Catalog item not found" };
+      }
+      if (
+        input.purchaseProjectId &&
+        !projectsRef.current.some((p) => p.id === input.purchaseProjectId)
+      ) {
+        return { ok: false, error: "Purchase project not found" };
+      }
+
+      const nextExpenseId =
+        input.expenseId !== undefined
+          ? input.expenseId && input.expenseId.trim()
+            ? input.expenseId.trim()
+            : undefined
+          : lot.expenseId;
+      const nextPurchaseProjectId =
+        input.purchaseProjectId?.trim() || lot.purchaseProjectId;
+      const nextItemId = input.itemId?.trim() || lot.itemId;
+
+      const patchLot = (l: typeof lot): typeof lot => {
+        if (l.id !== input.lotId) return l;
+        const nextLot = {
+          ...l,
+          itemId: nextItemId,
+          unitCostIncVat: roundMoney(nextInc),
+          unitCostExVat: roundMoney(nextEx),
+          receivedAt,
+          category: cat.category,
+          purchaseProjectId: nextPurchaseProjectId,
+        };
+        if (cat.subcategory) nextLot.subcategory = cat.subcategory;
+        else delete nextLot.subcategory;
+        if (input.label !== undefined) {
+          if (input.label?.trim()) nextLot.label = input.label.trim();
+          else delete nextLot.label;
+        }
+        if (input.supplier !== undefined) {
+          if (input.supplier?.trim()) nextLot.supplier = input.supplier.trim();
+          else delete nextLot.supplier;
+        }
+        if (input.notes !== undefined) {
+          if (input.notes?.trim()) nextLot.notes = input.notes.trim();
+          else delete nextLot.notes;
+        }
+        if (input.expenseId !== undefined) {
+          if (nextExpenseId) nextLot.expenseId = nextExpenseId;
+          else delete nextLot.expenseId;
+        }
+        return nextLot;
+      };
+
       setWarehouse((prev) => ({
         ...prev,
-        lots: prev.lots.map((l) => {
-          if (l.id !== input.lotId) return l;
-          const next = {
-            ...l,
-            unitCostIncVat: roundMoney(nextInc),
-            unitCostExVat: roundMoney(nextEx),
-            receivedAt,
-            category: cat.category,
-          };
-          if (cat.subcategory) next.subcategory = cat.subcategory;
-          else delete next.subcategory;
-          if (input.label !== undefined) {
-            if (input.label?.trim()) next.label = input.label.trim();
-            else delete next.label;
-          }
-          if (input.supplier !== undefined) {
-            if (input.supplier?.trim()) next.supplier = input.supplier.trim();
-            else delete next.supplier;
-          }
-          if (input.notes !== undefined) {
-            if (input.notes?.trim()) next.notes = input.notes.trim();
-            else delete next.notes;
-          }
-          return next;
-        }),
+        lots: prev.lots.map(patchLot),
       }));
 
       setProjects((prev) =>
         prev.map((p) => {
           const schedule = (p.financials.expenseSchedule ?? []).map((e) => {
             if (e.warehouseLotId !== input.lotId) return e;
-            const next = {
+            const nextExp = {
               ...e,
               dueDate: receivedAt,
               category: cat.category,
             };
-            if (e.actualDate) next.actualDate = receivedAt;
-            if (cat.subcategory) next.subcategory = cat.subcategory;
-            else delete next.subcategory;
+            if (e.actualDate) nextExp.actualDate = receivedAt;
+            if (cat.subcategory) nextExp.subcategory = cat.subcategory;
+            else delete nextExp.subcategory;
             if (input.label !== undefined) {
-              if (input.label?.trim()) next.label = input.label.trim();
+              if (input.label?.trim()) nextExp.label = input.label.trim();
             }
             if (costChanged) {
-              next.amount = roundMoney(e.amount * costScale);
+              nextExp.amount = roundMoney(e.amount * costScale);
               if (e.amountExVat != null) {
-                next.amountExVat = roundMoney(e.amountExVat * costScale);
+                nextExp.amountExVat = roundMoney(e.amountExVat * costScale);
               }
             }
-            return next;
+            return nextExp;
           });
           return {
             ...p,
@@ -5452,6 +5870,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         payloadJson: {
           ...(costChanged ? { unitCostUpdated: true } : {}),
           ...(input.receivedAt ? { receivedAt } : {}),
+          ...(input.expenseId !== undefined
+            ? { expenseId: nextExpenseId ?? null }
+            : {}),
+          ...(input.purchaseProjectId
+            ? { purchaseProjectId: nextPurchaseProjectId }
+            : {}),
         },
       });
       if (costChanged) {
@@ -5480,22 +5904,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
       warehouseRef.current = {
         ...warehouseRef.current,
-        lots: warehouseRef.current.lots.map((l) => {
-          if (l.id !== input.lotId) return l;
-          const patched = {
-            ...l,
-            unitCostIncVat: roundMoney(nextInc),
-            unitCostExVat: roundMoney(nextEx),
-            receivedAt,
-            category: cat.category,
-          };
-          if (cat.subcategory) patched.subcategory = cat.subcategory;
-          else delete patched.subcategory;
-          return patched;
-        }),
+        lots: warehouseRef.current.lots.map(patchLot),
       };
-      if (lot.expenseId) {
-        reconcileBudgetExpenses([lot.expenseId]);
+      const reconcileIds = [lot.expenseId, nextExpenseId].filter(
+        (id, i, arr): id is string => Boolean(id) && arr.indexOf(id) === i,
+      );
+      if (reconcileIds.length > 0) {
+        reconcileBudgetExpenses(reconcileIds);
       }
 
       return { ok: true };
@@ -5651,6 +6066,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateWarehouseLot,
         deleteWarehouseLot,
         upsertWarehouseItem,
+        importMoneyWorksWarehouse,
+        applySystemSkladMapping,
+        linkProjectWarehouseExpenses,
         addMilestone,
         updateMilestone,
         deleteMilestone,

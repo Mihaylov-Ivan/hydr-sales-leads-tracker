@@ -2,18 +2,73 @@ import {
   ProjectExpenseCategory,
   ProjectExpenseSubcategory,
   WarehouseBalance,
+  WarehouseGroup,
+  WarehouseItem,
   WarehouseLocation,
   WarehouseLot,
   WarehouseMaterialKind,
   WarehouseMovement,
+  WarehouseSerial,
+  WarehouseSite,
+  WarehouseSlot,
   WarehouseState,
+  WAREHOUSE_SITE_LABELS,
+  WAREHOUSE_SLOT_LABELS,
   amountExFromInc,
   emptyWarehouseState,
 } from "./types";
 
+const SITES = new Set<WarehouseSite>(["ELX", "MH", "Van"]);
+const SLOTS = new Set<WarehouseSlot>(["project", "spare", "buffer"]);
+
+/** Normalize any location shape (new or legacy localStorage) to site×slot. */
+export function normalizeLocation(raw: unknown): WarehouseLocation | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+
+  // New shape
+  if (typeof o.site === "string" && typeof o.slot === "string") {
+    const site = o.site as WarehouseSite;
+    const slot = o.slot as WarehouseSlot;
+    if (!SITES.has(site) || !SLOTS.has(slot)) return undefined;
+    if (slot === "project") {
+      const projectId =
+        typeof o.projectId === "string" ? o.projectId : undefined;
+      return { site, slot: "project", projectId };
+    }
+    return { site, slot };
+  }
+
+  // Legacy: { type: project|spare|buffer|unallocated, projectId? }
+  if (typeof o.type === "string") {
+    const site: WarehouseSite = "ELX";
+    if (o.type === "project") {
+      return {
+        site,
+        slot: "project",
+        projectId: typeof o.projectId === "string" ? o.projectId : undefined,
+      };
+    }
+    if (o.type === "spare") return { site, slot: "spare" };
+    if (o.type === "buffer" || o.type === "unallocated") {
+      return { site, slot: "buffer" };
+    }
+  }
+  return undefined;
+}
+
+export function cloneLocation(loc: WarehouseLocation): WarehouseLocation {
+  if (loc.slot === "project") {
+    return { site: loc.site, slot: "project", projectId: loc.projectId };
+  }
+  return { site: loc.site, slot: loc.slot };
+}
+
 export function locationKey(loc: WarehouseLocation): string {
-  if (loc.type === "project") return `project:${loc.projectId ?? ""}`;
-  return loc.type;
+  if (loc.slot === "project") {
+    return `${loc.site}:project:${loc.projectId ?? ""}`;
+  }
+  return `${loc.site}:${loc.slot}`;
 }
 
 export function locationsEqual(
@@ -27,13 +82,14 @@ export function locationLabel(
   loc: WarehouseLocation,
   projectName?: (id: string) => string | undefined,
 ): string {
-  if (loc.type === "spare") return "Spares";
-  if (loc.type === "buffer") return "Buffer";
-  if (loc.type === "unallocated") return "Unallocated";
-  const name = loc.projectId
-    ? (projectName?.(loc.projectId) ?? loc.projectId)
-    : "Project";
-  return name;
+  const site = WAREHOUSE_SITE_LABELS[loc.site] ?? loc.site;
+  if (loc.slot === "project") {
+    const name = loc.projectId
+      ? (projectName?.(loc.projectId) ?? loc.projectId)
+      : "Project";
+    return `${site} / ${name}`;
+  }
+  return `${site} / ${WAREHOUSE_SLOT_LABELS[loc.slot]}`;
 }
 
 export function materialKindToExpense(
@@ -62,7 +118,7 @@ export function expenseProjectIdForLocation(
   loc: WarehouseLocation,
   holdingProjectId: string,
 ): string {
-  if (loc.type === "project" && loc.projectId) return loc.projectId;
+  if (loc.slot === "project" && loc.projectId) return loc.projectId;
   return holdingProjectId;
 }
 
@@ -107,31 +163,43 @@ export function applyBalanceDelta(
     next.push({
       id: crypto.randomUUID(),
       lotId,
-      location:
-        loc.type === "project"
-          ? { type: "project", projectId: loc.projectId }
-          : { type: loc.type },
+      location: cloneLocation(loc),
       qty: delta,
     });
   }
   return next;
 }
 
+export function stockValueAtSlot(
+  lots: WarehouseLot[],
+  balances: WarehouseBalance[],
+  slot: WarehouseSlot,
+  opts?: { site?: WarehouseSite; projectId?: string },
+): number {
+  let total = 0;
+  for (const b of balances) {
+    if (b.location.slot !== slot) continue;
+    if (opts?.site && b.location.site !== opts.site) continue;
+    if (slot === "project" && opts?.projectId != null) {
+      if (b.location.projectId !== opts.projectId) continue;
+    }
+    const lot = lots.find((l) => l.id === b.lotId);
+    if (!lot) continue;
+    total += b.qty * lot.unitCostIncVat;
+  }
+  return roundMoney(total);
+}
+
+/** @deprecated Prefer stockValueAtSlot */
 export function stockValueAtLocation(
   lots: WarehouseLot[],
   balances: WarehouseBalance[],
   locType: "spare" | "buffer" | "project" | "unallocated",
   projectId?: string,
 ): number {
-  let total = 0;
-  for (const b of balances) {
-    if (b.location.type !== locType) continue;
-    if (locType === "project" && b.location.projectId !== projectId) continue;
-    const lot = lots.find((l) => l.id === b.lotId);
-    if (!lot) continue;
-    total += b.qty * lot.unitCostIncVat;
-  }
-  return roundMoney(total);
+  const slot: WarehouseSlot =
+    locType === "unallocated" ? "buffer" : locType;
+  return stockValueAtSlot(lots, balances, slot, { projectId });
 }
 
 export function totalStockValue(
@@ -212,16 +280,153 @@ export function preserveBudgetAmount(
   return roundMoney(expense.amount);
 }
 
+function migrateBalance(raw: unknown): WarehouseBalance | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.lotId !== "string") return null;
+  const loc = normalizeLocation(o.location);
+  if (!loc) return null;
+  const qty = typeof o.qty === "number" ? o.qty : Number(o.qty);
+  if (!Number.isFinite(qty)) return null;
+  const b: WarehouseBalance = { id: o.id, lotId: o.lotId, location: loc, qty };
+  if (typeof o.sourceSklad === "string" && o.sourceSklad) {
+    b.sourceSklad = o.sourceSklad;
+  }
+  return b;
+}
+
+function migrateLot(raw: unknown): WarehouseLot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.itemId !== "string") return null;
+  const lot: WarehouseLot = {
+    id: o.id,
+    itemId: o.itemId,
+    qtyReceived: Number(o.qtyReceived) || 0,
+    unitCostIncVat: Number(o.unitCostIncVat) || 0,
+    unitCostExVat: Number(o.unitCostExVat) || 0,
+    receivedAt: String(o.receivedAt ?? "").slice(0, 10),
+    purchaseProjectId: String(o.purchaseProjectId ?? ""),
+    category: (o.category as WarehouseLot["category"]) || "materials",
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.expenseId === "string" && o.expenseId) lot.expenseId = o.expenseId;
+  if (o.subcategory) lot.subcategory = o.subcategory as WarehouseLot["subcategory"];
+  if (typeof o.supplier === "string") lot.supplier = o.supplier;
+  if (typeof o.notes === "string") lot.notes = o.notes;
+  if (typeof o.label === "string") lot.label = o.label;
+  if (typeof o.sourceSklad === "string") lot.sourceSklad = o.sourceSklad;
+  return lot;
+}
+
+function migrateItem(raw: unknown): WarehouseItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.name !== "string") return null;
+  const item: WarehouseItem = {
+    id: o.id,
+    name: o.name,
+    unit: typeof o.unit === "string" ? o.unit : "pcs",
+    defaultMaterialKind:
+      o.defaultMaterialKind === "installation" ||
+      o.defaultMaterialKind === "maintenance"
+        ? o.defaultMaterialKind
+        : "materials",
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.sku === "string" && o.sku) item.sku = o.sku;
+  if (typeof o.barcode === "string" && o.barcode) item.barcode = o.barcode;
+  if (typeof o.groupId === "string" && o.groupId) item.groupId = o.groupId;
+  if (typeof o.minQty === "number") item.minQty = o.minQty;
+  if (typeof o.maxQty === "number") item.maxQty = o.maxQty;
+  if (typeof o.tracksSerial === "boolean") item.tracksSerial = o.tracksSerial;
+  return item;
+}
+
+function migrateMovement(raw: unknown): WarehouseMovement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.lotId !== "string") return null;
+  const m: WarehouseMovement = {
+    id: o.id,
+    lotId: o.lotId,
+    action: (o.action as WarehouseMovement["action"]) || "adjust",
+    qty: Number(o.qty) || 0,
+    occurredAt: String(o.occurredAt ?? new Date().toISOString()),
+  };
+  const from = normalizeLocation(o.from);
+  const to = normalizeLocation(o.to);
+  if (from) m.from = from;
+  if (to) m.to = to;
+  if (typeof o.note === "string") m.note = o.note;
+  return m;
+}
+
+function migrateGroup(raw: unknown): WarehouseGroup | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.name !== "string") return null;
+  const g: WarehouseGroup = {
+    id: o.id,
+    name: o.name,
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.parentId === "string") g.parentId = o.parentId;
+  if (typeof o.sourceKey === "string") g.sourceKey = o.sourceKey;
+  return g;
+}
+
+function migrateSerial(raw: unknown): WarehouseSerial | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.itemId !== "string") return null;
+  if (typeof o.serial !== "string") return null;
+  const loc = normalizeLocation(o.location);
+  if (!loc) return null;
+  const s: WarehouseSerial = {
+    id: o.id,
+    itemId: o.itemId,
+    serial: o.serial,
+    location: loc,
+    qty: Number(o.qty) || 1,
+    status:
+      o.status === "consumed" || o.status === "disposed"
+        ? o.status
+        : "in_stock",
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.lotId === "string") s.lotId = o.lotId;
+  if (typeof o.sourceSklad === "string") s.sourceSklad = o.sourceSklad;
+  return s;
+}
+
 export function loadWarehouseState(): WarehouseState {
   try {
     const raw = window.localStorage.getItem("hydrogenera-warehouse-v1");
     if (!raw) return emptyWarehouseState();
-    const parsed = JSON.parse(raw) as Partial<WarehouseState>;
+    const parsed = JSON.parse(raw) as Partial<WarehouseState> & {
+      items?: unknown[];
+      lots?: unknown[];
+      balances?: unknown[];
+      movements?: unknown[];
+      groups?: unknown[];
+      serials?: unknown[];
+    };
     return {
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      lots: Array.isArray(parsed.lots) ? parsed.lots : [],
-      balances: Array.isArray(parsed.balances) ? parsed.balances : [],
-      movements: Array.isArray(parsed.movements) ? parsed.movements : [],
+      items: (parsed.items ?? []).map(migrateItem).filter(Boolean) as WarehouseItem[],
+      lots: (parsed.lots ?? []).map(migrateLot).filter(Boolean) as WarehouseLot[],
+      balances: (parsed.balances ?? [])
+        .map(migrateBalance)
+        .filter(Boolean) as WarehouseBalance[],
+      movements: (parsed.movements ?? [])
+        .map(migrateMovement)
+        .filter(Boolean) as WarehouseMovement[],
+      groups: (parsed.groups ?? [])
+        .map(migrateGroup)
+        .filter(Boolean) as WarehouseGroup[],
+      serials: (parsed.serials ?? [])
+        .map(migrateSerial)
+        .filter(Boolean) as WarehouseSerial[],
       holdingProjectId:
         typeof parsed.holdingProjectId === "string"
           ? parsed.holdingProjectId
