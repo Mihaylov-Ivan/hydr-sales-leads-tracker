@@ -1,0 +1,115 @@
+{
+  "generated_at": "2026-08-08T10:05:04.524Z",
+  "dry_run": true,
+  "stats": {
+    "matched_article": 865,
+    "matched_group_only": 0,
+    "unmatched": 141,
+    "name_updates": 317,
+    "patched": 1006
+  },
+  "retired_old_groups": 0,
+  "unmatched_sample": [
+    {
+      "name": "Коляно 90° 304L зав. (60",
+      "legacyName": null
+    },
+    {
+      "name": "Дебитомер О2 Plexiglass",
+      "legacyName": null
+    },
+    {
+      "name": "Коляно 45° 304L заварка (48",
+      "legacyName": null
+    },
+    {
+      "name": "С-профил",
+      "legacyName": null
+    },
+    {
+      "name": "Flow meter in Plexiglass for hydrogen",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба шевна 304L (168",
+      "legacyName": null
+    },
+    {
+      "name": "Профилна тръба Е3 25х25х1",
+      "legacyName": null
+    },
+    {
+      "name": "Контактор 4kW/9A",
+      "legacyName": null
+    },
+    {
+      "name": "Антискалант 230000л",
+      "legacyName": null
+    },
+    {
+      "name": "Цокъл за реле с 14 пина",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба ? 10х1",
+      "legacyName": null
+    },
+    {
+      "name": "Буферен съд 100л",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба шевна 304L (219",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба ? 10х1",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба прецизна ф20х1",
+      "legacyName": null
+    },
+    {
+      "name": "Шлаух полиамид бял 15/12",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба шевна 304L (21",
+      "legacyName": null
+    },
+    {
+      "name": "Union tee",
+      "legacyName": null
+    },
+    {
+      "name": "Уплътнение от експандиран тефлон ф400хф425х0",
+      "legacyName": null
+    },
+    {
+      "name": "Уплътнение от експандиран теф. ф397х325х0",
+      "legacyName": null
+    },
+    {
+      "name": "Профилна тръба ЕЗ 40х40х1",
+      "legacyName": null
+    },
+    {
+      "name": "Тръба ? 114.3х2",
+      "legacyName": null
+    },
+    {
+      "name": "Кабел ШВПС 5х1",
+      "legacyName": null
+    },
+    {
+      "name": "Намалител концентричен 316",
+      "legacyName": null
+    },
+    {
+      "name": "Пружина TOSACA 2",
+      "legacyName": null
+    }
+  ],
+  "taxonomy_group_count": 46
+}

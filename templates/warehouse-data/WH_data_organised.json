@@ -1,0 +1,1079 @@
+{
+  "counts": {
+    "grupi": 174,
+    "active_stoki_def": 1820,
+    "unique_stoki_def_articles": 1820,
+    "in_stock_catalog_items": 1242,
+    "in_stock_articles_total": 1242,
+    "stub_stock_without_def": 0,
+    "groups_with_stock": 110,
+    "stoki_rows_total": 3728,
+    "stoki_rows_qty_gt_0": 2078
+  },
+  "top20_groups_by_in_stock_item_count": [
+    {
+      "group": "2. Консумативи",
+      "in_stock_item_count": 106,
+      "has_grupi": true
+    },
+    {
+      "group": "Хале  - инструменти",
+      "in_stock_item_count": 54,
+      "has_grupi": true
+    },
+    { "group": "Машини", "in_stock_item_count": 47, "has_grupi": true },
+    {
+      "group": "Производствен цех - инструменти",
+      "in_stock_item_count": 42,
+      "has_grupi": true
+    },
+    { "group": "Фрезовъчен цех", "in_stock_item_count": 40, "has_grupi": true },
+    {
+      "group": "2.7. PP, Месинг, Хром връзки",
+      "in_stock_item_count": 37,
+      "has_grupi": true
+    },
+    { "group": "Кабелни Канали", "in_stock_item_count": 37, "has_grupi": true },
+    { "group": "3. Инструменти", "in_stock_item_count": 35, "has_grupi": true },
+    {
+      "group": "Кабелни накрайници, обувки",
+      "in_stock_item_count": 35,
+      "has_grupi": true
+    },
+    { "group": "7. Кабели", "in_stock_item_count": 33, "has_grupi": true },
+    { "group": "Клеми", "in_stock_item_count": 28, "has_grupi": true },
+    {
+      "group": "Платки - Green Innovation",
+      "in_stock_item_count": 27,
+      "has_grupi": true
+    },
+    {
+      "group": "2.2. Фитинги за заваряване",
+      "in_stock_item_count": 27,
+      "has_grupi": true
+    },
+    { "group": "М16", "in_stock_item_count": 24, "has_grupi": true },
+    { "group": "Металхидрид", "in_stock_item_count": 23, "has_grupi": true },
+    { "group": "Сензори", "in_stock_item_count": 23, "has_grupi": true },
+    {
+      "group": "Други (Електроника)",
+      "in_stock_item_count": 22,
+      "has_grupi": true
+    },
+    { "group": "М6", "in_stock_item_count": 21, "has_grupi": true },
+    {
+      "group": "3. Метални Елементи",
+      "in_stock_item_count": 20,
+      "has_grupi": true
+    },
+    {
+      "group": "1. Пречистване на вода",
+      "in_stock_item_count": 20,
+      "has_grupi": true
+    }
+  ],
+  "messy_group_names": [
+    {
+      "group": "0. За фактури",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "0. Разни",
+      "reasons": ["starts_with_digit", "contains_Razni"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "1) Грийн Иновейшън АД",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "1. Пречистване на вода",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 20
+    },
+    {
+      "group": "1. Съдове",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "1. Фирми",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "1.1 Електролизьор",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "1.1.1. Части (Електролизьор)",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 16
+    },
+    {
+      "group": "1.1.2. Крепежи (Електролизьор)",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 9
+    },
+    {
+      "group": "1.1.3. Други (Електролизьор)",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 1
+    },
+    {
+      "group": "1.2. Очиска",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "1.2.1. Части (Очиска)",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 3
+    },
+    {
+      "group": "1.2.2 Съдове (Очиска)",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 6
+    },
+    {
+      "group": "1.3. Металхидрид",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "2) Материали за платки",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "2. Консумативи",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 106
+    },
+    {
+      "group": "2. Корпуси",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 4
+    },
+    {
+      "group": "2. Тръбни връзки",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "2.1. Тръби",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 16
+    },
+    {
+      "group": "2.2. Фитинги за заваряване",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 27
+    },
+    {
+      "group": "2.3. Фитинги на резба",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "2.4. Фланци",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 11
+    },
+    {
+      "group": "2.5. Кранове",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "2.5.1. Кранове на фланци",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 8
+    },
+    {
+      "group": "2.5.2. Кранове на заварка",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 3
+    },
+    {
+      "group": "2.5.3. Кранове на резба",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 7
+    },
+    {
+      "group": "2.5.4. Вентили",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 13
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 8
+    },
+    {
+      "group": "2.5.6. Акутатори",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "2.6. Арматури",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "2.7. PP, Месинг, Хром връзки",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 37
+    },
+    {
+      "group": "2.8. Маркучи",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 7
+    },
+    {
+      "group": "3. Инструменти",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 35
+    },
+    {
+      "group": "3. Консумативи",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 3
+    },
+    {
+      "group": "3. Метални Елементи",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 20
+    },
+    {
+      "group": "4. Крепежи",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "4. Съдове",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 2
+    },
+    {
+      "group": "4. Услуги",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 3
+    },
+    {
+      "group": "5. Устройства",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 16
+    },
+    {
+      "group": "500",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "6. Електроника",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "7. Кабели",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 33
+    },
+    {
+      "group": "8. Табло газ анализатор",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "9. Други",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 1
+    },
+    {
+      "group": "951038",
+      "reasons": ["starts_with_digit"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "ЛД",
+      "reasons": ["very_short"],
+      "in_grupi": true,
+      "has_stock": false,
+      "in_stock_items": 0
+    },
+    {
+      "group": "М3",
+      "reasons": ["very_short"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 3
+    },
+    {
+      "group": "М5",
+      "reasons": ["very_short"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 10
+    },
+    {
+      "group": "М6",
+      "reasons": ["very_short"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 21
+    },
+    {
+      "group": "М8",
+      "reasons": ["very_short"],
+      "in_grupi": true,
+      "has_stock": true,
+      "in_stock_items": 12
+    }
+  ],
+  "exact_name_duplicates_across_groups": {
+    "count": 12,
+    "items": [
+      {
+        "normalized_name": "пила други",
+        "display_names": ["Пила други", "пила други"],
+        "groups": [
+          "Металхидрид",
+          "Производствен цех - инструменти",
+          "Фрезовъчен цех"
+        ],
+        "occurrences": [
+          {
+            "group": "Металхидрид",
+            "name": "пила други",
+            "qty": 3.0,
+            "has_def": true
+          },
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Пила други",
+            "qty": 3.0,
+            "has_def": true
+          },
+          {
+            "group": "Фрезовъчен цех",
+            "name": "пила други",
+            "qty": 2.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 3
+      },
+      {
+        "normalized_name": "захранване за din шина sdr-120-24 24v/5a",
+        "display_names": [
+          "Захранване за DIN шина SDR-120-24 24V/5A",
+          "захранване за DIN шина SDR-120-24 24V/5A"
+        ],
+        "groups": ["Захранвания", "Унител"],
+        "occurrences": [
+          {
+            "group": "Унител",
+            "name": "захранване за DIN шина SDR-120-24 24V/5A",
+            "qty": 3.0,
+            "has_def": true
+          },
+          {
+            "group": "Захранвания",
+            "name": "Захранване за DIN шина SDR-120-24 24V/5A",
+            "qty": 4.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "клещи други",
+        "display_names": ["Клещи други"],
+        "groups": ["Производствен цех - инструменти", "Хале  - инструменти"],
+        "occurrences": [
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Клещи други",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Хале  - инструменти",
+            "name": "Клещи други",
+            "qty": 5.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "клещи обикновени",
+        "display_names": ["клещи обикновени"],
+        "groups": ["Металхидрид", "Фрезовъчен цех"],
+        "occurrences": [
+          {
+            "group": "Фрезовъчен цех",
+            "name": "клещи обикновени",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Металхидрид",
+            "name": "клещи обикновени",
+            "qty": 2.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "клещи резачки knipex",
+        "display_names": ["Клещи резачки Knipex"],
+        "groups": ["Производствен цех - инструменти", "Хале  - инструменти"],
+        "occurrences": [
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Клещи резачки Knipex",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Хале  - инструменти",
+            "name": "Клещи резачки Knipex",
+            "qty": 1.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "макетен нож",
+        "display_names": ["макетен нож"],
+        "groups": ["Металхидрид", "Фрезовъчен цех"],
+        "occurrences": [
+          {
+            "group": "Металхидрид",
+            "name": "макетен нож",
+            "qty": 2.0,
+            "has_def": true
+          },
+          {
+            "group": "Фрезовъчен цех",
+            "name": "макетен нож",
+            "qty": 3.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "отвертки други права",
+        "display_names": ["Отвертки други права"],
+        "groups": ["Производствен цех - инструменти", "Хале  - инструменти"],
+        "occurrences": [
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Отвертки други права",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Хале  - инструменти",
+            "name": "Отвертки други права",
+            "qty": 2.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "отвертки кръстати",
+        "display_names": ["отвертки кръстати"],
+        "groups": ["Металхидрид", "Фрезовъчен цех"],
+        "occurrences": [
+          {
+            "group": "Металхидрид",
+            "name": "отвертки кръстати",
+            "qty": 3.0,
+            "has_def": true
+          },
+          {
+            "group": "Фрезовъчен цех",
+            "name": "отвертки кръстати",
+            "qty": 3.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "отвертки прави",
+        "display_names": ["отвертки прави"],
+        "groups": ["Металхидрид", "Фрезовъчен цех"],
+        "occurrences": [
+          {
+            "group": "Фрезовъчен цех",
+            "name": "отвертки прави",
+            "qty": 3.0,
+            "has_def": true
+          },
+          {
+            "group": "Металхидрид",
+            "name": "отвертки прави",
+            "qty": 10.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "пила topmaster",
+        "display_names": ["пила Topmaster"],
+        "groups": ["Металхидрид", "Фрезовъчен цех"],
+        "occurrences": [
+          {
+            "group": "Фрезовъчен цех",
+            "name": "пила Topmaster",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Металхидрид",
+            "name": "пила Topmaster",
+            "qty": 1.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "чирак други",
+        "display_names": ["Чирак други"],
+        "groups": ["Производствен цех - инструменти", "Хале  - инструменти"],
+        "occurrences": [
+          {
+            "group": "Хале  - инструменти",
+            "name": "Чирак други",
+            "qty": 1.0,
+            "has_def": true
+          },
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Чирак други",
+            "qty": 1.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      },
+      {
+        "normalized_name": "чук гумен",
+        "display_names": ["Чук гумен"],
+        "groups": ["Производствен цех - инструменти", "Хале  - инструменти"],
+        "occurrences": [
+          {
+            "group": "Производствен цех - инструменти",
+            "name": "Чук гумен",
+            "qty": 2.0,
+            "has_def": true
+          },
+          {
+            "group": "Хале  - инструменти",
+            "name": "Чук гумен",
+            "qty": 3.0,
+            "has_def": true
+          }
+        ],
+        "occurrence_count": 2
+      }
+    ]
+  },
+  "soft_duplicates_same_letters_diff_display": {
+    "count": 11,
+    "items": [
+      {
+        "soft_key": "пиладруги",
+        "display_names": ["Пила други", "пила други"],
+        "groups": [
+          "Металхидрид",
+          "Производствен цех - инструменти",
+          "Фрезовъчен цех"
+        ],
+        "occurrence_count": 3
+      },
+      {
+        "soft_key": "darkbaseunittypea06es71936bp000ba0",
+        "display_names": [
+          "Dark BaseUnit Type A0 6ES7193-6BP00-0BA0",
+          "Dark BaseUnit Type A0: 6ES7193-6BP00-0BA0"
+        ],
+        "groups": ["Жиланови"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "захранванезаdinшинаsdr1202424v5a",
+        "display_names": [
+          "Захранване за DIN шина SDR-120-24 24V/5A",
+          "захранване за DIN шина SDR-120-24 24V/5A"
+        ],
+        "groups": ["Захранвания", "Унител"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "игленклапанslidgatemotvalve8038o21",
+        "display_names": [
+          "Иглен клапан (Slid. Gate Mot. Valve 8038 O2) 1``",
+          "Иглен клапан (Slid. Gate Mot. Valve 8038 O2) 1“"
+        ],
+        "groups": ["2.5.5. Клапани"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "кабелниножици160мм16мм",
+        "display_names": [
+          "Кабелни ножици 160мм, 16мм",
+          "Кабелни ножици 160мм, 16мм."
+        ],
+        "groups": ["2. Консумативи", "3. Инструменти"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "платкаgi1lzdv8",
+        "display_names": ["Платка GI1LZDV8", "Платка GI1LZDV8-"],
+        "groups": ["Платки - Green Innovation"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "платкаgi1pwr02",
+        "display_names": ["Платка GI1PWR02", "Платка GI1PWR02-"],
+        "groups": ["Платки - Green Innovation"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "платкаgi1uzdv8",
+        "display_names": ["Платка GI1UZDV8", "Платка GI1UZDV8-"],
+        "groups": ["Платки - Green Innovation"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "скопиводнисъединения",
+        "display_names": [
+          "Скоби  водни  съединения",
+          "Скоби водни  съединения"
+        ],
+        "groups": ["2. Консумативи"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "тръбашевна304l889х23",
+        "display_names": [
+          "Тръба шевна 304L (88,9х2) 3``",
+          "Тръба шевна 304L (88.9х2) 3“"
+        ],
+        "groups": ["2.1. Тръби", "Крисметал"],
+        "occurrence_count": 2
+      },
+      {
+        "soft_key": "шайбапружиннаvznм12",
+        "display_names": ["Шайба пружинна vZn М12", "Шайба пружинна vZn-М12"],
+        "groups": ["ИТТ", "М12"],
+        "occurrence_count": 2
+      }
+    ]
+  },
+  "top25_first_words": [
+    { "word": "болт", "count": 41 },
+    { "word": "кабел", "count": 37 },
+    { "word": "шайба", "count": 34 },
+    { "word": "преход", "count": 29 },
+    { "word": "отвертки", "count": 26 },
+    { "word": "винт", "count": 26 },
+    { "word": "тръба", "count": 25 },
+    { "word": "клещи", "count": 23 },
+    { "word": "коляно", "count": 22 },
+    { "word": "кабелен", "count": 22 },
+    { "word": "кабелна", "count": 21 },
+    { "word": "кран", "count": 20 },
+    { "word": "гайка", "count": 18 },
+    { "word": "нипел", "count": 17 },
+    { "word": "тройник", "count": 16 },
+    { "word": "прекъсвач", "count": 15 },
+    { "word": "муфа", "count": 15 },
+    { "word": "проводник", "count": 14 },
+    { "word": "холендър", "count": 14 },
+    { "word": "комплект", "count": 13 },
+    { "word": "сменяеми", "count": 13 },
+    { "word": "платка", "count": 13 },
+    { "word": "профилна", "count": 12 },
+    { "word": "дебитомер", "count": 12 },
+    { "word": "тапа", "count": 11 }
+  ],
+  "grupi_parent_distribution": [
+    { "parent": "1. Фирми", "child_group_count": 58 },
+    { "parent": "(root)", "child_group_count": 10 },
+    { "parent": "2.3. Фитинги на резба", "child_group_count": 10 },
+    { "parent": "6. Електроника", "child_group_count": 10 },
+    { "parent": "2. Тръбни връзки", "child_group_count": 8 },
+    { "parent": "4. Крепежи", "child_group_count": 8 },
+    { "parent": "Материали", "child_group_count": 7 },
+    { "parent": "2.5. Кранове", "child_group_count": 6 },
+    { "parent": "3. Инструменти", "child_group_count": 6 },
+    { "parent": "7. Кабели", "child_group_count": 6 },
+    { "parent": "9. Други", "child_group_count": 5 },
+    { "parent": "Неактивни", "child_group_count": 5 },
+    { "parent": "8. Табло газ анализатор", "child_group_count": 4 },
+    { "parent": "Крисметал", "child_group_count": 4 },
+    { "parent": "0. Разни", "child_group_count": 3 },
+    { "parent": "1. Съдове", "child_group_count": 3 },
+    { "parent": "1.1 Електролизьор", "child_group_count": 3 },
+    { "parent": "500", "child_group_count": 3 },
+    { "parent": "Преходи на резба", "child_group_count": 3 },
+    { "parent": "1.2. Очиска", "child_group_count": 2 },
+    { "parent": "Други (Крепежи)", "child_group_count": 2 },
+    { "parent": "1) Грийн Иновейшън АД", "child_group_count": 1 },
+    { "parent": "4. Услуги", "child_group_count": 1 },
+    { "parent": "5. Устройства", "child_group_count": 1 },
+    { "parent": "Genebre", "child_group_count": 1 },
+    { "parent": "Клеми", "child_group_count": 1 },
+    { "parent": "ЛД", "child_group_count": 1 },
+    { "parent": "Нидакс", "child_group_count": 1 },
+    { "parent": "Шрак техник ЕООД", "child_group_count": 1 }
+  ],
+  "stub_stock_sample": [],
+  "weird_name_sample": [
+    {
+      "group": "Сити склад",
+      "name": "10`  складов контейнер",
+      "reasons": ["ascii_quote", "double_space"],
+      "qty": 1.0
+    },
+    {
+      "group": "2. Консумативи",
+      "name": "20`` DV Контейнер",
+      "reasons": ["ascii_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "3. Инструменти",
+      "name": "Bessey  стяга универсал",
+      "reasons": ["double_space"],
+      "qty": 2.0
+    },
+    {
+      "group": "Газ анализ - Крепежи",
+      "name": "Cable gland 1/2` NPT PG 13.5 with OR modular",
+      "reasons": ["ascii_quote"],
+      "qty": 12.0
+    },
+    {
+      "group": "Газ анализ - Крепежи",
+      "name": "Cable gland 3/4` NPT PG 16 with OR modular",
+      "reasons": ["ascii_quote"],
+      "qty": 5.0
+    },
+    {
+      "group": "Газ анализ - Фитинги",
+      "name": "MALE CONNECTOR 6MM SWA - 1/8`` NPT",
+      "reasons": ["ascii_quote"],
+      "qty": 28.0
+    },
+    {
+      "group": "Газ анализ - Фитинги",
+      "name": "MALE CONNECTOR 6MM SWA – R 1/8`` - мъжка връзка",
+      "reasons": ["ascii_quote"],
+      "qty": 20.0
+    },
+    {
+      "group": "Газ анализ - Фитинги",
+      "name": "MALE Elbow  6MM SWA – R 1/8``",
+      "reasons": ["ascii_quote", "double_space"],
+      "qty": 11.0
+    },
+    {
+      "group": "Газ анализ - Фитинги",
+      "name": "Male connector 6MM SWA-1/4`` GAS-CONICO",
+      "reasons": ["ascii_quote"],
+      "qty": 20.0
+    },
+    {
+      "group": "2. Консумативи",
+      "name": "Адаптор за кран 3/4`, в блистер",
+      "reasons": ["ascii_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "Други (Крепежи)",
+      "name": "Болт U ETR vZn (26-34мм) 1“",
+      "reasons": ["smart_quote"],
+      "qty": 100.0
+    },
+    {
+      "group": "2.5.4. Вентили",
+      "name": "Вентил предпазен 1216 НРЖ PN40 1 1/2“x2“",
+      "reasons": ["smart_quote"],
+      "qty": 2.0
+    },
+    {
+      "group": "2.5.4. Вентили",
+      "name": "Вентил предпазен 1216 НРЖ PN40 2“x2“",
+      "reasons": ["smart_quote"],
+      "qty": 2.0
+    },
+    {
+      "group": "2.5.4. Вентили",
+      "name": "Вентил предпазен 1216 НРЖ, PN40  1“х1“",
+      "reasons": ["smart_quote", "double_space"],
+      "qty": 10.0
+    },
+    {
+      "group": "2.5.4. Вентили",
+      "name": "Вентил предпазен 2“G x 2“G",
+      "reasons": ["smart_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "Газ анализ - Фитинги",
+      "name": "Връзка (BSPT) 1/2`x10мм.",
+      "reasons": ["ascii_quote"],
+      "qty": 9.0
+    },
+    {
+      "group": "2. Консумативи",
+      "name": "Връзка за маркуч 1/2`х3/4`, GX L",
+      "reasons": ["ascii_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Връзка права 1510 8/6“х1/4“",
+      "reasons": ["smart_quote"],
+      "qty": 112.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Връзка права 1511 8/6“х1/4“",
+      "reasons": ["smart_quote"],
+      "qty": 29.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Връзка права 1511 8/6“х1/8“",
+      "reasons": ["smart_quote"],
+      "qty": 8.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Връзка ъглова 1500  8/6“х1/4“",
+      "reasons": ["smart_quote", "double_space"],
+      "qty": 119.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Връзка ъглова 1500 15/12,5“х1/2“",
+      "reasons": ["smart_quote"],
+      "qty": 27.0
+    },
+    {
+      "group": "Ивда Гео",
+      "name": "Вътрешно редуктивен нипел  2`-1`",
+      "reasons": ["ascii_quote", "double_space"],
+      "qty": 4.0
+    },
+    {
+      "group": "Фитинги - Щуцер на резба",
+      "name": "Гайки за щуцери 1/2“",
+      "reasons": ["smart_quote"],
+      "qty": 81.0
+    },
+    {
+      "group": "1. Пречистване на вода",
+      "name": "Горен дистрибутор D5120-1, 1`",
+      "reasons": ["ascii_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "2. Консумативи",
+      "name": "Градински маркуч TRICO 1/2`, 25м.",
+      "reasons": ["ascii_quote"],
+      "qty": 25.0
+    },
+    {
+      "group": "2. Консумативи",
+      "name": "Градински маркуч TRICO 1`, 25м.",
+      "reasons": ["ascii_quote"],
+      "qty": 25.0
+    },
+    {
+      "group": "0. Разни",
+      "name": "Гъвкава връзка неръждаема 1100мм 1“",
+      "reasons": ["smart_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "2.8. Маркучи",
+      "name": "Гъвкаво съединение INOX L1000 1“",
+      "reasons": ["smart_quote"],
+      "qty": 3.0
+    },
+    {
+      "group": "1. Пречистване на вода",
+      "name": "Дебитомер за кран 1“(5447018)+кабел за сонда 1“",
+      "reasons": ["smart_quote"],
+      "qty": 2.0
+    },
+    {
+      "group": "1.2.2 Съдове (Очиска)",
+      "name": "Демистър 4“",
+      "reasons": ["smart_quote"],
+      "qty": 13.0
+    },
+    {
+      "group": "1.2.1. Части (Очиска)",
+      "name": "Демистър 4“ - Гъба (Wire mesh sep. mono circol.)",
+      "reasons": ["smart_quote"],
+      "qty": 21.0
+    },
+    {
+      "group": "1.2.1. Части (Очиска)",
+      "name": "Демистър 4“ - Кръст",
+      "reasons": ["smart_quote"],
+      "qty": 22.0
+    },
+    {
+      "group": "1.2.1. Части (Очиска)",
+      "name": "Демистър 4“ - Ос",
+      "reasons": ["smart_quote"],
+      "qty": 2.79
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "name": "Иглен клапан (0-6bar G 1/4“ EPDM)",
+      "reasons": ["smart_quote"],
+      "qty": 3.0
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "name": "Иглен клапан (0-6bar G 1/4“ FKM)",
+      "reasons": ["smart_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "name": "Иглен клапан (Slid. Gate Mot. Valve 8038 H2) 1“",
+      "reasons": ["smart_quote"],
+      "qty": 2.0
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "name": "Иглен клапан (Slid. Gate Mot. Valve 8038 O2) 1``",
+      "reasons": ["ascii_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "2.5.5. Клапани",
+      "name": "Иглен клапан (Slid. Gate Mot. Valve 8038 O2) 1“",
+      "reasons": ["smart_quote"],
+      "qty": 1.0
+    },
+    {
+      "group": "Шрак техник ЕООД",
+      "name": "Кабелен канал  40x40mm",
+      "reasons": ["double_space"],
+      "qty": 14.0
+    }
+  ]
+}

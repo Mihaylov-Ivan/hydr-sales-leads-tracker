@@ -5,6 +5,8 @@
 
 import {
   WarehouseBalance,
+  WarehouseBom,
+  WarehouseBomLine,
   WarehouseGroup,
   WarehouseItem,
   WarehouseLocation,
@@ -26,6 +28,8 @@ export interface MoneyWorksImportResult {
     lots: number;
     balances: number;
     serials: number;
+    boms: number;
+    bomLines: number;
     skippedZero: number;
     skippedInactiveWh: number;
     parkedSystem: number;
@@ -231,6 +235,195 @@ function dedupeById<T extends { id: string }>(rows: T[], label: string, warnings
   return [...seen.values()];
 }
 
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  if (s.length % 2 === 0) return (s[mid - 1]! + s[mid]!) / 2;
+  return s[mid]!;
+}
+
+/**
+ * Build BOMs from MoneyWorks PROD_* tables.
+ * Join key is DT_CREATED (DT_STP is often -1/-2 and not unique).
+ * Qty per unit prefers NORMA from PROD_CELS.
+ */
+export function buildBomsFromMoneyWorksProd(
+  csv: {
+    prod: string;
+    prodRows: string;
+    prodVars: string;
+    prodCels: string;
+  },
+  itemIdByArticleKey: Map<string, string>,
+  warnings: string[],
+): { boms: WarehouseBom[]; bomLines: WarehouseBomLine[] } {
+  const prodDocs = parseCsv(csv.prod);
+  const rowDocs = parseCsv(csv.prodRows);
+  const varDocs = parseCsv(csv.prodVars);
+  const celDocs = parseCsv(csv.prodCels);
+
+  const rowsByCreated = new Map<string, Record<string, string>[]>();
+  for (const r of rowDocs) {
+    const k = (r.DT_CREATED || "").trim();
+    if (!k) continue;
+    if (!rowsByCreated.has(k)) rowsByCreated.set(k, []);
+    rowsByCreated.get(k)!.push(r);
+  }
+  const varsByCreated = new Map<string, Record<string, string>[]>();
+  for (const v of varDocs) {
+    const k = (v.DT_CREATED || "").trim();
+    if (!k) continue;
+    if (!varsByCreated.has(k)) varsByCreated.set(k, []);
+    varsByCreated.get(k)!.push(v);
+  }
+  const celsByRow = new Map<string, Record<string, string>[]>();
+  for (const c of celDocs) {
+    const rowId = (c.DT_ROW || "").trim();
+    if (!rowId) continue;
+    if (!celsByRow.has(rowId)) celsByRow.set(rowId, []);
+    celsByRow.get(rowId)!.push(c);
+  }
+
+  const docsByCreated = new Map<string, Record<string, string>[]>();
+  for (const p of prodDocs) {
+    const k = (p.DT_CREATED || "").trim();
+    if (!k) continue;
+    if (!docsByCreated.has(k)) docsByCreated.set(k, []);
+    docsByCreated.get(k)!.push(p);
+  }
+
+  const boms: WarehouseBom[] = [];
+  const bomLines: WarehouseBomLine[] = [];
+  const now = new Date().toISOString();
+
+  for (const [created, docs] of docsByCreated) {
+    const header = [...docs].sort(
+      (a, b) => num(b.KOLICH_PRD) - num(a.KOLICH_PRD),
+    )[0]!;
+    const name = (header.STOKA || "").trim();
+    if (!name) continue;
+
+    const materialRows = (rowsByCreated.get(created) ?? []).filter(
+      (r) => (r.TIP || "").trim().toUpperCase() === "S",
+    );
+    if (materialRows.length === 0) continue;
+    // Shared dump keys can attach huge unrelated row sets — skip those.
+    if (materialRows.length > 120) {
+      warnings.push(
+        `Skipped BOM "${name}" (DT_CREATED=${created}): ${materialRows.length} component rows`,
+      );
+      continue;
+    }
+
+    const vars = varsByCreated.get(created) ?? [];
+    const varIds = new Set(vars.map((v) => (v.DT_VAR || "").trim()));
+
+    type Agg = {
+      name: string;
+      group: string;
+      normas: number[];
+      fallbacks: number[];
+      costs: number[];
+      pos: number;
+    };
+    const byComp = new Map<string, Agg>();
+
+    for (const r of materialRows) {
+      const grupa = (r.GRUPA || "").trim();
+      const stoka = (r.STOKA || "").trim();
+      if (!stoka) continue;
+      const key = articleKey(grupa, stoka);
+      const pos = num(r.POS);
+      let agg = byComp.get(key);
+      if (!agg) {
+        agg = {
+          name: stoka,
+          group: grupa,
+          normas: [],
+          fallbacks: [],
+          costs: [],
+          pos,
+        };
+        byComp.set(key, agg);
+      } else if (pos > 0 && (agg.pos <= 0 || pos < agg.pos)) {
+        agg.pos = pos;
+      }
+
+      const rowCost = num(r.ED_CENA);
+      if (rowCost > 0) agg.costs.push(rowCost);
+
+      const cels = celsByRow.get((r.DT_ROW || "").trim()) ?? [];
+      for (const c of cels) {
+        const celVar = (c.DT_VAR || "").trim();
+        if (varIds.size > 0 && celVar && !varIds.has(celVar)) continue;
+        const norma = num(c.NORMA);
+        if (norma > 0) agg.normas.push(norma);
+        const celCost = num(c.ED_CENA);
+        if (celCost > 0) agg.costs.push(celCost);
+        const v = vars.find((x) => (x.DT_VAR || "").trim() === celVar);
+        const vQty = v ? num(v.KOLICH) : 0;
+        const celQty = num(c.KOLICH);
+        if (celQty > 0 && vQty > 0) agg.fallbacks.push(celQty / vQty);
+      }
+    }
+
+    if (byComp.size === 0) continue;
+
+    const outKey = articleKey((header.GRUPA || "").trim(), name);
+    const bomId = uuidFromKey(`bom:${created}`);
+    const family = (header.PR_GRUPA || "").trim();
+    const outGroup = (header.GRUPA || "").trim();
+    const qtyProduced = num(header.KOLICH_PRD);
+    const bom: WarehouseBom = {
+      id: bomId,
+      name,
+      sourceKey: created,
+      qtyProduced,
+      createdAt: now,
+    };
+    if (outGroup) bom.outputGroup = outGroup;
+    if (family) bom.productFamily = family;
+    const outItemId = itemIdByArticleKey.get(outKey);
+    if (outItemId) bom.outputItemId = outItemId;
+    const note = (header.NOTE || "").trim();
+    if (note) bom.notes = note;
+    boms.push(bom);
+
+    const sortedComps = [...byComp.entries()].sort(
+      (a, b) => a[1].pos - b[1].pos || a[1].name.localeCompare(b[1].name),
+    );
+    let position = 0;
+    for (const [compKey, agg] of sortedComps) {
+      const qty =
+        agg.normas.length > 0
+          ? median(agg.normas)
+          : agg.fallbacks.length > 0
+            ? median(agg.fallbacks)
+            : 0;
+      if (!(qty > 0)) continue;
+      position += 1;
+      const line: WarehouseBomLine = {
+        id: uuidFromKey(`bomline:${created}:${compKey}`),
+        bomId,
+        position,
+        componentName: agg.name,
+        qtyPerUnit: Math.round(qty * 1e6) / 1e6,
+        createdAt: now,
+      };
+      if (agg.group) line.componentGroup = agg.group;
+      const itemId = itemIdByArticleKey.get(compKey);
+      if (itemId) line.componentItemId = itemId;
+      if (agg.costs.length > 0) {
+        line.unitCost = Math.round(median(agg.costs) * 100) / 100;
+      }
+      bomLines.push(line);
+    }
+  }
+
+  return { boms, bomLines };
+}
+
 export interface MoneyWorksCsvBundle {
   grupi: string;
   stokiDef: string;
@@ -238,6 +431,10 @@ export interface MoneyWorksCsvBundle {
   serNo: string;
   kupuwaItems?: string;
   kupuwa?: string;
+  prod?: string;
+  prodRows?: string;
+  prodVars?: string;
+  prodCels?: string;
 }
 
 /**
@@ -522,6 +719,26 @@ export function buildWarehouseFromMoneyWorks(
   const safeBalances = dedupeById(balances, "balance", warnings);
   const safeSerials = dedupeById(serials, "serial", warnings);
 
+  let boms: WarehouseBom[] = [];
+  let bomLines: WarehouseBomLine[] = [];
+  if (csv.prod && csv.prodRows && csv.prodVars && csv.prodCels) {
+    const built = buildBomsFromMoneyWorksProd(
+      {
+        prod: csv.prod,
+        prodRows: csv.prodRows,
+        prodVars: csv.prodVars,
+        prodCels: csv.prodCels,
+      },
+      itemIdByArticle,
+      warnings,
+    );
+    boms = dedupeById(built.boms, "bom", warnings);
+    const bomIdSet = new Set(boms.map((b) => b.id));
+    bomLines = dedupeById(built.bomLines, "bomLine", warnings).filter((l) =>
+      bomIdSet.has(l.bomId),
+    );
+  }
+
   return {
     state: {
       items: safeItems,
@@ -530,6 +747,8 @@ export function buildWarehouseFromMoneyWorks(
       movements: [],
       groups: safeGroups,
       serials: safeSerials,
+      boms,
+      bomLines,
     },
     stats: {
       groups: safeGroups.length,
@@ -537,6 +756,8 @@ export function buildWarehouseFromMoneyWorks(
       lots: safeLots.length,
       balances: safeBalances.length,
       serials: safeSerials.length,
+      boms: boms.length,
+      bomLines: bomLines.length,
       skippedZero,
       skippedInactiveWh,
       parkedSystem,

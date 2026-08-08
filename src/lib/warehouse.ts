@@ -2,6 +2,8 @@ import {
   ProjectExpenseCategory,
   ProjectExpenseSubcategory,
   WarehouseBalance,
+  WarehouseBom,
+  WarehouseBomLine,
   WarehouseGroup,
   WarehouseItem,
   WarehouseLocation,
@@ -340,6 +342,20 @@ function migrateItem(raw: unknown): WarehouseItem | null {
   if (typeof o.minQty === "number") item.minQty = o.minQty;
   if (typeof o.maxQty === "number") item.maxQty = o.maxQty;
   if (typeof o.tracksSerial === "boolean") item.tracksSerial = o.tracksSerial;
+  if (typeof o.preferredSupplier === "string" && o.preferredSupplier) {
+    item.preferredSupplier = o.preferredSupplier;
+  }
+  if (Array.isArray(o.systemTags)) {
+    item.systemTags = o.systemTags.filter(
+      (t): t is string => typeof t === "string" && t.length > 0,
+    );
+  }
+  if (typeof o.legacyGroupName === "string" && o.legacyGroupName) {
+    item.legacyGroupName = o.legacyGroupName;
+  }
+  if (typeof o.nameOriginal === "string" && o.nameOriginal) {
+    item.nameOriginal = o.nameOriginal;
+  }
   return item;
 }
 
@@ -400,6 +416,53 @@ function migrateSerial(raw: unknown): WarehouseSerial | null {
   return s;
 }
 
+function migrateBom(raw: unknown): WarehouseBom | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.name !== "string") return null;
+  if (typeof o.sourceKey !== "string") return null;
+  const bom: WarehouseBom = {
+    id: o.id,
+    name: o.name,
+    sourceKey: o.sourceKey,
+    qtyProduced: Number(o.qtyProduced) || 0,
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.outputGroup === "string") bom.outputGroup = o.outputGroup;
+  if (typeof o.productFamily === "string") bom.productFamily = o.productFamily;
+  if (typeof o.outputItemId === "string") bom.outputItemId = o.outputItemId;
+  if (typeof o.unitCost === "number" && Number.isFinite(o.unitCost)) {
+    bom.unitCost = o.unitCost;
+  }
+  if (typeof o.notes === "string") bom.notes = o.notes;
+  return bom;
+}
+
+function migrateBomLine(raw: unknown): WarehouseBomLine | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.id !== "string" || typeof o.bomId !== "string") return null;
+  if (typeof o.componentName !== "string") return null;
+  const line: WarehouseBomLine = {
+    id: o.id,
+    bomId: o.bomId,
+    position: Number(o.position) || 0,
+    componentName: o.componentName,
+    qtyPerUnit: Number(o.qtyPerUnit) || 0,
+    createdAt: String(o.createdAt ?? new Date().toISOString()),
+  };
+  if (typeof o.componentGroup === "string") {
+    line.componentGroup = o.componentGroup;
+  }
+  if (typeof o.componentItemId === "string") {
+    line.componentItemId = o.componentItemId;
+  }
+  if (typeof o.unitCost === "number" && Number.isFinite(o.unitCost)) {
+    line.unitCost = o.unitCost;
+  }
+  return line;
+}
+
 export function loadWarehouseState(): WarehouseState {
   try {
     const raw = window.localStorage.getItem("hydrogenera-warehouse-v1");
@@ -411,6 +474,8 @@ export function loadWarehouseState(): WarehouseState {
       movements?: unknown[];
       groups?: unknown[];
       serials?: unknown[];
+      boms?: unknown[];
+      bomLines?: unknown[];
     };
     return {
       items: (parsed.items ?? []).map(migrateItem).filter(Boolean) as WarehouseItem[],
@@ -427,6 +492,10 @@ export function loadWarehouseState(): WarehouseState {
       serials: (parsed.serials ?? [])
         .map(migrateSerial)
         .filter(Boolean) as WarehouseSerial[],
+      boms: (parsed.boms ?? []).map(migrateBom).filter(Boolean) as WarehouseBom[],
+      bomLines: (parsed.bomLines ?? [])
+        .map(migrateBomLine)
+        .filter(Boolean) as WarehouseBomLine[],
       holdingProjectId:
         typeof parsed.holdingProjectId === "string"
           ? parsed.holdingProjectId

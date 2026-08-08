@@ -1,0 +1,274 @@
+{
+  "generated_at": "2026-08-08T10:14:53.128Z",
+  "dry_run": false,
+  "plans": [
+    {
+      "soft_key": "клещидруги",
+      "name": "Клещи други",
+      "survivor_id": "7dddec96-50c6-4633-99ca-3befca0a2468",
+      "loser_ids": [
+        "2a06eabc-6fe6-435b-befb-f3b4a60b362b"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "2a06eabc-6fe6-435b-befb-f3b4a60b362b",
+          "name": "Клещи други",
+          "lotCount": 1,
+          "role": "merge_away"
+        },
+        {
+          "id": "7dddec96-50c6-4633-99ca-3befca0a2468",
+          "name": "Клещи други",
+          "lotCount": 1,
+          "role": "survivor"
+        }
+      ]
+    },
+    {
+      "soft_key": "клещиобикновени",
+      "name": "Клещи обикновени",
+      "survivor_id": "12201809-2677-410d-b550-e20f7e336ce0",
+      "loser_ids": [
+        "eacb0e91-2d81-45b3-ba04-28e08302c4a6"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "12201809-2677-410d-b550-e20f7e336ce0",
+          "name": "Клещи обикновени",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "eacb0e91-2d81-45b3-ba04-28e08302c4a6",
+          "name": "Клещи обикновени",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "клещирезачкиknipex",
+      "name": "Клещи резачки Knipex",
+      "survivor_id": "95f0b934-021d-4bf4-a9c8-e36734b770a1",
+      "loser_ids": [
+        "ef92b0b2-b466-49b3-906b-be0e8016f5e8"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "95f0b934-021d-4bf4-a9c8-e36734b770a1",
+          "name": "Клещи резачки Knipex",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "ef92b0b2-b466-49b3-906b-be0e8016f5e8",
+          "name": "Клещи резачки Knipex",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "макетеннож",
+      "name": "Макетен нож",
+      "survivor_id": "297d1650-6617-4abd-9aca-b67132dc4191",
+      "loser_ids": [
+        "ec298f0a-e97b-4135-941e-3dee6714fc96"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "297d1650-6617-4abd-9aca-b67132dc4191",
+          "name": "Макетен нож",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "ec298f0a-e97b-4135-941e-3dee6714fc96",
+          "name": "Макетен нож",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "отверткидругиправа",
+      "name": "Отвертки други права",
+      "survivor_id": "05464db7-f652-4a52-a3e9-897ab8b5826c",
+      "loser_ids": [
+        "c6d666a4-e73b-4f5a-8e9a-21e228162556"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "05464db7-f652-4a52-a3e9-897ab8b5826c",
+          "name": "Отвертки други права",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "c6d666a4-e73b-4f5a-8e9a-21e228162556",
+          "name": "Отвертки други права",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "отверткикръстати",
+      "name": "Отвертки кръстати",
+      "survivor_id": "b159e23e-25a6-482f-9d85-512df9a15b96",
+      "loser_ids": [
+        "f5713e8d-709c-46e4-8d92-4018bab6ab9d"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "b159e23e-25a6-482f-9d85-512df9a15b96",
+          "name": "Отвертки кръстати",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "f5713e8d-709c-46e4-8d92-4018bab6ab9d",
+          "name": "Отвертки кръстати",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "отверткиправи",
+      "name": "Отвертки прави",
+      "survivor_id": "f6b0638a-f6b2-47b6-910c-fab7053c6ded",
+      "loser_ids": [
+        "95048b2b-7850-4080-94d2-b344987b9654"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "95048b2b-7850-4080-94d2-b344987b9654",
+          "name": "Отвертки прави",
+          "lotCount": 1,
+          "role": "merge_away"
+        },
+        {
+          "id": "f6b0638a-f6b2-47b6-910c-fab7053c6ded",
+          "name": "Отвертки прави",
+          "lotCount": 1,
+          "role": "survivor"
+        }
+      ]
+    },
+    {
+      "soft_key": "пиладруги",
+      "name": "Пила други",
+      "survivor_id": "649c7eab-9443-4c73-bf99-43e7a9f28d45",
+      "loser_ids": [
+        "2bb2390d-03e9-49d9-aebe-f00239b38065",
+        "3f67be0c-e163-4c44-b6b8-1bef61ea1e81"
+      ],
+      "lots_moved": 2,
+      "members": [
+        {
+          "id": "2bb2390d-03e9-49d9-aebe-f00239b38065",
+          "name": "Пила други",
+          "lotCount": 1,
+          "role": "merge_away"
+        },
+        {
+          "id": "3f67be0c-e163-4c44-b6b8-1bef61ea1e81",
+          "name": "Пила други",
+          "lotCount": 1,
+          "role": "merge_away"
+        },
+        {
+          "id": "649c7eab-9443-4c73-bf99-43e7a9f28d45",
+          "name": "Пила други",
+          "lotCount": 1,
+          "role": "survivor"
+        }
+      ]
+    },
+    {
+      "soft_key": "пилаtopmaster",
+      "name": "Пила Topmaster",
+      "survivor_id": "5dbdf5b3-ac55-4d29-9c20-bbbb7c2e9515",
+      "loser_ids": [
+        "80e4a2dd-1241-4061-8f82-4d13e911df1b"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "5dbdf5b3-ac55-4d29-9c20-bbbb7c2e9515",
+          "name": "Пила Topmaster",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "80e4a2dd-1241-4061-8f82-4d13e911df1b",
+          "name": "Пила Topmaster",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    },
+    {
+      "soft_key": "чиракдруги",
+      "name": "Чирак други",
+      "survivor_id": "bd52650e-3144-45f9-b215-bf46ed00266e",
+      "loser_ids": [
+        "5a5b7233-397e-47f8-b1d8-52c66d885135"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "5a5b7233-397e-47f8-b1d8-52c66d885135",
+          "name": "Чирак други",
+          "lotCount": 1,
+          "role": "merge_away"
+        },
+        {
+          "id": "bd52650e-3144-45f9-b215-bf46ed00266e",
+          "name": "Чирак други",
+          "lotCount": 1,
+          "role": "survivor"
+        }
+      ]
+    },
+    {
+      "soft_key": "чукгумен",
+      "name": "Чук гумен",
+      "survivor_id": "1d894453-0e84-489f-8e72-4e0611c3aaab",
+      "loser_ids": [
+        "9a19989b-b8f7-4596-b77a-ef6e66c7318a"
+      ],
+      "lots_moved": 1,
+      "members": [
+        {
+          "id": "1d894453-0e84-489f-8e72-4e0611c3aaab",
+          "name": "Чук гумен",
+          "lotCount": 1,
+          "role": "survivor"
+        },
+        {
+          "id": "9a19989b-b8f7-4596-b77a-ef6e66c7318a",
+          "name": "Чук гумен",
+          "lotCount": 1,
+          "role": "merge_away"
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "merge_groups": 11,
+    "lots_updated": 12,
+    "serials_updated": 0,
+    "boms_updated": 0,
+    "bom_lines_updated": 0,
+    "items_deleted": 12
+  }
+}

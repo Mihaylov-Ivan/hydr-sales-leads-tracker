@@ -665,6 +665,14 @@ export interface WarehouseItem {
   minQty?: number;
   maxQty?: number;
   tracksSerial?: boolean;
+  /** Canonical supplier from catalog reorg (vendor folders → field) */
+  preferredSupplier?: string;
+  /** Product/system tags e.g. electrolyzer, scrubber, gas-analyzer */
+  systemTags?: string[];
+  /** MoneyWorks group name before type-taxonomy remap */
+  legacyGroupName?: string;
+  /** Name before normalisation, if changed */
+  nameOriginal?: string;
   createdAt: string;
 }
 
@@ -716,6 +724,57 @@ export interface WarehouseSerial {
   createdAt: string;
 }
 
+/** Bill of materials header (MoneyWorks PROD recipe). */
+export interface WarehouseBom {
+  id: string;
+  /** Finished / output article name (STOKA) */
+  name: string;
+  outputGroup?: string;
+  /** MoneyWorks PR_GRUPA (e.g. Демистър, Бутилки Металхидрид) */
+  productFamily?: string;
+  outputItemId?: string;
+  /** Idempotent key — typically PROD.DT_CREATED */
+  sourceKey: string;
+  qtyProduced: number;
+  unitCost?: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface WarehouseBomLine {
+  id: string;
+  bomId: string;
+  position: number;
+  componentName: string;
+  componentGroup?: string;
+  componentItemId?: string;
+  /** Quantity of component per 1 finished unit */
+  qtyPerUnit: number;
+  unitCost?: number;
+  createdAt: string;
+}
+
+/** Draft line when creating/editing a BOM in the UI. */
+export type WarehouseBomLineInput = {
+  componentName: string;
+  componentGroup?: string;
+  componentItemId?: string;
+  qtyPerUnit: number;
+  unitCost?: number;
+};
+
+export type WarehouseBomSaveInput = {
+  /** Omit to create a new recipe */
+  id?: string;
+  name: string;
+  outputGroup?: string;
+  productFamily?: string;
+  outputItemId?: string;
+  qtyProduced?: number;
+  notes?: string;
+  lines: WarehouseBomLineInput[];
+};
+
 export type WarehouseMovementAction =
   | "receive"
   | "allocate"
@@ -741,6 +800,8 @@ export interface WarehouseState {
   movements: WarehouseMovement[];
   groups: WarehouseGroup[];
   serials: WarehouseSerial[];
+  boms: WarehouseBom[];
+  bomLines: WarehouseBomLine[];
   holdingProjectId: string | null;
 }
 
@@ -754,6 +815,8 @@ export function emptyWarehouseState(): WarehouseState {
     movements: [],
     groups: [],
     serials: [],
+    boms: [],
+    bomLines: [],
     holdingProjectId: null,
   };
 }

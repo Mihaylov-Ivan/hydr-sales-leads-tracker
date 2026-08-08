@@ -39,6 +39,7 @@ import {
   WarehouseMaterialKind,
   WarehouseMovement,
   WarehouseBalance,
+  WarehouseBomSaveInput,
   WarehouseState,
   WAREHOUSE_HOLDING_PROJECT_NAME,
   STAGE_LABELS,
@@ -144,6 +145,7 @@ import {
   type WarehouseSkladMap,
 } from "./warehouse-sklad-map";
 import { linkProjectSlotLotsToMaterialsExpenses } from "./warehouse-expense-link";
+import { buildSavedBom, mergeBomsAfterImport } from "./warehouse-bom";
 import {
   expenseProjectIdForLocation,
   findBalance,
@@ -457,7 +459,11 @@ export interface WarehouseReceiveInput {
     sku?: string;
     unit?: string;
     defaultMaterialKind?: WarehouseMaterialKind;
+    /** Product group (type taxonomy leaf/root) */
+    groupId?: string;
   };
+  /** When receiving against an existing catalog item, optionally set/clear its group */
+  groupId?: string | null;
   qty: number;
   unitCostIncVat: number;
   unitCostExVat?: number | null;
@@ -676,6 +682,8 @@ interface ProjectsApi {
     sku?: string;
     unit?: string;
     defaultMaterialKind?: WarehouseMaterialKind;
+    /** Pass string to set, `null` to clear, omit to leave unchanged */
+    groupId?: string | null;
   }) => string;
   /** Replace inventory from MoneyWorks CSV import (keeps holdingProjectId). */
   importMoneyWorksWarehouse: () => Promise<
@@ -687,6 +695,8 @@ interface ProjectsApi {
           lots: number;
           balances: number;
           serials: number;
+          boms: number;
+          bomLines: number;
           parkedSystem: number;
         };
       }
@@ -715,6 +725,15 @@ interface ProjectsApi {
         projectCount: number;
       }
     | { ok: false; error: string };
+  saveWarehouseBom: (
+    input: WarehouseBomSaveInput,
+  ) => { ok: true; bomId: string } | { ok: false; error: string };
+  duplicateWarehouseBom: (
+    bomId: string,
+  ) => { ok: true; bomId: string } | { ok: false; error: string };
+  deleteWarehouseBom: (
+    bomId: string,
+  ) => { ok: true } | { ok: false; error: string };
   addMilestone: (projectId: string, input: MilestoneInput) => void;
   updateMilestone: (
     projectId: string,
@@ -4687,28 +4706,32 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       sku?: string;
       unit?: string;
       defaultMaterialKind?: WarehouseMaterialKind;
+      groupId?: string | null;
     }): string => {
       const name = input.name.trim();
       if (!name) return input.id ?? "";
       if (input.id) {
         setWarehouse((prev) => ({
           ...prev,
-          items: prev.items.map((it) =>
-            it.id === input.id
-              ? {
-                  ...it,
-                  name,
-                  ...(input.sku?.trim()
-                    ? { sku: input.sku.trim() }
-                    : it.sku
-                      ? { sku: it.sku }
-                      : {}),
-                  unit: input.unit?.trim() || it.unit || "pcs",
-                  defaultMaterialKind:
-                    input.defaultMaterialKind ?? it.defaultMaterialKind,
-                }
-              : it,
-          ),
+          items: prev.items.map((it) => {
+            if (it.id !== input.id) return it;
+            const next: WarehouseItem = {
+              ...it,
+              name,
+              unit: input.unit?.trim() || it.unit || "pcs",
+              defaultMaterialKind:
+                input.defaultMaterialKind ?? it.defaultMaterialKind,
+            };
+            if (input.sku !== undefined) {
+              if (input.sku.trim()) next.sku = input.sku.trim();
+              else delete next.sku;
+            }
+            if (input.groupId !== undefined) {
+              if (input.groupId) next.groupId = input.groupId;
+              else delete next.groupId;
+            }
+            return next;
+          }),
         }));
         return input.id;
       }
@@ -4719,6 +4742,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ...(input.sku?.trim() ? { sku: input.sku.trim() } : {}),
         unit: input.unit?.trim() || "pcs",
         defaultMaterialKind: input.defaultMaterialKind ?? "materials",
+        ...(input.groupId ? { groupId: input.groupId } : {}),
         createdAt: new Date().toISOString(),
       };
       setWarehouse((prev) => ({
@@ -4739,6 +4763,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           lots: number;
           balances: number;
           serials: number;
+          boms: number;
+          bomLines: number;
           parkedSystem: number;
         };
       }
@@ -4763,6 +4789,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           lots: number;
           balances: number;
           serials: number;
+          boms: number;
+          bomLines: number;
           parkedSystem: number;
         };
         warehouse?: Omit<WarehouseState, "holdingProjectId">;
@@ -4770,18 +4798,26 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok || !data.ok || !data.warehouse || !data.stats) {
         return { ok: false, error: data.error || "Import failed" };
       }
-      setWarehouse((prev) => ({
-        ...data.warehouse!,
-        holdingProjectId: prev.holdingProjectId ?? holdingId,
-        movements: data.warehouse!.movements ?? [],
-      }));
+      setWarehouse((prev) => {
+        const mergedBoms = mergeBomsAfterImport(prev, {
+          boms: data.warehouse!.boms ?? [],
+          bomLines: data.warehouse!.bomLines ?? [],
+        });
+        return {
+          ...data.warehouse!,
+          holdingProjectId: prev.holdingProjectId ?? holdingId,
+          movements: data.warehouse!.movements ?? [],
+          boms: mergedBoms.boms,
+          bomLines: mergedBoms.bomLines,
+        };
+      });
       recordChangeEvent({
         domain: "warehouse",
         entityType: "lot",
         entityId: "moneyworks-import",
         projectId: holdingId,
         action: "create",
-        summary: `Imported MoneyWorks stock: ${data.stats.balances} balances, ${data.stats.items} items, ${data.stats.serials} serials (${data.stats.parkedSystem} System-* parked in ELX/Buffer)`,
+        summary: `Imported MoneyWorks stock: ${data.stats.balances} balances, ${data.stats.items} items, ${data.stats.serials} serials, ${data.stats.boms} BOMs (${data.stats.parkedSystem} System-* parked in ELX/Buffer)`,
         payloadJson: data.stats,
       });
       return { ok: true, stats: data.stats };
@@ -5144,6 +5180,103 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [recordChangeEvent, reconcileBudgetExpenses]);
 
+  const saveWarehouseBom = useCallback(
+    (
+      input: WarehouseBomSaveInput,
+    ): { ok: true; bomId: string } | { ok: false; error: string } => {
+      const wh = warehouseRef.current;
+      const existing = input.id
+        ? (wh.boms.find((b) => b.id === input.id) ?? null)
+        : null;
+      if (input.id && !existing) {
+        return { ok: false, error: "Recipe not found" };
+      }
+      const catalogIds = new Set(wh.items.map((i) => i.id));
+      const built = buildSavedBom(input, existing, catalogIds);
+      if (!built.ok) return built;
+
+      setWarehouse((prev) => ({
+        ...prev,
+        boms: existing
+          ? prev.boms.map((b) => (b.id === built.bom.id ? built.bom : b))
+          : [...prev.boms, built.bom],
+        bomLines: [
+          ...prev.bomLines.filter((l) => l.bomId !== built.bom.id),
+          ...built.lines,
+        ],
+      }));
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "bom",
+        entityId: built.bom.id,
+        action: existing ? "update" : "create",
+        summary: existing
+          ? `Updated BOM recipe “${built.bom.name}” (${built.lines.length} parts)`
+          : `Created BOM recipe “${built.bom.name}” (${built.lines.length} parts)`,
+        payloadJson: {
+          name: built.bom.name,
+          lineCount: built.lines.length,
+          sourceKey: built.bom.sourceKey,
+        },
+      });
+      return { ok: true, bomId: built.bom.id };
+    },
+    [recordChangeEvent],
+  );
+
+  const duplicateWarehouseBom = useCallback(
+    (
+      bomId: string,
+    ): { ok: true; bomId: string } | { ok: false; error: string } => {
+      const wh = warehouseRef.current;
+      const src = wh.boms.find((b) => b.id === bomId);
+      if (!src) return { ok: false, error: "Recipe not found" };
+      const lines = wh.bomLines
+        .filter((l) => l.bomId === bomId)
+        .slice()
+        .sort((a, b) => a.position - b.position);
+      return saveWarehouseBom({
+        name: `${src.name} (copy)`,
+        ...(src.outputGroup ? { outputGroup: src.outputGroup } : {}),
+        ...(src.productFamily ? { productFamily: src.productFamily } : {}),
+        ...(src.outputItemId ? { outputItemId: src.outputItemId } : {}),
+        qtyProduced: 0,
+        ...(src.notes ? { notes: src.notes } : {}),
+        lines: lines.map((l) => ({
+          componentName: l.componentName,
+          ...(l.componentGroup ? { componentGroup: l.componentGroup } : {}),
+          ...(l.componentItemId ? { componentItemId: l.componentItemId } : {}),
+          qtyPerUnit: l.qtyPerUnit,
+          ...(l.unitCost != null ? { unitCost: l.unitCost } : {}),
+        })),
+      });
+    },
+    [saveWarehouseBom],
+  );
+
+  const deleteWarehouseBom = useCallback(
+    (bomId: string): { ok: true } | { ok: false; error: string } => {
+      const wh = warehouseRef.current;
+      const src = wh.boms.find((b) => b.id === bomId);
+      if (!src) return { ok: false, error: "Recipe not found" };
+      setWarehouse((prev) => ({
+        ...prev,
+        boms: prev.boms.filter((b) => b.id !== bomId),
+        bomLines: prev.bomLines.filter((l) => l.bomId !== bomId),
+      }));
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "bom",
+        entityId: bomId,
+        action: "delete",
+        summary: `Deleted BOM recipe “${src.name}”`,
+        payloadJson: { name: src.name, sourceKey: src.sourceKey },
+      });
+      return { ok: true };
+    },
+    [recordChangeEvent],
+  );
+
   const applySystemSkladMapping = useCallback(async (): Promise<
     | {
         ok: true;
@@ -5312,7 +5445,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           unit: input.newItem.unit,
           defaultMaterialKind:
             input.newItem.defaultMaterialKind ?? input.materialKind,
+          groupId: input.newItem.groupId ?? input.groupId ?? null,
         });
+      } else if (input.groupId !== undefined) {
+        const existing = warehouseRef.current.items.find((i) => i.id === itemId);
+        if (existing) {
+          upsertWarehouseItem({
+            id: itemId,
+            name: existing.name,
+            sku: existing.sku,
+            unit: existing.unit,
+            defaultMaterialKind: existing.defaultMaterialKind,
+            groupId: input.groupId,
+          });
+        }
       }
 
       const holdingId = ensureWarehouseHoldingProject();
@@ -6069,6 +6215,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         importMoneyWorksWarehouse,
         applySystemSkladMapping,
         linkProjectWarehouseExpenses,
+        saveWarehouseBom,
+        duplicateWarehouseBom,
+        deleteWarehouseBom,
         addMilestone,
         updateMilestone,
         deleteMilestone,

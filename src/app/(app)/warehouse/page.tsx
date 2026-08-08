@@ -29,7 +29,14 @@ import {
   buildProjectWarehouseMetrics,
   projectsWithWarehouseActivity,
 } from "@/lib/warehouse-metrics";
+import {
+  compareBomToProject,
+  isUserOwnedBomSourceKey,
+  listBomsWithLines,
+} from "@/lib/warehouse-bom";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
+import CatalogItemSearchSelect from "@/components/CatalogItemSearchSelect";
+import type { WarehouseBomLineInput } from "@/lib/types";
 
 const inputCls =
   "w-full rounded border border-line bg-surface px-1.5 py-1 text-[11px] text-ink outline-none focus:border-teal-accent";
@@ -109,6 +116,26 @@ type StockRow = {
 
 type DestSlot = WarehouseSlot;
 
+type BomDraftLine = {
+  key: string;
+  componentName: string;
+  componentGroup: string;
+  componentItemId: string;
+  qtyPerUnit: string;
+  unitCost: string;
+};
+
+function emptyBomDraftLine(): BomDraftLine {
+  return {
+    key: crypto.randomUUID(),
+    componentName: "",
+    componentGroup: "",
+    componentItemId: "",
+    qtyPerUnit: "1",
+    unitCost: "",
+  };
+}
+
 export default function WarehousePage() {
   const {
     projects,
@@ -120,10 +147,14 @@ export default function WarehousePage() {
     adjustStock,
     updateWarehouseLot,
     deleteWarehouseLot,
+    upsertWarehouseItem,
     ensureWarehouseHoldingProject,
     importMoneyWorksWarehouse,
     applySystemSkladMapping,
     linkProjectWarehouseExpenses,
+    saveWarehouseBom,
+    duplicateWarehouseBom,
+    deleteWarehouseBom,
   } = useProjects();
 
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
@@ -159,6 +190,7 @@ export default function WarehousePage() {
   const [recvName, setRecvName] = useState("");
   const [recvSku, setRecvSku] = useState("");
   const [recvUnit, setRecvUnit] = useState("pcs");
+  const [recvGroupId, setRecvGroupId] = useState("");
   const [recvQty, setRecvQty] = useState("");
   const [recvEx, setRecvEx] = useState("");
   const [recvInc, setRecvInc] = useState("");
@@ -187,6 +219,7 @@ export default function WarehousePage() {
   const [editingLot, setEditingLot] = useState(false);
   const [editBalanceId, setEditBalanceId] = useState<string | null>(null);
   const [editItemId, setEditItemId] = useState("");
+  const [editGroupId, setEditGroupId] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEx, setEditEx] = useState("");
   const [editInc, setEditInc] = useState("");
@@ -203,6 +236,21 @@ export default function WarehousePage() {
   const [editQty, setEditQty] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [analysisProjectId, setAnalysisProjectId] = useState("");
+  const [analysisBomId, setAnalysisBomId] = useState("");
+  const [analysisView, setAnalysisView] = useState<"project" | "bom">(
+    "project",
+  );
+  const [bomEditorOpen, setBomEditorOpen] = useState(false);
+  const [bomEditingId, setBomEditingId] = useState<string | null>(null);
+  const [bomDraftName, setBomDraftName] = useState("");
+  const [bomDraftFamily, setBomDraftFamily] = useState("");
+  const [bomDraftGroup, setBomDraftGroup] = useState("");
+  const [bomDraftOutputItemId, setBomDraftOutputItemId] = useState("");
+  const [bomDraftNotes, setBomDraftNotes] = useState("");
+  const [bomDraftLines, setBomDraftLines] = useState<BomDraftLine[]>([
+    emptyBomDraftLine(),
+  ]);
+  const [bomEditError, setBomEditError] = useState<string | null>(null);
   const [pageTab, setPageTab] = useState<"stock" | "analysis">("stock");
 
   useEffect(() => {
@@ -266,6 +314,37 @@ export default function WarehousePage() {
     return m;
   }, [warehouse.groups]);
 
+  /** Roots then children — for group <select> options */
+  const groupsForSelect = useMemo(() => {
+    const roots = warehouse.groups
+      .filter((g) => !g.parentId)
+      .sort((a, b) => a.name.localeCompare(b.name, "bg"));
+    const byParent = new Map<string, typeof warehouse.groups>();
+    for (const g of warehouse.groups) {
+      if (!g.parentId) continue;
+      if (!byParent.has(g.parentId)) byParent.set(g.parentId, []);
+      byParent.get(g.parentId)!.push(g);
+    }
+    for (const list of byParent.values()) {
+      list.sort((a, b) => a.name.localeCompare(b.name, "bg"));
+    }
+    const out: { id: string; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const root of roots) {
+      out.push({ id: root.id, label: root.name });
+      seen.add(root.id);
+      for (const ch of byParent.get(root.id) ?? []) {
+        out.push({ id: ch.id, label: `↳ ${ch.name}` });
+        seen.add(ch.id);
+      }
+    }
+    for (const g of warehouse.groups) {
+      if (seen.has(g.id)) continue;
+      out.push({ id: g.id, label: g.name });
+    }
+    return out;
+  }, [warehouse.groups]);
+
   const analysisProjects = useMemo(
     () =>
       projectsWithWarehouseActivity(
@@ -292,6 +371,120 @@ export default function WarehousePage() {
     if (!p) return null;
     return buildProjectWarehouseMetrics(p.id, p.name, warehouse);
   }, [analysisProjectId, projects, warehouse]);
+
+  const bomCatalog = useMemo(
+    () => listBomsWithLines(warehouse),
+    [warehouse],
+  );
+
+  useEffect(() => {
+    if (
+      analysisBomId &&
+      bomCatalog.some((b) => b.id === analysisBomId)
+    ) {
+      return;
+    }
+    setAnalysisBomId(bomCatalog[0]?.id ?? "");
+  }, [bomCatalog, analysisBomId]);
+
+  const selectedBom = useMemo(
+    () => bomCatalog.find((b) => b.id === analysisBomId) ?? null,
+    [bomCatalog, analysisBomId],
+  );
+
+  const bomVsProject = useMemo(() => {
+    if (!selectedBom) return [];
+    return compareBomToProject(selectedBom, projectMetrics);
+  }, [selectedBom, projectMetrics]);
+
+  function openNewBomEditor() {
+    setBomEditingId(null);
+    setBomDraftName("");
+    setBomDraftFamily("");
+    setBomDraftGroup("");
+    setBomDraftOutputItemId("");
+    setBomDraftNotes("");
+    setBomDraftLines([emptyBomDraftLine()]);
+    setBomEditError(null);
+    setBomEditorOpen(true);
+    setAnalysisView("bom");
+  }
+
+  function openEditBomEditor(bomId: string) {
+    const bom = bomCatalog.find((b) => b.id === bomId);
+    if (!bom) return;
+    setBomEditingId(bom.id);
+    setBomDraftName(bom.name);
+    setBomDraftFamily(bom.productFamily ?? "");
+    setBomDraftGroup(bom.outputGroup ?? "");
+    setBomDraftOutputItemId(bom.outputItemId ?? "");
+    setBomDraftNotes(bom.notes ?? "");
+    setBomDraftLines(
+      bom.lines.length > 0
+        ? bom.lines.map((l) => ({
+            key: l.id,
+            componentName: l.componentName,
+            componentGroup: l.componentGroup ?? "",
+            componentItemId: l.componentItemId ?? "",
+            qtyPerUnit: String(l.qtyPerUnit),
+            unitCost: l.unitCost != null ? String(l.unitCost) : "",
+          }))
+        : [emptyBomDraftLine()],
+    );
+    setBomEditError(null);
+    setBomEditorOpen(true);
+    setAnalysisView("bom");
+  }
+
+  function closeBomEditor() {
+    setBomEditorOpen(false);
+    setBomEditError(null);
+  }
+
+  function saveBomEditor() {
+    const lines: WarehouseBomLineInput[] = [];
+    for (const row of bomDraftLines) {
+      const name = row.componentName.trim();
+      if (!name && !row.qtyPerUnit.trim() && !row.unitCost.trim()) continue;
+      const qty = Number(String(row.qtyPerUnit).replace(",", "."));
+      const costRaw = row.unitCost.trim();
+      const unitCost = costRaw
+        ? Number(String(costRaw).replace(",", "."))
+        : undefined;
+      lines.push({
+        componentName: name,
+        ...(row.componentGroup.trim()
+          ? { componentGroup: row.componentGroup.trim() }
+          : {}),
+        ...(row.componentItemId
+          ? { componentItemId: row.componentItemId }
+          : {}),
+        qtyPerUnit: qty,
+        ...(unitCost != null && Number.isFinite(unitCost)
+          ? { unitCost }
+          : {}),
+      });
+    }
+    const res = saveWarehouseBom({
+      ...(bomEditingId ? { id: bomEditingId } : {}),
+      name: bomDraftName,
+      ...(bomDraftFamily.trim()
+        ? { productFamily: bomDraftFamily.trim() }
+        : {}),
+      ...(bomDraftGroup.trim() ? { outputGroup: bomDraftGroup.trim() } : {}),
+      ...(bomDraftOutputItemId
+        ? { outputItemId: bomDraftOutputItemId }
+        : {}),
+      ...(bomDraftNotes.trim() ? { notes: bomDraftNotes.trim() } : {}),
+      lines,
+    });
+    if (!res.ok) {
+      setBomEditError(res.error);
+      return;
+    }
+    setAnalysisBomId(res.bomId);
+    closeBomEditor();
+  }
 
   const stockRows = useMemo(() => {
     const rows: StockRow[] = [];
@@ -668,6 +861,7 @@ export default function WarehousePage() {
     setEditError(null);
     setEditBalanceId(bal?.id ?? null);
     setEditItemId(lot.itemId);
+    setEditGroupId(itemById.get(lot.itemId)?.groupId ?? "");
     setEditDate(lot.receivedAt);
     setEditInc(String(lot.unitCostIncVat));
     setEditEx(String(lot.unitCostExVat));
@@ -757,6 +951,18 @@ export default function WarehousePage() {
         setEditError(adjusted.error);
         return;
       }
+    }
+
+    const catalogItem = itemById.get(editItemId);
+    if (catalogItem) {
+      upsertWarehouseItem({
+        id: editItemId,
+        name: catalogItem.name,
+        sku: catalogItem.sku,
+        unit: catalogItem.unit,
+        defaultMaterialKind: editKind,
+        groupId: editGroupId || null,
+      });
     }
 
     const result = updateWarehouseLot({
@@ -873,13 +1079,17 @@ export default function WarehousePage() {
 
     const result = receiveStock({
       ...(recvMode === "existing"
-        ? { itemId: recvItemId }
+        ? {
+            itemId: recvItemId,
+            groupId: recvGroupId || null,
+          }
         : {
             newItem: {
               name: recvName.trim(),
               ...(recvSku.trim() ? { sku: recvSku.trim() } : {}),
               unit: recvUnit.trim() || "pcs",
               defaultMaterialKind: recvKind,
+              ...(recvGroupId ? { groupId: recvGroupId } : {}),
             },
           }),
       qty,
@@ -914,6 +1124,9 @@ export default function WarehousePage() {
     setRecvSupplier("");
     setRecvNotes("");
     setRecvLinkExpenseId("");
+    setRecvName("");
+    setRecvSku("");
+    setRecvGroupId("");
     setSelectedLotId(result.lotId);
   }
 
@@ -1007,7 +1220,7 @@ export default function WarehousePage() {
                   return;
                 }
                 setImportMsg(
-                  `Imported ${res.stats.balances} stock lines · ${res.stats.items} items · ${res.stats.serials} serials · ${res.stats.parkedSystem} System-* parked`,
+                  `Imported ${res.stats.balances} stock lines · ${res.stats.items} items · ${res.stats.serials} serials · ${res.stats.boms} BOMs · ${res.stats.parkedSystem} System-* parked`,
                 );
               }}
               className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink hover:border-teal-accent disabled:opacity-50"
@@ -1233,28 +1446,60 @@ export default function WarehousePage() {
                   onChange={(e) => setRecvUnit(e.target.value)}
                 />
               </div>
+              <div className="col-span-2">
+                <label className={labelCls}>Group</label>
+                <select
+                  className={inputCls}
+                  value={recvGroupId}
+                  onChange={(e) => setRecvGroupId(e.target.value)}
+                >
+                  <option value="">No group…</option>
+                  {groupsForSelect.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </>
           ) : (
-            <div className="col-span-2">
-              <label className={labelCls}>Catalog item</label>
-              <select
-                className={inputCls}
-                value={recvItemId}
-                onChange={(e) => {
-                  setRecvItemId(e.target.value);
-                  const it = warehouse.items.find((i) => i.id === e.target.value);
-                  if (it) setRecvKind(it.defaultMaterialKind);
-                }}
-              >
-                <option value="">Select…</option>
-                {warehouse.items.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.name}
-                    {it.sku ? ` (${it.sku})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <>
+              <div className="col-span-2 md:col-span-3">
+                <label className={labelCls}>Catalog item</label>
+                <CatalogItemSearchSelect
+                  items={warehouse.items}
+                  groupById={groupById}
+                  value={recvItemId}
+                  inputClassName={inputCls}
+                  onChange={(id) => {
+                    setRecvItemId(id);
+                    const it = warehouse.items.find((i) => i.id === id);
+                    if (it) {
+                      setRecvKind(it.defaultMaterialKind);
+                      setRecvGroupId(it.groupId ?? "");
+                    } else {
+                      setRecvGroupId("");
+                    }
+                  }}
+                />
+              </div>
+              <div className="col-span-2">
+                <label className={labelCls}>Group</label>
+                <select
+                  className={inputCls}
+                  value={recvGroupId}
+                  onChange={(e) => setRecvGroupId(e.target.value)}
+                  disabled={!recvItemId}
+                >
+                  <option value="">No group…</option>
+                  {groupsForSelect.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
           <div>
             <label className={labelCls}>Qty</label>
@@ -1754,15 +1999,30 @@ export default function WarehousePage() {
               <div className="space-y-2">
                 <div>
                   <label className={labelCls}>Catalog item</label>
+                  <CatalogItemSearchSelect
+                    items={catalogItemsSorted}
+                    groupById={groupById}
+                    value={editItemId}
+                    inputClassName={inputCls}
+                    onChange={(id) => {
+                      setEditItemId(id);
+                      const it = itemById.get(id);
+                      setEditGroupId(it?.groupId ?? "");
+                      if (it) setEditKind(it.defaultMaterialKind);
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Group</label>
                   <select
                     className={inputCls}
-                    value={editItemId}
-                    onChange={(e) => setEditItemId(e.target.value)}
+                    value={editGroupId}
+                    onChange={(e) => setEditGroupId(e.target.value)}
                   >
-                    {catalogItemsSorted.map((it) => (
-                      <option key={it.id} value={it.id}>
-                        {it.name}
-                        {it.sku ? ` (${it.sku})` : ""}
+                    <option value="">No group…</option>
+                    {groupsForSelect.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.label}
                       </option>
                     ))}
                   </select>
@@ -2204,14 +2464,39 @@ export default function WarehousePage() {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-xs font-bold uppercase tracking-wide text-deep">
-              Project analysis
+              Warehouse analysis
             </h2>
             <p className="mt-0.5 max-w-xl text-[10px] text-muted">
-              Parts ordered, used, sent to Spares, and spare parts drawn back
-              into the project. Construction spend = used value minus spare
-              parts used on site.
+              Project part usage, and MoneyWorks BOMs (PROD) for materials
+              per finished unit. Optionally compare a BOM to a project.
             </p>
           </div>
+          <div className="flex gap-1">
+            {(
+              [
+                { id: "project" as const, label: "Project" },
+                { id: "bom" as const, label: "BOM" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setAnalysisView(t.id)}
+                className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide ${
+                  analysisView === t.id
+                    ? "bg-teal-soft text-deep"
+                    : "border border-line text-muted hover:border-teal-accent"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {analysisView === "project" && (
+          <>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-[200px]">
             <label className={labelCls}>Project</label>
             <select
@@ -2400,6 +2685,516 @@ export default function WarehousePage() {
                 </tfoot>
               </table>
             </div>
+          </>
+        )}
+          </>
+        )}
+
+        {analysisView === "bom" && (
+          <>
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <div className="min-w-[240px] flex-1">
+                <label className={labelCls}>BOM (finished article)</label>
+                <select
+                  className={inputCls}
+                  value={analysisBomId}
+                  onChange={(e) => setAnalysisBomId(e.target.value)}
+                  disabled={bomCatalog.length === 0}
+                >
+                  {bomCatalog.length === 0 ? (
+                    <option value="">No recipes yet</option>
+                  ) : (
+                    bomCatalog.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {(b.productFamily ? `${b.productFamily} · ` : "") +
+                          b.name}
+                        {b.lines.length
+                          ? ` (${b.lines.length} parts)`
+                          : ""}
+                        {isUserOwnedBomSourceKey(b.sourceKey) ? " ★" : ""}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div className="min-w-[200px]">
+                <label className={labelCls}>Compare to project</label>
+                <select
+                  className={inputCls}
+                  value={analysisProjectId}
+                  onChange={(e) => setAnalysisProjectId(e.target.value)}
+                >
+                  <option value="">— Recipe only —</option>
+                  {analysisProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={openNewBomEditor}
+                  className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink hover:border-teal-accent"
+                >
+                  New recipe
+                </button>
+                {selectedBom ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openEditBomEditor(selectedBom.id)}
+                      className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink hover:border-teal-accent"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const src = selectedBom;
+                        const res = duplicateWarehouseBom(src.id);
+                        if (!res.ok) {
+                          setBomEditError(res.error);
+                          return;
+                        }
+                        setAnalysisBomId(res.bomId);
+                        setBomEditingId(res.bomId);
+                        setBomDraftName(`${src.name} (copy)`);
+                        setBomDraftFamily(src.productFamily ?? "");
+                        setBomDraftGroup(src.outputGroup ?? "");
+                        setBomDraftOutputItemId(src.outputItemId ?? "");
+                        setBomDraftNotes(src.notes ?? "");
+                        setBomDraftLines(
+                          src.lines.length > 0
+                            ? src.lines.map((l) => ({
+                                key: crypto.randomUUID(),
+                                componentName: l.componentName,
+                                componentGroup: l.componentGroup ?? "",
+                                componentItemId: l.componentItemId ?? "",
+                                qtyPerUnit: String(l.qtyPerUnit),
+                                unitCost:
+                                  l.unitCost != null ? String(l.unitCost) : "",
+                              }))
+                            : [emptyBomDraftLine()],
+                        );
+                        setBomEditError(null);
+                        setBomEditorOpen(true);
+                      }}
+                      className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-ink hover:border-teal-accent"
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Delete recipe “${selectedBom.name}”?`,
+                          )
+                        ) {
+                          return;
+                        }
+                        const res = deleteWarehouseBom(selectedBom.id);
+                        if (!res.ok) setBomEditError(res.error);
+                      }}
+                      className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-rose-700 hover:border-rose-400"
+                    >
+                      Delete
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            {bomEditorOpen && (
+              <div className="mb-3 rounded-lg border border-teal-accent/40 bg-surface p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wide text-deep">
+                    {bomEditingId ? "Edit recipe" : "New recipe"}
+                  </h3>
+                  <p className="text-[10px] text-muted">
+                    Qty is per 1 finished unit. ★ recipes are kept across MoneyWorks re-import.
+                  </p>
+                </div>
+                <div className="mb-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <label className={labelCls}>Name *</label>
+                    <input
+                      className={inputCls}
+                      value={bomDraftName}
+                      onChange={(e) => setBomDraftName(e.target.value)}
+                      placeholder="Finished article"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Product family</label>
+                    <input
+                      className={inputCls}
+                      value={bomDraftFamily}
+                      onChange={(e) => setBomDraftFamily(e.target.value)}
+                      placeholder="e.g. Демистър"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Output group</label>
+                    <input
+                      className={inputCls}
+                      value={bomDraftGroup}
+                      onChange={(e) => setBomDraftGroup(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Link catalog item</label>
+                    <select
+                      className={inputCls}
+                      value={bomDraftOutputItemId}
+                      onChange={(e) => setBomDraftOutputItemId(e.target.value)}
+                    >
+                      <option value="">— Optional —</option>
+                      {catalogItemsSorted.map((it) => (
+                        <option key={it.id} value={it.id}>
+                          {it.name}
+                          {it.sku ? ` (${it.sku})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="mb-2">
+                  <label className={labelCls}>Notes</label>
+                  <input
+                    className={inputCls}
+                    value={bomDraftNotes}
+                    onChange={(e) => setBomDraftNotes(e.target.value)}
+                  />
+                </div>
+                <div className="mb-2 overflow-x-auto">
+                  <table className="w-full min-w-[720px] border-collapse text-left text-[11px]">
+                    <thead>
+                      <tr className="border-b border-line text-[9px] uppercase tracking-wide text-muted">
+                        <th className="px-1.5 py-1">Catalog</th>
+                        <th className="px-1.5 py-1">Component name</th>
+                        <th className="px-1.5 py-1">Group</th>
+                        <th className="px-1.5 py-1 text-right">Qty / unit</th>
+                        <th className="px-1.5 py-1 text-right">Unit €</th>
+                        <th className="px-1.5 py-1" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bomDraftLines.map((row, idx) => (
+                        <tr key={row.key} className="border-b border-line/50">
+                          <td className="px-1.5 py-1">
+                            <select
+                              className={inputCls}
+                              value={row.componentItemId}
+                              onChange={(e) => {
+                                const id = e.target.value;
+                                const item = catalogItemsSorted.find(
+                                  (x) => x.id === id,
+                                );
+                                setBomDraftLines((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx
+                                      ? {
+                                          ...r,
+                                          componentItemId: id,
+                                          componentName:
+                                            item?.name ?? r.componentName,
+                                        }
+                                      : r,
+                                  ),
+                                );
+                              }}
+                            >
+                              <option value="">— Free text —</option>
+                              {catalogItemsSorted.map((it) => (
+                                <option key={it.id} value={it.id}>
+                                  {it.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              className={inputCls}
+                              value={row.componentName}
+                              onChange={(e) =>
+                                setBomDraftLines((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx
+                                      ? {
+                                          ...r,
+                                          componentName: e.target.value,
+                                        }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              className={inputCls}
+                              value={row.componentGroup}
+                              onChange={(e) =>
+                                setBomDraftLines((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx
+                                      ? {
+                                          ...r,
+                                          componentGroup: e.target.value,
+                                        }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              className={`${inputCls} text-right`}
+                              value={row.qtyPerUnit}
+                              onChange={(e) =>
+                                setBomDraftLines((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx
+                                      ? { ...r, qtyPerUnit: e.target.value }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              className={`${inputCls} text-right`}
+                              value={row.unitCost}
+                              onChange={(e) =>
+                                setBomDraftLines((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx
+                                      ? { ...r, unitCost: e.target.value }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <button
+                              type="button"
+                              className="text-[10px] text-muted hover:text-rose-700"
+                              onClick={() =>
+                                setBomDraftLines((prev) =>
+                                  prev.length <= 1
+                                    ? [emptyBomDraftLine()]
+                                    : prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBomDraftLines((prev) => [
+                        ...prev,
+                        emptyBomDraftLine(),
+                      ])
+                    }
+                    className="rounded border border-line px-2 py-1 text-[10px] font-semibold text-ink hover:border-teal-accent"
+                  >
+                    + Component
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveBomEditor}
+                    className="rounded bg-teal-accent px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white"
+                  >
+                    Save recipe
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeBomEditor}
+                    className="rounded border border-line px-2.5 py-1 text-[10px] font-semibold text-muted"
+                  >
+                    Cancel
+                  </button>
+                  {bomEditError ? (
+                    <span className="text-[10px] text-rose-700">
+                      {bomEditError}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )}
+
+            {!selectedBom && !bomEditorOpen ? (
+              <p className="text-[11px] text-muted">
+                Import MoneyWorks or create a new recipe to get started.
+              </p>
+            ) : selectedBom && !bomEditorOpen ? (
+              <>
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {[
+                    {
+                      label: "Components",
+                      value: String(selectedBom.lines.length),
+                      sub: selectedBom.outputGroup ?? "—",
+                    },
+                    {
+                      label: "Produced (hist.)",
+                      value: formatQty(selectedBom.qtyProduced),
+                      sub: selectedBom.productFamily || "No family",
+                    },
+                    {
+                      label: "Est. materials",
+                      value: formatMoney(selectedBom.estimatedMaterialCost),
+                      sub: "Per finished unit",
+                    },
+                    {
+                      label: "Ownership",
+                      value: isUserOwnedBomSourceKey(selectedBom.sourceKey)
+                        ? "Local ★"
+                        : "Imported",
+                      sub: selectedBom.outputItemId
+                        ? "Catalog linked"
+                        : "Name only",
+                    },
+                  ].map((k) => (
+                    <div
+                      key={k.label}
+                      className="rounded-lg border border-line/80 bg-surface px-2.5 py-2"
+                    >
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-muted">
+                        {k.label}
+                      </div>
+                      <div className="text-sm font-bold tabular-nums text-ink">
+                        {k.value}
+                      </div>
+                      <div className="text-[9px] text-muted">{k.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] border-collapse text-left text-[11px]">
+                    <thead>
+                      <tr className="border-b border-line text-[9px] uppercase tracking-wide text-muted">
+                        <th className="px-2 py-1.5 font-semibold">Component</th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          BOM qty
+                        </th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          Unit €
+                        </th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          Line €
+                        </th>
+                        {analysisProjectId ? (
+                          <>
+                            <th className="px-2 py-1.5 font-semibold text-right">
+                              Project used
+                            </th>
+                            <th className="px-2 py-1.5 font-semibold text-right">
+                              On hand
+                            </th>
+                            <th className="px-2 py-1.5 font-semibold text-right">
+                              Δ vs BOM
+                            </th>
+                          </>
+                        ) : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(analysisProjectId
+                        ? bomVsProject
+                        : selectedBom.lines.map((l) => ({
+                            componentName: l.componentName,
+                            componentGroup: l.componentGroup,
+                            bomQty: l.qtyPerUnit,
+                            usedQty: 0,
+                            onHandQty: 0,
+                            bomUnitCost: l.unitCost,
+                            varianceQty: 0,
+                          }))
+                      ).map((line, idx) => {
+                        const lineCost = roundMoneyDisplay(
+                          line.bomQty * (line.bomUnitCost ?? 0),
+                        );
+                        return (
+                          <tr
+                            key={`${line.componentName}:${idx}`}
+                            className="border-b border-line/50 hover:bg-surface/70"
+                          >
+                            <td className="px-2 py-1.5">
+                              <div className="font-semibold text-ink">
+                                {line.componentName}
+                              </div>
+                              {line.componentGroup ? (
+                                <div className="text-[9px] text-muted">
+                                  {line.componentGroup}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {formatQty(line.bomQty) || "—"}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {line.bomUnitCost != null
+                                ? formatMoney(line.bomUnitCost)
+                                : "—"}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums">
+                              {line.bomUnitCost != null
+                                ? formatMoney(lineCost)
+                                : "—"}
+                            </td>
+                            {analysisProjectId ? (
+                              <>
+                                <td className="px-2 py-1.5 text-right tabular-nums">
+                                  {formatQty(line.usedQty)}
+                                </td>
+                                <td className="px-2 py-1.5 text-right tabular-nums">
+                                  {formatQty(line.onHandQty)}
+                                </td>
+                                <td
+                                  className={`px-2 py-1.5 text-right tabular-nums ${
+                                    line.varianceQty > 0.0001
+                                      ? "text-amber-700"
+                                      : line.varianceQty < -0.0001
+                                        ? "text-teal-accent"
+                                        : ""
+                                  }`}
+                                >
+                                  {Math.abs(line.varianceQty) < 0.00005
+                                    ? "—"
+                                    : `${line.varianceQty > 0 ? "+" : ""}${
+                                        Number.isInteger(line.varianceQty)
+                                          ? String(line.varianceQty)
+                                          : line.varianceQty
+                                              .toFixed(2)
+                                              .replace(/\.?0+$/, "")
+                                      }`}
+                                </td>
+                              </>
+                            ) : null}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
           </>
         )}
       </section>

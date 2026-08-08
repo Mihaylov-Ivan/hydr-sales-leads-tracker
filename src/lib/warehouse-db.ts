@@ -1,5 +1,7 @@
 import {
   WarehouseBalance,
+  WarehouseBom,
+  WarehouseBomLine,
   WarehouseGroup,
   WarehouseItem,
   WarehouseLocation,
@@ -37,6 +39,10 @@ export interface WarehouseItemRow {
   min_qty: number | string | null;
   max_qty: number | string | null;
   tracks_serial: boolean;
+  preferred_supplier?: string | null;
+  system_tags?: unknown;
+  legacy_group_name?: string | null;
+  name_original?: string | null;
   created_at: string;
 }
 
@@ -97,6 +103,31 @@ export interface WarehouseSerialRow {
   qty: number | string;
   status: string;
   source_sklad: string | null;
+  created_at: string;
+}
+
+export interface WarehouseBomRow {
+  id: string;
+  name: string;
+  output_group: string | null;
+  product_family: string | null;
+  output_item_id: string | null;
+  source_key: string;
+  qty_produced: number | string;
+  unit_cost: number | string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface WarehouseBomLineRow {
+  id: string;
+  bom_id: string;
+  position: number;
+  component_name: string;
+  component_group: string | null;
+  component_item_id: string | null;
+  qty_per_unit: number | string;
+  unit_cost: number | string | null;
   created_at: string;
 }
 
@@ -189,6 +220,14 @@ export function itemFromRow(row: WarehouseItemRow): WarehouseItem {
   if (row.max_qty != null && Number.isFinite(num(row.max_qty))) {
     item.maxQty = num(row.max_qty);
   }
+  if (row.preferred_supplier) item.preferredSupplier = row.preferred_supplier;
+  if (Array.isArray(row.system_tags)) {
+    item.systemTags = row.system_tags.filter(
+      (t): t is string => typeof t === "string" && t.length > 0,
+    );
+  }
+  if (row.legacy_group_name) item.legacyGroupName = row.legacy_group_name;
+  if (row.name_original) item.nameOriginal = row.name_original;
   return item;
 }
 
@@ -211,6 +250,10 @@ export function itemToRow(item: WarehouseItem): WarehouseItemRow {
     min_qty: item.minQty ?? null,
     max_qty: item.maxQty ?? null,
     tracks_serial: Boolean(item.tracksSerial),
+    preferred_supplier: item.preferredSupplier ?? null,
+    system_tags: item.systemTags ?? [],
+    legacy_group_name: item.legacyGroupName ?? null,
+    name_original: item.nameOriginal ?? null,
     created_at: createdAt,
   };
 }
@@ -387,12 +430,84 @@ export function serialToRow(s: WarehouseSerial): WarehouseSerialRow {
   };
 }
 
+export function bomFromRow(row: WarehouseBomRow): WarehouseBom {
+  const bom: WarehouseBom = {
+    id: row.id,
+    name: row.name,
+    sourceKey: row.source_key,
+    qtyProduced: num(row.qty_produced),
+    createdAt: row.created_at,
+  };
+  if (row.output_group) bom.outputGroup = row.output_group;
+  if (row.product_family) bom.productFamily = row.product_family;
+  if (row.output_item_id) bom.outputItemId = row.output_item_id;
+  if (row.unit_cost != null && Number.isFinite(num(row.unit_cost))) {
+    bom.unitCost = num(row.unit_cost);
+  }
+  if (row.notes) bom.notes = row.notes;
+  return bom;
+}
+
+export function bomToRow(b: WarehouseBom): WarehouseBomRow {
+  return {
+    id: b.id,
+    name: b.name,
+    output_group: b.outputGroup ?? null,
+    product_family: b.productFamily ?? null,
+    output_item_id: b.outputItemId ?? null,
+    source_key: b.sourceKey,
+    qty_produced: b.qtyProduced,
+    unit_cost: b.unitCost ?? null,
+    notes: b.notes ?? null,
+    created_at: b.createdAt,
+  };
+}
+
+export function bomLineFromRow(row: WarehouseBomLineRow): WarehouseBomLine {
+  const line: WarehouseBomLine = {
+    id: row.id,
+    bomId: row.bom_id,
+    position: row.position,
+    componentName: row.component_name,
+    qtyPerUnit: num(row.qty_per_unit),
+    createdAt: row.created_at,
+  };
+  if (row.component_group) line.componentGroup = row.component_group;
+  if (row.component_item_id) line.componentItemId = row.component_item_id;
+  if (row.unit_cost != null && Number.isFinite(num(row.unit_cost))) {
+    line.unitCost = num(row.unit_cost);
+  }
+  return line;
+}
+
+export function bomLineToRow(l: WarehouseBomLine): WarehouseBomLineRow {
+  return {
+    id: l.id,
+    bom_id: l.bomId,
+    position: l.position,
+    component_name: l.componentName,
+    component_group: l.componentGroup ?? null,
+    component_item_id: l.componentItemId ?? null,
+    qty_per_unit: l.qtyPerUnit,
+    unit_cost: l.unitCost ?? null,
+    created_at: l.createdAt,
+  };
+}
+
 export async function loadRemoteWarehouseState(
   holdingProjectId: string | null,
 ): Promise<WarehouseState | null> {
   if (!supabase) return null;
-  const [itemsRes, lotsRes, balRes, movRes, groupsRes, serialsRes] =
-    await Promise.all([
+  const [
+    itemsRes,
+    lotsRes,
+    balRes,
+    movRes,
+    groupsRes,
+    serialsRes,
+    bomsRes,
+    bomLinesRes,
+  ] = await Promise.all([
       supabase.from("warehouse_items").select("*").order("created_at"),
       supabase.from("warehouse_lots").select("*").order("created_at"),
       supabase.from("warehouse_balances").select("*"),
@@ -403,6 +518,8 @@ export async function loadRemoteWarehouseState(
         .limit(5000),
       supabase.from("warehouse_groups").select("*").order("name"),
       supabase.from("warehouse_serials").select("*").order("serial"),
+      supabase.from("warehouse_boms").select("*").order("name"),
+      supabase.from("warehouse_bom_lines").select("*").order("position"),
     ]);
   if (itemsRes.error || lotsRes.error || balRes.error || movRes.error) {
     console.error(
@@ -414,12 +531,18 @@ export async function loadRemoteWarehouseState(
     );
     return null;
   }
-  // Groups/serials tables may not exist until migration-024 is applied
+  // Groups/serials/boms tables may not exist until later migrations are applied
   if (groupsRes.error) {
     console.warn("Warehouse groups load:", groupsRes.error.message);
   }
   if (serialsRes.error) {
     console.warn("Warehouse serials load:", serialsRes.error.message);
+  }
+  if (bomsRes.error) {
+    console.warn("Warehouse boms load:", bomsRes.error.message);
+  }
+  if (bomLinesRes.error) {
+    console.warn("Warehouse bom lines load:", bomLinesRes.error.message);
   }
   return {
     items: ((itemsRes.data ?? []) as WarehouseItemRow[]).map(itemFromRow),
@@ -434,6 +557,12 @@ export async function loadRemoteWarehouseState(
     serials: serialsRes.error
       ? []
       : ((serialsRes.data ?? []) as WarehouseSerialRow[]).map(serialFromRow),
+    boms: bomsRes.error
+      ? []
+      : ((bomsRes.data ?? []) as WarehouseBomRow[]).map(bomFromRow),
+    bomLines: bomLinesRes.error
+      ? []
+      : ((bomLinesRes.data ?? []) as WarehouseBomLineRow[]).map(bomLineFromRow),
     holdingProjectId,
   };
 }
@@ -506,12 +635,62 @@ export async function persistRemoteWarehouseState(
   const serialRows = dedupeRowsById(state.serials.map(serialToRow)).filter(
     (s) => itemIds.has(s.item_id),
   );
+  const bomRows = dedupeRowsById(state.boms.map(bomToRow)).map((row) => ({
+    ...row,
+    output_item_id:
+      row.output_item_id && itemIds.has(row.output_item_id)
+        ? row.output_item_id
+        : null,
+  }));
+  const bomIds = new Set(bomRows.map((b) => b.id));
+  const bomLineRows = dedupeRowsById(state.bomLines.map(bomLineToRow))
+    .filter((l) => bomIds.has(l.bom_id))
+    .map((row) => ({
+      ...row,
+      component_item_id:
+        row.component_item_id && itemIds.has(row.component_item_id)
+          ? row.component_item_id
+          : null,
+    }));
 
   const balIds = new Set(balRows.map((b) => b.id));
   const movIds = new Set(movRows.map((m) => m.id));
   const serIds = new Set(serialRows.map((s) => s.id));
+  const bomLineIds = new Set(bomLineRows.map((l) => l.id));
 
   // --- Remove orphans first (child → parent) so upserts/deletes don't hit FKs ---
+  {
+    const { data: existingLines } = await supabase
+      .from("warehouse_bom_lines")
+      .select("id");
+    if (!existingLines) {
+      // table may be missing until migration-026
+    } else {
+      const lineToDelete = ((existingLines ?? []) as { id: string }[])
+        .map((r) => r.id)
+        .filter((id) => !bomLineIds.has(id));
+      const lineDel = await deleteByIds("warehouse_bom_lines", lineToDelete);
+      if (!lineDel.ok) {
+        console.warn("warehouse_bom_lines delete:", lineDel.error);
+      }
+    }
+  }
+
+  {
+    const { data: existingBoms } = await supabase
+      .from("warehouse_boms")
+      .select("id");
+    if (existingBoms) {
+      const bomToDelete = ((existingBoms ?? []) as { id: string }[])
+        .map((r) => r.id)
+        .filter((id) => !bomIds.has(id));
+      const bomDel = await deleteByIds("warehouse_boms", bomToDelete);
+      if (!bomDel.ok) {
+        console.warn("warehouse_boms delete:", bomDel.error);
+      }
+    }
+  }
+
   {
     const { data: existingSer } = await supabase
       .from("warehouse_serials")
@@ -555,7 +734,7 @@ export async function persistRemoteWarehouseState(
     if (!lotDel.ok) return lotDel;
   }
 
-  // Clear group FKs so stale groups (old ids / same source_key) can be replaced.
+  // Clear item FKs so stale items can be replaced.
   {
     const { error } = await supabase
       .from("warehouse_items")
@@ -563,6 +742,24 @@ export async function persistRemoteWarehouseState(
       .neq("id", "00000000-0000-0000-0000-000000000000");
     if (error) {
       console.warn("clear item group_id:", error.message);
+    }
+  }
+  {
+    const { error } = await supabase
+      .from("warehouse_boms")
+      .update({ output_item_id: null })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) {
+      console.warn("clear bom output_item_id:", error.message);
+    }
+  }
+  {
+    const { error } = await supabase
+      .from("warehouse_bom_lines")
+      .update({ component_item_id: null })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) {
+      console.warn("clear bom line component_item_id:", error.message);
     }
   }
 
@@ -627,6 +824,16 @@ export async function persistRemoteWarehouseState(
     console.warn("warehouse_serials upsert:", serRes.error);
   }
 
+  const bomRes = await upsertChunks("warehouse_boms", bomRows);
+  if (!bomRes.ok) {
+    console.warn("warehouse_boms upsert:", bomRes.error);
+  } else {
+    const lineRes = await upsertChunks("warehouse_bom_lines", bomLineRows);
+    if (!lineRes.ok) {
+      console.warn("warehouse_bom_lines upsert:", lineRes.error);
+    }
+  }
+
   return { ok: true };
 }
 
@@ -644,6 +851,9 @@ export function mergeLocalWarehouseFallback(
       ...remote,
       groups: remote.groups.length > 0 ? remote.groups : local.groups,
       serials: remote.serials.length > 0 ? remote.serials : local.serials,
+      boms: remote.boms.length > 0 ? remote.boms : local.boms,
+      bomLines:
+        remote.bomLines.length > 0 ? remote.bomLines : local.bomLines,
       holdingProjectId: remote.holdingProjectId ?? local.holdingProjectId,
     };
   }

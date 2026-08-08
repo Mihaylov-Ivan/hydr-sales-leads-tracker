@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const [grupi, stokiDef, stoki, serNo, kupuwaItems, kupuwa] =
+    const [grupi, stokiDef, stoki, serNo, kupuwaItems, kupuwa, prod, prodRows, prodVars, prodCels] =
       await Promise.all([
         readCsv("GRUPI.csv"),
         readCsv("STOKI_DEF.csv"),
@@ -38,10 +38,25 @@ export async function POST(req: Request) {
         readCsv("SER_NO.csv"),
         readCsv("KUPUWA_ITEMS.csv"),
         readCsv("KUPUWA.csv"),
+        readCsv("PROD.csv"),
+        readCsv("PROD_ROWS.csv"),
+        readCsv("PROD_VARS.csv"),
+        readCsv("PROD_CELS.csv"),
       ]);
 
     const result = buildWarehouseFromMoneyWorks(
-      { grupi, stokiDef, stoki, serNo, kupuwaItems, kupuwa },
+      {
+        grupi,
+        stokiDef,
+        stoki,
+        serNo,
+        kupuwaItems,
+        kupuwa,
+        prod,
+        prodRows,
+        prodVars,
+        prodCels,
+      },
       { holdingProjectId },
     );
 
