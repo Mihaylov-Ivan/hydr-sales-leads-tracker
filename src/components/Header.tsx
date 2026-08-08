@@ -73,8 +73,8 @@ export default function Header() {
       <Link
         href={href}
         className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${active
-            ? "bg-teal-soft text-teal-accent"
-            : "text-muted hover:bg-surface hover:text-deep"
+          ? "bg-teal-soft text-teal-accent"
+          : "text-muted hover:bg-surface hover:text-deep"
           }`}
       >
         {label}
@@ -112,11 +112,10 @@ export default function Header() {
 
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <label
-            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm sm:gap-2 sm:px-2.5 sm:text-xs ${
-              meaningfulChangeMode
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide shadow-sm sm:gap-2 sm:px-2.5 sm:text-xs ${meaningfulChangeMode
                 ? "border-teal-accent/50 bg-teal-soft text-teal-accent"
                 : "border-line bg-panel text-muted"
-            }`}
+              }`}
             title={
               meaningfulChangeMode
                 ? "On: edits are tagged as intentional process changes"
@@ -130,7 +129,7 @@ export default function Header() {
               onChange={(e) => setMeaningfulChangeMode(e.target.checked)}
               className="h-3.5 w-3.5 accent-teal-accent"
             />
-            <span className="hidden sm:inline">Meaningful change</span>
+            <span className="hidden sm:inline">Real change</span>
             <span className="sm:hidden">Intent</span>
           </label>
           <label className="flex min-w-0 items-center gap-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useProjects } from "@/lib/store";
 import {
   WarehouseLocation,
@@ -252,6 +253,11 @@ export default function WarehousePage() {
   ]);
   const [bomEditError, setBomEditError] = useState<string | null>(null);
   const [pageTab, setPageTab] = useState<"stock" | "analysis">("stock");
+  const [lotModalMounted, setLotModalMounted] = useState(false);
+
+  useEffect(() => {
+    setLotModalMounted(true);
+  }, []);
 
   useEffect(() => {
     if (ready) ensureWarehouseHoldingProject();
@@ -847,6 +853,11 @@ export default function WarehousePage() {
     [projects],
   );
 
+  function closeLotEditor() {
+    setEditingLot(false);
+    setEditError(null);
+  }
+
   function openLotEditor(lotId: string, balanceId?: string) {
     const lot = lotById.get(lotId);
     if (!lot) return;
@@ -982,7 +993,7 @@ export default function WarehousePage() {
       setEditError(result.error);
       return;
     }
-    setEditingLot(false);
+    closeLotEditor();
   }
 
   function confirmDeleteLot(lotId: string) {
@@ -1003,7 +1014,7 @@ export default function WarehousePage() {
       return;
     }
     setSelectedLotId(null);
-    setEditingLot(false);
+    closeLotEditor();
     setActiveBalanceId(null);
     setActionError(null);
   }
@@ -1674,13 +1685,17 @@ export default function WarehousePage() {
         </button>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <section className="overflow-x-auto rounded-lg border border-line bg-panel">
+      <div
+        className={`grid gap-4 ${
+          activeRow ? "lg:grid-cols-[minmax(0,1fr)_320px]" : "grid-cols-1"
+        }`}
+      >
+        <section className="min-w-0 overflow-x-auto rounded-lg border border-line bg-panel">
           <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
             <h2 className="text-xs font-bold uppercase tracking-wide text-deep">
               Stock on hand
             </h2>
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px] tabular-nums">
+            <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] tabular-nums">
               <span className="text-muted">
                 {stockRows.length} line{stockRows.length === 1 ? "" : "s"}
                 {filtersActive ? " (filtered)" : ""}
@@ -1876,7 +1891,7 @@ export default function WarehousePage() {
                       <button
                         type="button"
                         className="text-left font-semibold text-ink hover:text-teal-accent"
-                        onClick={() => setSelectedLotId(r.lotId)}
+                        onClick={() => openLotEditor(r.lotId, r.balanceId)}
                       >
                         {r.itemName}
                       </button>
@@ -1990,59 +2005,32 @@ export default function WarehousePage() {
           </table>
         </section>
 
-        <aside className="space-y-3">
-          {editingLot && selectedLot && (
+        {activeRow && (
+          <aside className="space-y-3 lg:sticky lg:top-2 lg:self-start">
             <div className="rounded-lg border border-line bg-panel p-3">
               <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-deep">
-                Edit lot — {selectedLotItem?.name ?? selectedLot.label ?? "Lot"}
+                Actions — {activeRow.itemName}
               </h3>
+              <p className="mb-2 text-[10px] text-muted">
+                From {activeRow.locationLabel} · {activeRow.qty} available
+              </p>
               <div className="space-y-2">
                 <div>
-                  <label className={labelCls}>Catalog item</label>
-                  <CatalogItemSearchSelect
-                    items={catalogItemsSorted}
-                    groupById={groupById}
-                    value={editItemId}
-                    inputClassName={inputCls}
-                    onChange={(id) => {
-                      setEditItemId(id);
-                      const it = itemById.get(id);
-                      setEditGroupId(it?.groupId ?? "");
-                      if (it) setEditKind(it.defaultMaterialKind);
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Group</label>
-                  <select
-                    className={inputCls}
-                    value={editGroupId}
-                    onChange={(e) => setEditGroupId(e.target.value)}
-                  >
-                    <option value="">No group…</option>
-                    {groupsForSelect.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>On-hand qty (this line)</label>
+                  <label className={labelCls}>Qty to move</label>
                   <input
                     className={inputCls}
-                    value={editQty}
-                    onChange={(e) => setEditQty(e.target.value)}
+                    value={moveQty}
+                    onChange={(e) => setMoveQty(e.target.value)}
                     placeholder="Qty"
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Site</label>
+                  <label className={labelCls}>To site</label>
                   <select
                     className={inputCls}
-                    value={editSite}
+                    value={moveSite}
                     onChange={(e) =>
-                      setEditSite(e.target.value as WarehouseSite)
+                      setMoveSite(e.target.value as WarehouseSite)
                     }
                   >
                     {WAREHOUSE_SITES.map((s) => (
@@ -2053,251 +2041,47 @@ export default function WarehousePage() {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Slot</label>
+                  <label className={labelCls}>To slot</label>
                   <select
                     className={inputCls}
-                    value={editSlot}
-                    onChange={(e) => {
-                      const slot = e.target.value as WarehouseSlot;
-                      setEditSlot(slot);
-                      if (slot !== "project") setEditProjectId("");
-                    }}
-                  >
-                    {ALL_SLOTS.map((s) => (
-                      <option key={s} value={s}>
-                        {WAREHOUSE_SLOT_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {editSlot === "project" && (
-                  <div>
-                    <label className={labelCls}>Project (stock location)</label>
-                    <select
-                      className={inputCls}
-                      value={editProjectId}
-                      onChange={(e) => setEditProjectId(e.target.value)}
-                    >
-                      <option value="">Select project…</option>
-                      {allProjectsForEdit.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.isWarehouseHolding ? " (holding)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label className={labelCls}>Purchase project</label>
-                  <select
-                    className={inputCls}
-                    value={editPurchaseProjectId}
-                    onChange={(e) => setEditPurchaseProjectId(e.target.value)}
-                  >
-                    <option value="">Select project…</option>
-                    {allProjectsForEdit.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.isWarehouseHolding ? " (holding)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Expense link</label>
-                  <select
-                    className={inputCls}
-                    value={editExpenseId}
-                    onChange={(e) => setEditExpenseId(e.target.value)}
-                  >
-                    <option value="">Unlinked</option>
-                    {editExpenseOptions.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Received date</label>
-                  <input
-                    type="date"
-                    className={inputCls}
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Unit € ex VAT</label>
-                  <input
-                    className={inputCls}
-                    value={editEx}
-                    onChange={(e) => {
-                      setEditEx(e.target.value);
-                      const n = parseNum(e.target.value);
-                      if (n != null) setEditInc(String(amountIncFromEx(n)));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Unit € inc VAT</label>
-                  <input
-                    className={inputCls}
-                    value={editInc}
-                    onChange={(e) => {
-                      setEditInc(e.target.value);
-                      const n = parseNum(e.target.value);
-                      if (n != null) setEditEx(String(amountExFromInc(n)));
-                    }}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Category</label>
-                  <select
-                    className={inputCls}
-                    value={editKind}
+                    value={moveDestSlot}
                     onChange={(e) =>
-                      setEditKind(e.target.value as WarehouseMaterialKind)
+                      setMoveDestSlot(e.target.value as DestSlot)
                     }
                   >
-                    {WAREHOUSE_MATERIAL_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {WAREHOUSE_MATERIAL_KIND_LABELS[k]}
-                      </option>
-                    ))}
+                    {(Object.keys(WAREHOUSE_SLOT_LABELS) as WarehouseSlot[]).map(
+                      (s) => (
+                        <option key={s} value={s}>
+                          {WAREHOUSE_SLOT_LABELS[s]}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </div>
-                <div>
-                  <label className={labelCls}>Label</label>
-                  <input
-                    className={inputCls}
-                    value={editLabel}
-                    onChange={(e) => setEditLabel(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Supplier</label>
-                  <input
-                    className={inputCls}
-                    value={editSupplier}
-                    onChange={(e) => setEditSupplier(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Notes</label>
-                  <input
-                    className={inputCls}
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                  />
-                </div>
-                {editError && (
-                  <p className="text-[11px] text-red-600">{editError}</p>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={submitLotEdit}
-                    className="flex-1 rounded-lg bg-teal-accent px-2 py-1.5 text-[10px] font-bold uppercase text-white"
-                  >
-                    Save lot
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingLot(false)}
-                    className="rounded-lg border border-line px-2 py-1.5 text-[10px] font-bold uppercase text-muted"
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => confirmDeleteLot(selectedLot.id)}
-                  className="w-full text-[10px] font-semibold text-red-600 underline"
-                >
-                  Delete this lot
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeRow && (
-            <div className="rounded-lg border border-line bg-panel p-3">
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-deep">
-                Actions — {activeRow.itemName}
-              </h3>
-              <p className="mb-2 text-[10px] text-muted">
-                From {activeRow.locationLabel} · {activeRow.qty} available
-              </p>
-              <div className="space-y-2">
+                {moveDestSlot === "project" && (
                   <div>
-                    <label className={labelCls}>Qty to move</label>
-                    <input
-                      className={inputCls}
-                      value={moveQty}
-                      onChange={(e) => setMoveQty(e.target.value)}
-                      placeholder="Qty"
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>To site</label>
+                    <label className={labelCls}>Project</label>
                     <select
                       className={inputCls}
-                      value={moveSite}
-                      onChange={(e) =>
-                        setMoveSite(e.target.value as WarehouseSite)
-                      }
+                      value={moveProjectId}
+                      onChange={(e) => setMoveProjectId(e.target.value)}
                     >
-                      {WAREHOUSE_SITES.map((s) => (
-                        <option key={s} value={s}>
-                          {WAREHOUSE_SITE_LABELS[s]}
+                      <option value="">Select…</option>
+                      {salesProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className={labelCls}>To slot</label>
-                    <select
-                      className={inputCls}
-                      value={moveDestSlot}
-                      onChange={(e) =>
-                        setMoveDestSlot(e.target.value as DestSlot)
-                      }
-                    >
-                      {(Object.keys(WAREHOUSE_SLOT_LABELS) as WarehouseSlot[]).map(
-                        (s) => (
-                          <option key={s} value={s}>
-                            {WAREHOUSE_SLOT_LABELS[s]}
-                          </option>
-                        ),
-                      )}
-                    </select>
-                  </div>
-                  {moveDestSlot === "project" && (
-                    <div>
-                      <label className={labelCls}>Project</label>
-                      <select
-                        className={inputCls}
-                        value={moveProjectId}
-                        onChange={(e) => setMoveProjectId(e.target.value)}
-                      >
-                        <option value="">Select…</option>
-                        {salesProjects.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={submitTransfer}
-                    className="w-full rounded-lg bg-teal-accent px-2 py-1.5 text-[10px] font-bold uppercase text-white"
-                  >
-                    Transfer (cost follows)
-                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={submitTransfer}
+                  className="w-full rounded-lg bg-teal-accent px-2 py-1.5 text-[10px] font-bold uppercase text-white"
+                >
+                  Transfer (cost follows)
+                </button>
               </div>
               <div className="mt-3 space-y-2 border-t border-line pt-3">
                 <div>
@@ -2328,77 +2112,327 @@ export default function WarehousePage() {
                 Close
               </button>
             </div>
-          )}
+          </aside>
+        )}
+      </div>
 
-          <div className="rounded-lg border border-line bg-panel p-3">
-            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-deep">
-              Lot movement history
-            </h3>
-            {!selectedLotId ? (
-              <p className="text-[11px] text-muted">
-                Select a lot from the stock table to see its full path.
-              </p>
-            ) : (
-              <>
-                <p className="mb-2 font-mono text-[9px] text-muted">
-                  {selectedLotId.slice(0, 8)} · on hand{" "}
-                  {lotQtyOnHand(warehouse.balances, selectedLotId)}
-                </p>
-                <div className="mb-2 flex gap-1">
+      {lotModalMounted &&
+        editingLot &&
+        selectedLot &&
+        createPortal(
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6">
+            <div
+              className="absolute inset-0 bg-black/30"
+              aria-hidden
+              onMouseDown={(e) => {
+                e.preventDefault();
+                closeLotEditor();
+              }}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Edit warehouse lot"
+              className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-panel shadow-2xl"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wide text-deep">
+                    Edit lot
+                  </h3>
+                  <p className="mt-0.5 text-[11px] font-semibold text-ink">
+                    {selectedLotItem?.name ?? selectedLot.label ?? "Lot"}
+                  </p>
+                  <p className="font-mono text-[9px] text-muted">
+                    {selectedLot.id.slice(0, 8)} · on hand{" "}
+                    {lotQtyOnHand(warehouse.balances, selectedLot.id)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded border border-line px-2 py-1 text-[9px] font-semibold uppercase text-muted hover:border-teal-accent"
+                  onClick={closeLotEditor}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Catalog item</label>
+                    <CatalogItemSearchSelect
+                      items={catalogItemsSorted}
+                      groupById={groupById}
+                      value={editItemId}
+                      inputClassName={inputCls}
+                      onChange={(id) => {
+                        setEditItemId(id);
+                        const it = itemById.get(id);
+                        setEditGroupId(it?.groupId ?? "");
+                        if (it) setEditKind(it.defaultMaterialKind);
+                      }}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Group</label>
+                    <select
+                      className={inputCls}
+                      value={editGroupId}
+                      onChange={(e) => setEditGroupId(e.target.value)}
+                    >
+                      <option value="">No group…</option>
+                      {groupsForSelect.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>On-hand qty (this line)</label>
+                    <input
+                      className={inputCls}
+                      value={editQty}
+                      onChange={(e) => setEditQty(e.target.value)}
+                      placeholder="Qty"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Received date</label>
+                    <input
+                      type="date"
+                      className={inputCls}
+                      value={editDate}
+                      onChange={(e) => setEditDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Site</label>
+                    <select
+                      className={inputCls}
+                      value={editSite}
+                      onChange={(e) =>
+                        setEditSite(e.target.value as WarehouseSite)
+                      }
+                    >
+                      {WAREHOUSE_SITES.map((s) => (
+                        <option key={s} value={s}>
+                          {WAREHOUSE_SITE_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Slot</label>
+                    <select
+                      className={inputCls}
+                      value={editSlot}
+                      onChange={(e) => {
+                        const slot = e.target.value as WarehouseSlot;
+                        setEditSlot(slot);
+                        if (slot !== "project") setEditProjectId("");
+                      }}
+                    >
+                      {ALL_SLOTS.map((s) => (
+                        <option key={s} value={s}>
+                          {WAREHOUSE_SLOT_LABELS[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {editSlot === "project" && (
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>
+                        Project (stock location)
+                      </label>
+                      <select
+                        className={inputCls}
+                        value={editProjectId}
+                        onChange={(e) => setEditProjectId(e.target.value)}
+                      >
+                        <option value="">Select project…</option>
+                        {allProjectsForEdit.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.isWarehouseHolding ? " (holding)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label className={labelCls}>Purchase project</label>
+                    <select
+                      className={inputCls}
+                      value={editPurchaseProjectId}
+                      onChange={(e) => setEditPurchaseProjectId(e.target.value)}
+                    >
+                      <option value="">Select project…</option>
+                      {allProjectsForEdit.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.isWarehouseHolding ? " (holding)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Expense link</label>
+                    <select
+                      className={inputCls}
+                      value={editExpenseId}
+                      onChange={(e) => setEditExpenseId(e.target.value)}
+                    >
+                      <option value="">Unlinked</option>
+                      {editExpenseOptions.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Unit € ex VAT</label>
+                    <input
+                      className={inputCls}
+                      value={editEx}
+                      onChange={(e) => {
+                        setEditEx(e.target.value);
+                        const n = parseNum(e.target.value);
+                        if (n != null) setEditInc(String(amountIncFromEx(n)));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Unit € inc VAT</label>
+                    <input
+                      className={inputCls}
+                      value={editInc}
+                      onChange={(e) => {
+                        setEditInc(e.target.value);
+                        const n = parseNum(e.target.value);
+                        if (n != null) setEditEx(String(amountExFromInc(n)));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Category</label>
+                    <select
+                      className={inputCls}
+                      value={editKind}
+                      onChange={(e) =>
+                        setEditKind(e.target.value as WarehouseMaterialKind)
+                      }
+                    >
+                      {WAREHOUSE_MATERIAL_KINDS.map((k) => (
+                        <option key={k} value={k}>
+                          {WAREHOUSE_MATERIAL_KIND_LABELS[k]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Label</label>
+                    <input
+                      className={inputCls}
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Supplier</label>
+                    <input
+                      className={inputCls}
+                      value={editSupplier}
+                      onChange={(e) => setEditSupplier(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Notes</label>
+                    <input
+                      className={inputCls}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {editError && (
+                  <p className="text-[11px] text-red-600">{editError}</p>
+                )}
+
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    className="rounded border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase hover:border-teal-accent"
-                    onClick={() => openLotEditor(selectedLotId)}
+                    onClick={submitLotEdit}
+                    className="rounded-lg bg-teal-accent px-3 py-1.5 text-[10px] font-bold uppercase text-white"
                   >
-                    Edit lot
+                    Save lot
                   </button>
                   <button
                     type="button"
-                    className="rounded border border-line px-1.5 py-0.5 text-[9px] font-semibold uppercase text-red-600 hover:border-red-500"
-                    onClick={() => confirmDeleteLot(selectedLotId)}
+                    onClick={closeLotEditor}
+                    className="rounded-lg border border-line px-3 py-1.5 text-[10px] font-bold uppercase text-muted"
                   >
-                    Delete lot
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmDeleteLot(selectedLot.id)}
+                    className="ml-auto text-[10px] font-semibold text-red-600 underline"
+                  >
+                    Delete this lot
                   </button>
                 </div>
-                <ul className="max-h-80 space-y-2 overflow-y-auto">
-                  {selectedLotMovements.length === 0 ? (
-                    <li className="text-[11px] text-muted">No movements</li>
-                  ) : (
-                    selectedLotMovements.map((m) => (
-                      <li
-                        key={m.id}
-                        className="rounded border border-line/70 bg-surface px-2 py-1.5"
-                      >
-                        <div className="text-[10px] font-semibold capitalize text-ink">
-                          {m.action}
-                          <span className="ml-1 font-normal text-muted">
-                            ×{m.qty}
-                          </span>
-                        </div>
-                        <div className="text-[9px] text-muted">
-                          {m.from
-                            ? locationLabel(m.from, (id) => nameById.get(id))
-                            : "—"}
-                          {" → "}
-                          {m.to
-                            ? locationLabel(m.to, (id) => nameById.get(id))
-                            : "—"}
-                        </div>
-                        <div className="text-[9px] tabular-nums text-muted">
-                          {m.occurredAt.slice(0, 19).replace("T", " ")}
-                        </div>
-                        {m.note && (
-                          <div className="text-[9px] text-muted">{m.note}</div>
-                        )}
+
+                <section className="border-t border-line pt-4">
+                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-deep">
+                    Movement history
+                  </h4>
+                  <ul className="max-h-56 space-y-2 overflow-y-auto">
+                    {selectedLotMovements.length === 0 ? (
+                      <li className="text-[11px] text-muted">
+                        No movements recorded for this lot yet.
                       </li>
-                    ))
-                  )}
-                </ul>
-              </>
-            )}
-          </div>
-        </aside>
-      </div>
+                    ) : (
+                      selectedLotMovements.map((m) => (
+                        <li
+                          key={m.id}
+                          className="rounded border border-line/70 bg-surface px-2 py-1.5"
+                        >
+                          <div className="text-[10px] font-semibold capitalize text-ink">
+                            {m.action}
+                            <span className="ml-1 font-normal text-muted">
+                              ×{m.qty}
+                            </span>
+                          </div>
+                          <div className="text-[9px] text-muted">
+                            {m.from
+                              ? locationLabel(m.from, (id) => nameById.get(id))
+                              : "—"}
+                            {" → "}
+                            {m.to
+                              ? locationLabel(m.to, (id) => nameById.get(id))
+                              : "—"}
+                          </div>
+                          <div className="text-[9px] tabular-nums text-muted">
+                            {m.occurredAt.slice(0, 19).replace("T", " ")}
+                          </div>
+                          {m.note && (
+                            <div className="text-[9px] text-muted">{m.note}</div>
+                          )}
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </section>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {warehouse.lots.length > 0 && (
         <section className="rounded-lg border border-line bg-panel p-3">
@@ -2423,10 +2457,7 @@ export default function WarehousePage() {
                     <button
                       type="button"
                       className="text-left font-semibold text-ink hover:text-teal-accent"
-                      onClick={() => {
-                        setSelectedLotId(lot.id);
-                        setEditingLot(false);
-                      }}
+                      onClick={() => openLotEditor(lot.id)}
                     >
                       {item?.name ?? lot.label ?? lot.id.slice(0, 8)}
                       <span className="ml-2 font-normal text-muted">
