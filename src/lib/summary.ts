@@ -1,5 +1,13 @@
 import { Project, STAGE_LABELS } from "./types";
 
+/**
+ * Living project summaries (AI or rule-based). Off unless explicitly enabled
+ * via NEXT_PUBLIC_AI_PROJECT_SUMMARY=true.
+ */
+export function isProjectSummaryEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_AI_PROJECT_SUMMARY === "true";
+}
+
 const STAGE_PHRASES: Record<string, string> = {
   "to-contact": "a lead still to be contacted",
   "cold-lead": "a cold lead currently in contact",

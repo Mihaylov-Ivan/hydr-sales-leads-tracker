@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useRef } from "react";
 import { Project, isEmailReminderDue } from "@/lib/types";
-import { generateSummary } from "@/lib/summary";
+import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import { useProjects } from "@/lib/store";
 
 export const PROJECT_DRAG_TYPE = "application/x-hydr-project-id";
 
 export default function ProjectCard({ project }: { project: Project }) {
   const { teamMembers } = useProjects();
-  const raw = project.aiSummary ?? generateSummary(project);
+  const showSummary = isProjectSummaryEnabled();
+  const raw = showSummary
+    ? (project.aiSummary ?? generateSummary(project))
+    : "";
   const openTodos = project.todos.filter((t) => !t.done).length;
   const emailDue = isEmailReminderDue(project);
   // Flatten bullet-point summaries into a single line for the card preview
@@ -86,9 +89,11 @@ export default function ProjectCard({ project }: { project: Project }) {
         </span>
       )}
 
-      <p className="line-clamp-3 text-sm leading-relaxed text-muted">
-        {summary}
-      </p>
+      {showSummary && summary && (
+        <p className="line-clamp-3 text-sm leading-relaxed text-muted">
+          {summary}
+        </p>
+      )}
 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-muted">
         <span className="inline-flex items-center gap-1">

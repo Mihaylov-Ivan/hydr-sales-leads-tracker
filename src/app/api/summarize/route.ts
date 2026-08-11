@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
+import { isProjectSummaryEnabled } from "@/lib/summary";
 import { Project, STAGE_LABELS } from "@/lib/types";
 
 const BASE_URL = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
 
-/** Lets the client check whether AI summaries are configured. */
+/** Lets the client check whether AI summaries are configured and feature-flagged on. */
 export async function GET() {
-  return NextResponse.json({ enabled: Boolean(process.env.OPENAI_API_KEY) });
+  return NextResponse.json({
+    enabled:
+      isProjectSummaryEnabled() && Boolean(process.env.OPENAI_API_KEY),
+  });
 }
 
 function buildPrompt(project: Project): string {
@@ -35,6 +39,13 @@ ${comments || "(no updates yet)"}`;
 }
 
 export async function POST(req: Request) {
+  if (!isProjectSummaryEnabled()) {
+    return NextResponse.json(
+      { error: "AI project summaries are disabled" },
+      { status: 503 },
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "AI is not configured" }, { status: 503 });

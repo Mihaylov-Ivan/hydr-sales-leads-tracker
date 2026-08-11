@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import { Market, MARKETS, Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
-import { generateSummary } from "@/lib/summary";
+import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
 import ContactList from "@/components/ContactList";
@@ -531,37 +531,39 @@ export default function ProjectPage() {
         )}
       </section>
 
-      {/* Living summary */}
-      <section className="rounded-xl border border-teal-accent/30 bg-teal-soft/50 p-5">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-teal-accent">
-            Project Summary
-          </h2>
-          <span className="rounded-full bg-teal-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-accent/90">
-            {isSummarizing
-              ? "AI is updating…"
-              : project.aiSummary
-                ? "AI-generated from comments"
-                : aiEnabled
-                  ? "auto-updated from comments"
-                  : "rule-based · add OPENAI_API_KEY for AI"}
-          </span>
-          {aiEnabled && (
-            <button
-              onClick={() => regenerateSummary(project.id)}
-              disabled={isSummarizing}
-              className="ml-auto rounded-lg border border-teal-accent/40 px-3 py-1 text-xs font-semibold text-teal-accent transition hover:bg-teal-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSummarizing ? "Generating…" : "Regenerate"}
-            </button>
-          )}
-        </div>
-        <div
-          className={`text-sm leading-relaxed text-ink transition-opacity ${isSummarizing ? "opacity-50" : ""}`}
-        >
-          <SummaryText text={summary} />
-        </div>
-      </section>
+      {/* Living summary — gated by NEXT_PUBLIC_AI_PROJECT_SUMMARY */}
+      {isProjectSummaryEnabled() && (
+        <section className="rounded-xl border border-teal-accent/30 bg-teal-soft/50 p-5">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-teal-accent">
+              Project Summary
+            </h2>
+            <span className="rounded-full bg-teal-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-accent/90">
+              {isSummarizing
+                ? "AI is updating…"
+                : project.aiSummary
+                  ? "AI-generated from comments"
+                  : aiEnabled
+                    ? "auto-updated from comments"
+                    : "rule-based · add OPENAI_API_KEY for AI"}
+            </span>
+            {aiEnabled && (
+              <button
+                onClick={() => regenerateSummary(project.id)}
+                disabled={isSummarizing}
+                className="ml-auto rounded-lg border border-teal-accent/40 px-3 py-1 text-xs font-semibold text-teal-accent transition hover:bg-teal-accent/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSummarizing ? "Generating…" : "Regenerate"}
+              </button>
+            )}
+          </div>
+          <div
+            className={`text-sm leading-relaxed text-ink transition-opacity ${isSummarizing ? "opacity-50" : ""}`}
+          >
+            <SummaryText text={summary} />
+          </div>
+        </section>
+      )}
 
       {/* Client email follow-up (recurring our-action) */}
       <ClientFollowUp project={project} />

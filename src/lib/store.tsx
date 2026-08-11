@@ -63,6 +63,7 @@ import {
   ScheduleShiftUnit,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
+import { isProjectSummaryEnabled } from "./summary";
 import {
   buildChangeEvent,
   buildFinancialHistoryEntry,
@@ -1982,6 +1983,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const requestAiSummary = useCallback(async (project: Project) => {
+    if (!isProjectSummaryEnabled()) return;
     setSummarizing((s) => ({ ...s, [project.id]: true }));
     try {
       const res = await fetch("/api/summarize", {

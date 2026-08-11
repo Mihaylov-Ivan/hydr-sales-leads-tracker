@@ -12,13 +12,14 @@ A simple Next.js app for tracking electrolyser sales leads from first contact to
 
 ## AI summaries
 
-Put your API key in `.env.local` (created at the project root) and restart the dev server:
+Living project summaries are off by default. Enable them in `.env.local` and restart the dev server:
 
 ```
+NEXT_PUBLIC_AI_PROJECT_SUMMARY=true
 OPENAI_API_KEY=sk-...
 ```
 
-Optional: `OPENAI_MODEL` (default `gpt-5.4-mini`) and `OPENAI_BASE_URL` (default OpenAI; any OpenAI-compatible endpoint works, e.g. a local Ollama server). The key stays server-side — the browser only calls the app's own `/api/summarize` route.
+Without an API key the UI still shows rule-based summaries when the feature flag is on. Optional: `OPENAI_MODEL` (default `gpt-5.4-mini`) and `OPENAI_BASE_URL` (default OpenAI; any OpenAI-compatible endpoint works, e.g. a local Ollama server). The key stays server-side — the browser only calls the app's own `/api/summarize` route.
 
 ## Data storage
 
