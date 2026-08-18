@@ -10,12 +10,20 @@ import {
   ProjectGanttPhase,
   ProjectSchedule,
   ScheduleShiftUnit,
+  addCalendarMonths,
   addDays,
   daysBetween,
   phaseEndDate,
   todayDate,
 } from "@/lib/types";
 import GanttFinancials from "@/components/GanttFinancials";
+import {
+  DEFAULT_ENGINEERING_MONTHS,
+  DEFAULT_INSTALLATION_MONTHS,
+  DEFAULT_PROCUREMENT_MONTHS,
+  buildStandardDeliverySchedule,
+  monthsToDays,
+} from "@/lib/gantt-template";
 
 const BAR_BLUE = "#5B9BD5";
 const MILESTONE_YELLOW = "#E8B923";
@@ -56,6 +64,28 @@ function monthTicks(rangeStart: number, rangeEnd: number): number[] {
     t = nextMonth(t);
   }
   return ticks;
+}
+
+function msFromIso(iso: string): number {
+  return new Date(iso + "T00:00:00").getTime();
+}
+
+/** Month boundaries counted from a start date (that date is M1). */
+function projectMonthTicks(
+  startIso: string,
+  endMs: number,
+): { ticks: number[]; rangeEnd: number } {
+  const ticks: number[] = [];
+  let i = 0;
+  let t = msFromIso(startIso);
+  ticks.push(t);
+  while (i < 240) {
+    i += 1;
+    t = msFromIso(addCalendarMonths(startIso, i));
+    ticks.push(t);
+    if (t > endMs) break;
+  }
+  return { ticks, rangeEnd: ticks[ticks.length - 1] ?? endMs };
 }
 
 function phaseColor(phase: ProjectGanttPhase, index: number): string {
@@ -153,6 +183,88 @@ const ROW_H = 28;
 const ROW_H_ACTUAL = 40;
 const PAD = { top: 36, right: 12, bottom: 20 };
 
+let wrapMeasureCanvas: HTMLCanvasElement | null = null;
+
+function wrapLabel(
+  text: string,
+  maxWidth: number,
+  fontSize: number,
+  bold: boolean,
+): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [text];
+  const charW = fontSize * (bold ? 0.62 : 0.55);
+  const widthOf = (s: string) => {
+    if (typeof document === "undefined") return s.length * charW;
+    wrapMeasureCanvas ??= document.createElement("canvas");
+    const ctx = wrapMeasureCanvas.getContext("2d");
+    if (!ctx) return s.length * charW;
+    ctx.font = `${bold ? 700 : 500} ${fontSize}px Arial, Helvetica, sans-serif`;
+    return ctx.measureText(s).width;
+  };
+  const lines: string[] = [];
+  let current = "";
+  const flushLong = (token: string) => {
+    let rest = token;
+    while (widthOf(rest) > maxWidth && rest.length > 1) {
+      let lo = 1;
+      let hi = rest.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (widthOf(rest.slice(0, mid)) <= maxWidth) lo = mid;
+        else hi = mid - 1;
+      }
+      lines.push(rest.slice(0, lo));
+      rest = rest.slice(lo);
+    }
+    current = rest;
+  };
+  for (const w of words) {
+    const next = current ? `${current} ${w}` : w;
+    if (widthOf(next) <= maxWidth) {
+      current = next;
+    } else {
+      if (current) lines.push(current);
+      if (widthOf(w) > maxWidth) flushLong(w);
+      else current = w;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function rowTitle(row: ChartRow): {
+  text: string;
+  x: number;
+  fontSize: number;
+  bold: boolean;
+} {
+  if (row.kind === "phase") {
+    return {
+      text: `${row.phase.wbs ? `${row.phase.wbs} ` : ""}${row.phase.name}`,
+      x: 8,
+      fontSize: 11,
+      bold: true,
+    };
+  }
+  if (row.kind === "activity") {
+    const a = row.activity;
+    return {
+      text: `${a.wbs ? `${a.wbs} ` : ""}${a.name}`,
+      x: 16,
+      fontSize: 10,
+      bold: false,
+    };
+  }
+  const d = row.deadline;
+  return {
+    text: `${d.wbs ? `${d.wbs} ` : ""}${d.name}`,
+    x: 16,
+    fontSize: 10,
+    bold: false,
+  };
+}
+
 type HoverState = {
   title: string;
   subtitle: string;
@@ -161,21 +273,24 @@ type HoverState = {
   y: number;
 };
 
+type TimelineHeaderMode = "month" | "date";
+
 function GanttChart({
   phases,
   activities,
   deadlines,
   showActual,
+  headerMode,
 }: {
   phases: ProjectGanttPhase[];
   activities: ProjectGanttActivity[];
   deadlines: ProjectGanttDeadline[];
   showActual: boolean;
+  headerMode: TimelineHeaderMode;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(900);
   const [hover, setHover] = useState<HoverState | null>(null);
-  const rowH = showActual ? ROW_H_ACTUAL : ROW_H;
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -194,6 +309,25 @@ function GanttChart({
     [phases, activities, deadlines],
   );
 
+  const laidOutRows = useMemo(() => {
+    const baseH = showActual ? ROW_H_ACTUAL : ROW_H;
+    let y = PAD.top;
+    return rows.map((row) => {
+      const title = rowTitle(row);
+      const lines = wrapLabel(
+        title.text,
+        LABEL_W - title.x - 8,
+        title.fontSize,
+        title.bold,
+      );
+      const lineH = title.fontSize + 3;
+      const height = Math.max(baseH, lines.length * lineH + 8);
+      const top = y;
+      y += height;
+      return { row, title, lines, lineH, height, y: top };
+    });
+  }, [rows, showActual]);
+
   if (phases.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-line px-3 py-10 text-center text-sm text-muted">
@@ -203,41 +337,62 @@ function GanttChart({
   }
 
   const today = todayDate();
-  const dates: string[] = [];
+  const planDates: string[] = [];
+  const allDates: string[] = [];
   for (const p of phases) {
-    dates.push(p.startDate, phaseEndDate(p));
+    planDates.push(p.startDate, phaseEndDate(p));
+    allDates.push(p.startDate, phaseEndDate(p));
     if (hasActualSpan(p)) {
-      dates.push(
+      allDates.push(
         p.actualStartDate!,
         spanEndDate(p.actualStartDate!, p.actualDurationDays!),
       );
     }
   }
   for (const a of activities) {
-    dates.push(a.startDate, activityEndDate(a));
+    planDates.push(a.startDate, activityEndDate(a));
+    allDates.push(a.startDate, activityEndDate(a));
     if (hasActualSpan(a)) {
-      dates.push(
+      allDates.push(
         a.actualStartDate!,
         spanEndDate(a.actualStartDate!, a.actualDurationDays!),
       );
     }
   }
   for (const d of deadlines) {
-    dates.push(d.date);
-    if (d.actualDate) dates.push(d.actualDate);
+    planDates.push(d.date);
+    allDates.push(d.date);
+    if (d.actualDate) allDates.push(d.actualDate);
   }
-  dates.push(today);
+  allDates.push(today);
 
-  const minT = Math.min(...dates.map((d) => new Date(d + "T00:00:00").getTime()));
-  const maxT = Math.max(...dates.map((d) => new Date(d + "T00:00:00").getTime()));
-  const rangeStart = startOfMonth(minT);
-  const rangeEnd = nextMonth(startOfMonth(maxT));
+  const minT = Math.min(...allDates.map(msFromIso));
+  const maxT = Math.max(...allDates.map(msFromIso));
+  const startIso =
+    planDates.length > 0
+      ? planDates.reduce((a, b) => (a < b ? a : b))
+      : today;
+  const monthAxis =
+    headerMode === "month"
+      ? projectMonthTicks(startIso, maxT)
+      : {
+          ticks: monthTicks(
+            startOfMonth(minT),
+            nextMonth(startOfMonth(maxT)),
+          ),
+          rangeEnd: nextMonth(startOfMonth(maxT)),
+        };
+  const rangeStart =
+    headerMode === "month" ? msFromIso(startIso) : startOfMonth(minT);
+  const rangeEnd = monthAxis.rangeEnd;
   const span = Math.max(rangeEnd - rangeStart, 1);
-  const ticks = monthTicks(rangeStart, rangeEnd);
+  const ticks = monthAxis.ticks;
 
   const chartW = Math.max(width, 640);
   const trackW = Math.max(chartW - LABEL_W - META_W - PAD.right, 200);
-  const chartH = PAD.top + rows.length * rowH + PAD.bottom;
+  const lastRow = laidOutRows[laidOutRows.length - 1];
+  const chartH =
+    (lastRow ? lastRow.y + lastRow.height : PAD.top) + PAD.bottom;
 
   function xOf(date: string): number {
     const t = new Date(date + "T00:00:00").getTime();
@@ -289,6 +444,7 @@ function GanttChart({
     actualStart: string | undefined,
     actualDays: number | undefined,
     y: number,
+    rowHeight: number,
     barH: number,
     owner?: string,
   ) {
@@ -301,8 +457,8 @@ function GanttChart({
       actualStart &&
       actualDays != null &&
       actualDays >= 1;
-    const planY = hasActual ? y + 4 : y + (rowH - barH) / 2;
-    const actualY = y + rowH / 2 + 1;
+    const planY = hasActual ? y + 4 : y + (rowHeight - barH) / 2;
+    const actualY = y + rowHeight / 2 + 1;
     const actualEnd = hasActual
       ? spanEndDate(actualStart!, actualDays!)
       : null;
@@ -381,23 +537,30 @@ function GanttChart({
         role="img"
         aria-label="Project Gantt schedule"
       >
-        {/* Year headers */}
-        {yearBands.map((b) => (
-          <text
-            key={`y-${b.year}-${b.x}`}
-            x={b.x + b.w / 2}
-            y={12}
-            textAnchor="middle"
-            className="fill-deep"
-            style={{ fontSize: 11, fontWeight: 700 }}
-          >
-            {b.year}
-          </text>
-        ))}
+        {/* Year headers (calendar dates only) */}
+        {headerMode === "date" &&
+          yearBands.map((b) => (
+            <text
+              key={`y-${b.year}-${b.x}`}
+              x={b.x + b.w / 2}
+              y={12}
+              textAnchor="middle"
+              className="fill-deep"
+              style={{ fontSize: 11, fontWeight: 700 }}
+            >
+              {b.year}
+            </text>
+          ))}
 
         {/* Month ticks */}
-        {ticks.map((t) => {
+        {ticks.map((t, i) => {
           const x = LABEL_W + ((t - rangeStart) / span) * trackW;
+          const monthLabel =
+            headerMode === "month"
+              ? i < ticks.length - 1
+                ? `M${i + 1}`
+                : ""
+              : formatMonth(t);
           return (
             <g key={t}>
               <line
@@ -409,14 +572,16 @@ function GanttChart({
                 strokeWidth={1}
                 strokeDasharray="2 3"
               />
-              <text
-                x={x + 3}
-                y={26}
-                className="fill-muted"
-                style={{ fontSize: 9, fontWeight: 600 }}
-              >
-                {formatMonth(t)}
-              </text>
+              {monthLabel ? (
+                <text
+                  x={x + 3}
+                  y={headerMode === "date" ? 26 : 18}
+                  className="fill-muted"
+                  style={{ fontSize: 9, fontWeight: 600 }}
+                >
+                  {monthLabel}
+                </text>
+              ) : null}
             </g>
           );
         })}
@@ -431,51 +596,61 @@ function GanttChart({
           WBS / Activity
         </text>
 
-        {/* Today */}
-        <line
-          x1={todayX}
-          x2={todayX}
-          y1={PAD.top - 4}
-          y2={chartH - PAD.bottom}
-          stroke="var(--teal)"
-          strokeWidth={1.25}
-          opacity={0.5}
-        />
+        {headerMode === "date" && (
+          <line
+            x1={todayX}
+            x2={todayX}
+            y1={PAD.top - 4}
+            y2={chartH - PAD.bottom}
+            stroke="var(--teal)"
+            strokeWidth={1.25}
+            opacity={0.5}
+          />
+        )}
 
-        {rows.map((row, i) => {
-          const y = PAD.top + i * rowH;
-          const midY = y + rowH / 2;
+        {laidOutRows.map(({ row, title, lines, lineH, height, y }) => {
+          const midY = y + height / 2;
+          const firstBaseline =
+            y + (height - lines.length * lineH) / 2 + title.fontSize * 0.85;
+          const labelNodes = (
+            <text
+              className={row.kind === "phase" ? "fill-deep" : "fill-ink"}
+              style={{
+                fontSize: title.fontSize,
+                fontWeight: title.bold ? 700 : 500,
+              }}
+            >
+              {lines.map((line, li) => (
+                <tspan key={li} x={title.x} y={firstBaseline + li * lineH}>
+                  {line}
+                </tspan>
+              ))}
+            </text>
+          );
 
           if (row.kind === "phase") {
             const color = phaseColor(row.phase, row.phaseIndex);
-            const label = `${row.phase.wbs ? `${row.phase.wbs} ` : ""}${row.phase.name}`;
             return (
               <g key={`phase-${row.phase.id}`}>
                 <rect
                   x={0}
                   y={y}
                   width={chartW}
-                  height={rowH}
+                  height={height}
                   fill="var(--teal-soft)"
                   opacity={0.35}
                 />
-                <text
-                  x={8}
-                  y={midY + 4}
-                  className="fill-deep"
-                  style={{ fontSize: 11, fontWeight: 700 }}
-                >
-                  {label.length > 36 ? `${label.slice(0, 35)}…` : label}
-                </text>
+                {labelNodes}
                 {renderSpanBars(
                   `phase-bars-${row.phase.id}`,
-                  label,
+                  title.text,
                   row.phase.startDate,
                   row.phase.durationDays,
                   color,
                   row.phase.actualStartDate,
                   row.phase.actualDurationDays,
                   y,
+                  height,
                   14,
                   row.phase.owner,
                 )}
@@ -486,26 +661,19 @@ function GanttChart({
           if (row.kind === "activity") {
             const a = row.activity;
             const color = a.color ?? BAR_BLUE;
-            const label = `${a.wbs ? `${a.wbs} ` : ""}${a.name}`;
             return (
               <g key={`act-${a.id}`}>
-                <text
-                  x={16}
-                  y={midY + 4}
-                  className="fill-ink"
-                  style={{ fontSize: 10, fontWeight: 500 }}
-                >
-                  {label.length > 38 ? `${label.slice(0, 37)}…` : label}
-                </text>
+                {labelNodes}
                 {renderSpanBars(
                   `act-bars-${a.id}`,
-                  label,
+                  title.text,
                   a.startDate,
                   a.durationDays,
                   color,
                   a.actualStartDate,
                   a.actualDurationDays,
                   y,
+                  height,
                   12,
                   a.owner,
                 )}
@@ -513,23 +681,14 @@ function GanttChart({
             );
           }
 
-          // deadline / milestone
           const d = row.deadline;
           const dx = xOf(d.date);
-          const label = `${d.wbs ? `${d.wbs} ` : ""}${d.name}`;
           const size = showActual && d.actualDate ? 6 : 7;
           const planY = showActual && d.actualDate ? midY - 6 : midY;
           const actualDx = d.actualDate ? xOf(d.actualDate) : dx;
           return (
             <g key={`dl-${d.id}`}>
-              <text
-                x={16}
-                y={midY + 4}
-                className="fill-ink"
-                style={{ fontSize: 10, fontWeight: 500 }}
-              >
-                {label.length > 38 ? `${label.slice(0, 37)}…` : label}
-              </text>
+              {labelNodes}
               <polygon
                 points={`${dx},${planY - size} ${dx + size},${planY} ${dx},${planY + size} ${dx - size},${planY}`}
                 fill={MILESTONE_YELLOW}
@@ -540,7 +699,7 @@ function GanttChart({
                 onMouseEnter={(e) =>
                   setHoverFromEvent(
                     e,
-                    label,
+                    title.text,
                     `Plan · ${formatDate(d.date)}`,
                     d.owner ? `Milestone · ${d.owner}` : "Milestone",
                   )
@@ -548,7 +707,7 @@ function GanttChart({
                 onMouseMove={(e) =>
                   setHoverFromEvent(
                     e,
-                    label,
+                    title.text,
                     `Plan · ${formatDate(d.date)}`,
                     d.owner ? `Milestone · ${d.owner}` : "Milestone",
                   )
@@ -565,7 +724,7 @@ function GanttChart({
                   onMouseEnter={(e) =>
                     setHoverFromEvent(
                       e,
-                      label,
+                      title.text,
                       `Actual · ${formatDate(d.actualDate!)}`,
                       d.owner ? `Milestone · ${d.owner}` : "Milestone",
                     )
@@ -573,7 +732,7 @@ function GanttChart({
                   onMouseMove={(e) =>
                     setHoverFromEvent(
                       e,
-                      label,
+                      title.text,
                       `Actual · ${formatDate(d.actualDate!)}`,
                       d.owner ? `Milestone · ${d.owner}` : "Milestone",
                     )
@@ -1183,6 +1342,151 @@ function DeadlineForm({
   );
 }
 
+function AutoGenerateScheduleForm({
+  projectId,
+  hasSchedule,
+  onDone,
+}: {
+  projectId: string;
+  hasSchedule: boolean;
+  onDone: () => void;
+}) {
+  const { replaceProjectSchedule } = useProjects();
+  const [startDate, setStartDate] = useState(todayDate());
+  const [engineeringMonths, setEngineeringMonths] = useState(
+    String(DEFAULT_ENGINEERING_MONTHS),
+  );
+  const [procurementMonths, setProcurementMonths] = useState(
+    String(DEFAULT_PROCUREMENT_MONTHS),
+  );
+  const [installationMonths, setInstallationMonths] = useState(
+    String(DEFAULT_INSTALLATION_MONTHS),
+  );
+
+  const engM = Number(engineeringMonths);
+  const procM = Number(procurementMonths);
+  const siteM = Number(installationMonths);
+  const engDays = Number.isFinite(engM) && engM > 0 ? monthsToDays(engM) : 0;
+  const procDays = Number.isFinite(procM) && procM > 0 ? monthsToDays(procM) : 0;
+  const siteDays = Number.isFinite(siteM) && siteM > 0 ? monthsToDays(siteM) : 0;
+  const totalDays = engDays + procDays + siteDays;
+  const totalMonths =
+    (Number.isFinite(engM) && engM > 0 ? engM : 0) +
+    (Number.isFinite(procM) && procM > 0 ? procM : 0) +
+    (Number.isFinite(siteM) && siteM > 0 ? siteM : 0);
+
+  const valid =
+    Boolean(startDate) && engDays >= 1 && procDays >= 1 && siteDays >= 1;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    if (hasSchedule) {
+      const ok = window.confirm(
+        "This replaces the current Gantt with a new delivery template. Continue?",
+      );
+      if (!ok) return;
+    }
+    const schedule = buildStandardDeliverySchedule({
+      startDate,
+      engineeringDays: engDays,
+      procurementDays: procDays,
+      installationDays: siteDays,
+    });
+    replaceProjectSchedule(projectId, schedule);
+    onDone();
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
+    >
+      <p className="sm:col-span-2 lg:col-span-4 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Auto-generate delivery Gantt
+      </p>
+      <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
+        Builds the standard initiation → engineering → procurement/FAT →
+        installation/SAT template. Procurement and manufacturing start 1 month
+        after engineering starts. Sub-activities and milestones scale with each
+        phase duration (Ceramika / 8‑month proportions).
+      </p>
+      <label className="block sm:col-span-2 lg:col-span-1">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Start date
+        </span>
+        <input
+          type="date"
+          autoFocus
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Engineering (months)
+        </span>
+        <input
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={engineeringMonths}
+          onChange={(e) => setEngineeringMonths(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Procurement / FAT (months)
+        </span>
+        <input
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={procurementMonths}
+          onChange={(e) => setProcurementMonths(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Installation / SAT (months)
+        </span>
+        <input
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={installationMonths}
+          onChange={(e) => setInstallationMonths(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
+        {valid
+          ? `Total ≈ ${totalMonths} month${totalMonths === 1 ? "" : "s"} (~${totalDays} days; eng ${engDays} · proc ${procDays} · install ${siteDays}). ${hasSchedule ? "Existing schedule will be replaced." : ""}`
+          : "Enter a start date and positive durations for all three phases."}
+      </p>
+      <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+        <button
+          type="submit"
+          disabled={!valid}
+          className="rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm disabled:opacity-40"
+        >
+          Generate
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="rounded-lg border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-muted hover:border-teal-accent/40"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function shiftUnitLabel(unit: ScheduleShiftUnit, amount: number): string {
   const abs = Math.abs(amount);
   if (unit === "days") return abs === 1 ? "day" : "days";
@@ -1316,10 +1620,11 @@ export default function ProjectGantt({
     deleteGanttDeadline,
   } = useProjects();
   const [showActual, setShowActual] = useState(false);
+  const [headerMode, setHeaderMode] = useState<TimelineHeaderMode>("date");
   const [sectionOpen, setSectionOpen] = useState(true);
   const [editListOpen, setEditListOpen] = useState(false);
   const [form, setForm] = useState<
-    null | "phase" | "activity" | "deadline" | "shift"
+    null | "phase" | "activity" | "deadline" | "shift" | "autogen"
   >(null);
   const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(
@@ -1376,6 +1681,27 @@ export default function ProjectGantt({
       {sectionOpen && (
         <>
           <div className="mb-4 mt-4 flex flex-wrap items-center justify-end gap-2">
+            <div
+              className="inline-flex rounded-lg border border-line bg-surface p-0.5 shadow-sm"
+              role="group"
+              aria-label="Timeline header"
+            >
+              {(["month", "date"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={headerMode === mode}
+                  onClick={() => setHeaderMode(mode)}
+                  className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                    headerMode === mode
+                      ? "bg-teal-accent text-white"
+                      : "text-muted hover:text-deep"
+                  }`}
+                >
+                  {mode === "month" ? "Month" : "Date"}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               role="switch"
@@ -1426,6 +1752,16 @@ export default function ProjectGantt({
               type="button"
               onClick={() => {
                 closeForms();
+                setForm("autogen");
+              }}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40"
+            >
+              Auto-generate
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
                 setForm("shift");
               }}
               disabled={!hasSchedule}
@@ -1440,6 +1776,7 @@ export default function ProjectGantt({
             activities={activities}
             deadlines={deadlines}
             showActual={showActual}
+            headerMode={headerMode}
           />
 
           <div className="mt-2 flex flex-wrap gap-3 text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -1522,6 +1859,15 @@ export default function ProjectGantt({
           {form === "shift" && (
             <div className="mt-4">
               <ShiftScheduleForm
+                projectId={projectId}
+                hasSchedule={hasSchedule}
+                onDone={closeForms}
+              />
+            </div>
+          )}
+          {form === "autogen" && (
+            <div className="mt-4">
+              <AutoGenerateScheduleForm
                 projectId={projectId}
                 hasSchedule={hasSchedule}
                 onDone={closeForms}

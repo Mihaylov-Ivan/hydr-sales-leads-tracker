@@ -5,13 +5,19 @@ Update the database schema if required, ensruing the update is only additive/reo
 - Mechanism of tracking all project related expenses in the company, so they can be entered in the app.
   - debit card purchases and cash payments
 
-- auto generation of a gantt chart following the example for the previous ones we generated 
+- analyse the daily sales report and auto add them to the projects
+- ~~auto generation of a gantt chart following the example for the previous ones we generated~~
+- Make the top bar (Real Change, Working As, Download History and Log Out) in a dropdown menu so we free up space 
+- lets rename the Board page to Sales Projects
+- add system category 'w/ Stargate' and 'MH' also allow combination of categories such as 'Z Series + MH' or 'Z Series + w/ Stargate'
 - add opex field for each project which is directly linked to yearly income at the date of installation complete + expense for the opex works by us
+- go though each project and add more info about it + fix finances for it
 - label current data as old and remove the projects linked to it
 - add system of entering the fuel costs and business trips expenses based on monthly received info from jira and shell card
 
+- use local database hosting for safety
 - lets add a new page called 'Strategy' where we will can create strategies for different 'Markets'. Please add things like planning, manufacturing, consortium and subcontracting, structure ... We should have different markets to cover and strategy for them (Cement, Power plants, tenders etc...) 
-- add new page called RnD and Networking which will be for business trips to expos and events + RnD projects which have pure expenses for now. For now, lets also add them to the overall company expenses and cash flow tracking. Later we will add estimation of RnD project success and IRR that we can later also add as projected additional revenue and value. These project should also be available to be linked to through the warehouse system and everywhere else that is relevant to expenses, component ordering etc.. They should be as functional as the projects in the Board page. They should be linked to the expenses and financial sections too. After we are done, we will update the csv and database accordingly.
+- add new page called RnD and Networking which will be for business trips to expos and events + RnD projects which have pure expenses for now + Funding projects such as EU Horizon etc... we will think about how to categories and group them as we go. For now, lets also add them to the overall company expenses and cash flow tracking. Later we will add estimation of RnD project success and IRR that we can later also add as projected additional revenue and value. These project should also be available to be linked to through the warehouse system and everywhere else that is relevant to expenses, component ordering etc.. They should be as functional as the projects in the Board page. They should be linked to the expenses and financial sections too. After we are done, we will update the csv and database accordingly.
 - how to deal with VAT for income and expenses in the cashflow?
 - expense and WH analysis for each project, able to give predictions of what expenses are expected for future project; the analysis is done on specific category project, ie 500kW E-series, 1000kW E-series etc... and a pattern is recognised of expense amounts, parts ordering and Bill of materials for such a project, and suggestion is made for future similar projects of what parts and expense schedule is expected 
 - add MH as product category

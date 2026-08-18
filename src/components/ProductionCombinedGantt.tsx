@@ -73,6 +73,7 @@ export default function ProductionCombinedGantt({
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
+  const [headerMode, setHeaderMode] = useState<"month" | "date">("date");
 
   const months = useMemo(
     () => monthKeysBetween(fromMonth, toMonth),
@@ -157,6 +158,30 @@ export default function ProductionCombinedGantt({
   const todayX = todayInRange ? xOfDate(today) : null;
 
   return (
+    <div>
+      <div className="mb-2 flex justify-end px-1">
+        <div
+          className="inline-flex rounded-lg border border-line bg-surface p-0.5 shadow-sm"
+          role="group"
+          aria-label="Timeline header"
+        >
+          {(["month", "date"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={headerMode === mode}
+              onClick={() => setHeaderMode(mode)}
+              className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                headerMode === mode
+                  ? "bg-teal-accent text-white"
+                  : "text-muted hover:text-deep"
+              }`}
+            >
+              {mode === "month" ? "Month" : "Date"}
+            </button>
+          ))}
+        </div>
+      </div>
     <div ref={wrapRef} className="relative overflow-x-auto">
       <svg
         width={chartW}
@@ -189,7 +214,7 @@ export default function ProductionCombinedGantt({
                 className="fill-muted"
                 style={{ fontSize: 10, fontWeight: 700 }}
               >
-                {formatMonthLabel(m)}
+                {headerMode === "month" ? `M${i + 1}` : formatMonthLabel(m)}
               </text>
               <line
                 x1={x}
@@ -204,7 +229,7 @@ export default function ProductionCombinedGantt({
           );
         })}
 
-        {todayX != null && (
+        {headerMode === "date" && todayX != null && (
           <line
             x1={todayX}
             y1={PAD.top - 12}
@@ -395,11 +420,14 @@ export default function ProductionCombinedGantt({
           </span>
           Milestone
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-0 border-l border-dashed border-teal-accent" />{" "}
-          Today
-        </span>
+        {headerMode === "date" && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-0 border-l border-dashed border-teal-accent" />{" "}
+            Today
+          </span>
+        )}
       </div>
+    </div>
     </div>
   );
 }

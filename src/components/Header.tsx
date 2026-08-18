@@ -166,17 +166,22 @@ export default function Header() {
           <button
             type="button"
             disabled={!ready}
-            onClick={() =>
-              downloadFinancialCsv(
+            onClick={async () => {
+              const result = await downloadFinancialCsv(
                 projects,
                 financeSettings,
                 financialHistory,
                 warehouse,
                 undefined,
                 buildDefaultSkladMaps(projects),
-              )
-            }
-            title="Download financial data CSV (includes history rows)"
+              );
+              setCsvMsg(
+                result.ok
+                  ? `Saved financial data to ${result.path}`
+                  : `CSV export failed: ${result.error}`,
+              );
+            }}
+            title="Save financial data CSV to OneDrive Finances folder"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
           >
             <span className="sm:hidden">CSV ↓</span>
@@ -185,8 +190,15 @@ export default function Header() {
           <button
             type="button"
             disabled={!ready || financialHistory.length === 0}
-            onClick={() => downloadFinancialHistoryCsv(financialHistory)}
-            title="Download financial history rows only"
+            onClick={async () => {
+              const result = await downloadFinancialHistoryCsv(financialHistory);
+              setCsvMsg(
+                result.ok
+                  ? `Saved history to ${result.path}`
+                  : `History export failed: ${result.error}`,
+              );
+            }}
+            title="Save financial history CSV to OneDrive Finances folder"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
           >
             <span className="sm:hidden">Hist ↓</span>

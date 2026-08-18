@@ -358,14 +358,50 @@ export function buildFinancialCsv(
   return lines.join("\r\n") + "\r\n";
 }
 
-export function downloadFinancialCsv(
+export type CsvExportResult =
+  | { ok: true; path: string }
+  | { ok: false; error: string };
+
+async function saveCsvToExportDir(
+  filename: string,
+  csv: string,
+): Promise<CsvExportResult> {
+  try {
+    const res = await fetch("/api/export-csv", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename, csv }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | CsvExportResult
+      | { ok?: false; error?: string }
+      | null;
+    if (!res.ok || !data || data.ok !== true) {
+      return {
+        ok: false,
+        error:
+          data && "error" in data && data.error
+            ? data.error
+            : `Export failed (${res.status})`,
+      };
+    }
+    return { ok: true, path: data.path };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Export failed",
+    };
+  }
+}
+
+export async function downloadFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
   history: FinancialHistoryEntry[] = [],
   warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
   filename = `financial-data-${new Date().toISOString().slice(0, 10)}.csv`,
   skladMaps: WarehouseSkladMap[] = [],
-): void {
+): Promise<CsvExportResult> {
   const csv = buildFinancialCsv(
     projects,
     financeSettings,
@@ -373,32 +409,20 @@ export function downloadFinancialCsv(
     warehouse,
     skladMaps,
   );
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  return saveCsvToExportDir(filename, csv);
 }
 
 /** Export only type=history rows (amounts + metadata). */
-export function downloadFinancialHistoryCsv(
+export async function downloadFinancialHistoryCsv(
   history: FinancialHistoryEntry[],
   filename = `financial-history-${new Date().toISOString().slice(0, 10)}.csv`,
-): void {
+): Promise<CsvExportResult> {
   const header = FINANCIAL_CSV_HEADERS.join(",");
   const body = buildFinancialCsv([], defaultFinanceSettings(), history)
     .split(/\r?\n/)
     .filter((line) => line.startsWith("history,"));
   const out = [header, ...body].join("\r\n") + "\r\n";
-  const blob = new Blob([out], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  return saveCsvToExportDir(filename, out);
 }
 
 /** Minimal RFC4180-ish parser (quoted fields, commas, newlines). */

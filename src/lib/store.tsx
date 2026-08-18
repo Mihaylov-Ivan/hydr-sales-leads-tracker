@@ -783,6 +783,7 @@ interface ProjectsApi {
       includeActuals?: boolean;
     },
   ) => void;
+  replaceProjectSchedule: (projectId: string, schedule: ProjectSchedule) => void;
 }
 
 const ProjectsContext = createContext<ProjectsApi | null>(null);
@@ -4553,6 +4554,152 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [supportsGanttTables],
   );
 
+  const replaceProjectSchedule = useCallback(
+    (projectId: string, schedule: ProjectSchedule) => {
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      if (!project) return;
+
+      const old = project.schedule ?? emptySchedule();
+      const removedIds = new Set<string>();
+      for (const p of old.phases) removedIds.add(p.id);
+      for (const a of old.activities ?? []) removedIds.add(a.id);
+      for (const d of old.deadlines) removedIds.add(d.id);
+
+      const nextSchedule: ProjectSchedule = {
+        phases: schedule.phases.map((p) => ({ ...p })),
+        activities: (schedule.activities ?? []).map((a) => ({ ...a })),
+        deadlines: schedule.deadlines.map((d) => ({ ...d })),
+      };
+
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          let financials = p.financials;
+          if (removedIds.size > 0) {
+            financials = {
+              ...financials,
+              payments: financials.payments.map((pay) => {
+                if (!pay.milestoneId || !removedIds.has(pay.milestoneId)) {
+                  return pay;
+                }
+                const next = { ...pay };
+                delete next.milestoneId;
+                return next;
+              }),
+              expenseSchedule: (financials.expenseSchedule ?? []).map((e) => {
+                if (!e.milestoneId || !removedIds.has(e.milestoneId)) return e;
+                const next = { ...e };
+                delete next.milestoneId;
+                return next;
+              }),
+            };
+          }
+          return { ...p, schedule: nextSchedule, financials };
+        }),
+      );
+
+      recordChangeEvent({
+        domain: "gantt",
+        entityType: "gantt_phase",
+        entityId: projectId,
+        projectId,
+        action: "update",
+        summary: `${project.name}: auto-generated delivery Gantt (${nextSchedule.phases.length} phases, ${(nextSchedule.activities ?? []).length} activities, ${nextSchedule.deadlines.length} milestones)`,
+        payloadJson: {
+          phases: nextSchedule.phases.length,
+          activities: (nextSchedule.activities ?? []).length,
+          deadlines: nextSchedule.deadlines.length,
+        },
+      });
+
+      if (supabase && supportsGanttTables) {
+        void (async () => {
+          const del = await supabase
+            .from("project_gantt_phases")
+            .delete()
+            .eq("project_id", projectId);
+          if (del.error) {
+            logDbError("gantt schedule replace delete")(del);
+            return;
+          }
+
+          if (nextSchedule.phases.length > 0) {
+            const phaseRows = nextSchedule.phases.map((phase) => ({
+              id: phase.id,
+              project_id: projectId,
+              name: phase.name,
+              start_date: phase.startDate,
+              duration_days: phase.durationDays,
+              actual_start_date: phase.actualStartDate ?? null,
+              actual_duration_days: phase.actualDurationDays ?? null,
+              color: phase.color ?? null,
+              wbs: phase.wbs ?? null,
+              owner: phase.owner ?? null,
+              sort_order: phase.sortOrder,
+              created_at: phase.createdAt,
+            }));
+            const insPhases = await supabase
+              .from("project_gantt_phases")
+              .insert(phaseRows);
+            if (insPhases.error) {
+              logDbError("gantt schedule replace phases")(insPhases);
+              return;
+            }
+          }
+
+          const activities = nextSchedule.activities ?? [];
+          if (activities.length > 0) {
+            const activityRows = activities.map((activity) => ({
+              id: activity.id,
+              project_id: projectId,
+              phase_id: activity.phaseId,
+              name: activity.name,
+              start_date: activity.startDate,
+              duration_days: activity.durationDays,
+              actual_start_date: activity.actualStartDate ?? null,
+              actual_duration_days: activity.actualDurationDays ?? null,
+              wbs: activity.wbs ?? null,
+              owner: activity.owner ?? null,
+              color: activity.color ?? null,
+              status: activity.status ?? null,
+              sort_order: activity.sortOrder,
+              created_at: activity.createdAt,
+            }));
+            const insActs = await supabase
+              .from("project_gantt_activities")
+              .insert(activityRows);
+            if (insActs.error) {
+              logDbError("gantt schedule replace activities")(insActs);
+              return;
+            }
+          }
+
+          if (nextSchedule.deadlines.length > 0) {
+            const deadlineRows = nextSchedule.deadlines.map((deadline) => ({
+              id: deadline.id,
+              project_id: projectId,
+              phase_id: deadline.phaseId,
+              name: deadline.name,
+              date: deadline.date,
+              actual_date: deadline.actualDate ?? null,
+              wbs: deadline.wbs ?? null,
+              owner: deadline.owner ?? null,
+              note: deadline.note ?? null,
+              created_at: deadline.createdAt,
+            }));
+            const insDead = await supabase
+              .from("project_gantt_deadlines")
+              .insert(deadlineRows);
+            if (insDead.error) {
+              logDbError("gantt schedule replace deadlines")(insDead);
+            }
+          }
+        })();
+      }
+    },
+    [supportsGanttTables, recordChangeEvent],
+  );
+
   const deleteProject = useCallback(
     (projectId: string) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
@@ -6344,6 +6491,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateGanttDeadline,
         deleteGanttDeadline,
         shiftProjectSchedule,
+        replaceProjectSchedule,
       }}
     >
       {children}
