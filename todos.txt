@@ -6,7 +6,6 @@ Update the database schema if required, ensruing the update is only additive/reo
   - debit card purchases and cash payments
 
 - analyse the daily sales report and auto add them to the projects
-- ~~auto generation of a gantt chart following the example for the previous ones we generated~~
 - Make the top bar (Real Change, Working As, Download History and Log Out) in a dropdown menu so we free up space 
 - lets rename the Board page to Sales Projects
 - add system category 'w/ Stargate' and 'MH' also allow combination of categories such as 'Z Series + MH' or 'Z Series + w/ Stargate'
