@@ -7,8 +7,7 @@ Update the database schema if required, ensruing the update is only additive/reo
 
 - check the existing inventory items with the item in the себестойност file to see what already exists
 - analyse the daily sales report and auto add them to the projects
-- add system category 'w/ Stargate' and 'MH' also allow combination of categories such as 'Z Series + MH' or 'Z Series + w/ Stargate' be dropdown multiple selection like on other 
-- add opex field for each project which is directly linked to yearly income at the date of installation complete + expense for the opex works by us
+- add opex value (like the contract value) for each project which is directly linked to yearly income at the date of installation complete + expense at which is 80% of the opex income (which should also be configurable for each project) for the opex works by us. These incomes and expenses should as usual be linked directly to the monthly financials section
 - go though each project and add more info about it + fix finances for it
 - label current data as old and remove the projects linked to it
 - add system of entering the fuel costs and business trips expenses based on monthly received info from jira and shell card

@@ -9,6 +9,8 @@ import {
   Stage,
   STAGE_LABELS,
   BOARD_STAGES,
+  STAGES,
+  isProjectNextStepMissing,
   marketIncludesTag,
 } from "@/lib/types";
 import {
@@ -454,6 +456,13 @@ export default function Dashboard() {
       cancelled: [],
     };
     for (const p of filtered) map[p.stage].push(p);
+    for (const stage of STAGES) {
+      map[stage].sort((a, b) => {
+        const fa = isProjectNextStepMissing(a) ? 0 : 1;
+        const fb = isProjectNextStepMissing(b) ? 0 : 1;
+        return fa - fb;
+      });
+    }
     return map;
   }, [filtered]);
 

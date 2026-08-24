@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef } from "react";
-import { Project, isEmailReminderDue } from "@/lib/types";
+import { Project, isEmailReminderDue, isProjectNextStepMissing } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import { useProjects } from "@/lib/store";
 
@@ -16,6 +16,7 @@ export default function ProjectCard({ project }: { project: Project }) {
     : "";
   const openTodos = project.todos.filter((t) => !t.done).length;
   const emailDue = isEmailReminderDue(project);
+  const nextStepMissing = isProjectNextStepMissing(project);
   // Flatten bullet-point summaries into a single line for the card preview
   const summary = raw
     .split("\n")
@@ -55,9 +56,11 @@ export default function ProjectCard({ project }: { project: Project }) {
         }
       }}
       className={`group flex cursor-grab flex-col gap-2.5 rounded-xl border bg-panel p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
-        emailDue
-          ? "border-amber-accent/40 hover:border-amber-accent/70"
-          : "border-line hover:border-teal-accent/50"
+        nextStepMissing
+          ? "border-red-600 hover:border-red-500"
+          : emailDue
+            ? "border-amber-accent/40 hover:border-amber-accent/70"
+            : "border-line hover:border-teal-accent/50"
       }`}
     >
       <div className="flex items-start gap-2">
@@ -67,7 +70,18 @@ export default function ProjectCard({ project }: { project: Project }) {
           </h3>
           <p className="mt-0.5 text-sm text-muted">{project.client}</p>
         </div>
-        {emailDue && (
+        {nextStepMissing && (
+          <span
+            title="No open actions/questions and no planned contact reminder"
+            className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-600/15 px-2 py-1 text-[11px] font-semibold text-red-700"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
+              <path d="M3 1.5v13h1.5V9.4l.4.15C6.4 10.1 8 10.5 9.7 9.8c1.2-.5 2.4-.4 3.5.2l.8.4V2.7l-.7-.35c-1.2-.6-2.5-.7-3.7-.2-1.5.6-2.9.3-4.1-.2L3 1.5Z" />
+            </svg>
+            No action
+          </span>
+        )}
+        {emailDue && !nextStepMissing && (
           <span
             title="Client follow-up due"
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-accent/15 px-2 py-1 text-[11px] font-semibold text-amber-accent"

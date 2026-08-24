@@ -1408,6 +1408,18 @@ export function isEmailReminderDue(p: Project): boolean {
   return todayDate() >= nextEmailReminderDate(p);
 }
 
+/**
+ * True when the project has nothing next: no open questions/actions and
+ * no planned client-contact reminder. Warehouse holding and cancelled
+ * projects are excluded.
+ */
+export function isProjectNextStepMissing(p: Project): boolean {
+  if (p.isWarehouseHolding || p.stage === "cancelled") return false;
+  const hasOpenTodo = (p.todos ?? []).some((t) => !t.done);
+  const contactPlanned = p.emailReminderEnabled !== false;
+  return !hasOpenTodo && !contactPlanned;
+}
+
 /** Positive = days until due; 0 = due today; negative = days overdue */
 export function emailReminderDeltaDays(p: Project): number {
   return daysBetween(todayDate(), nextEmailReminderDate(p));
