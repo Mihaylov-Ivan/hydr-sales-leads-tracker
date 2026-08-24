@@ -375,6 +375,34 @@ export default function ProjectPage() {
 
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Yearly OPEX income (€)
+          </p>
+          <div className="mt-1 text-sm font-medium text-deep">
+            <EditableText
+              type="number"
+              value={
+                project.financials.opexValue != null
+                  ? String(project.financials.opexValue)
+                  : ""
+              }
+              placeholder="Optional"
+              onSave={(v) => {
+                const t = v.trim().replace(/,/g, "");
+                if (!t) {
+                  updateFinancials(project.id, { opexValue: null });
+                  return;
+                }
+                const n = Number(t);
+                if (Number.isFinite(n) && n >= 0) {
+                  updateFinancials(project.id, { opexValue: n });
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Created
           </p>
           <p className="mt-1 text-sm font-medium text-deep">

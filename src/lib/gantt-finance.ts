@@ -8,7 +8,9 @@ import type {
   ProjectSchedule,
 } from "./types";
 import {
+  DEFAULT_OPEX_EXPENSE_PERCENT,
   MILESTONE_LABELS,
+  addCalendarYears,
   addDays,
   amountExFromInc,
   emptySchedule,
@@ -377,7 +379,7 @@ export type MaterialsExpenseFromIncomeDraft = {
 
 /**
  * Manufacture-materials expense lines matching income dates and shares of
- * total income. Skips Finance-import rows and zero amounts.
+ * total income. Skips Finance-import, maintenance/OPEX, and zero amounts.
  */
 export function materialsExpenseDraftsFromIncomes(
   payments: ProjectPayment[],
@@ -385,7 +387,13 @@ export function materialsExpenseDraftsFromIncomes(
 ): MaterialsExpenseFromIncomeDraft[] {
   if (!(maxMaterials > 0)) return [];
   const sources = [...payments]
-    .filter((p) => !isFinanceImportId(p.id) && p.amount > 0)
+    .filter(
+      (p) =>
+        !isFinanceImportId(p.id) &&
+        !p.isMaintenance &&
+        !p.isOpex &&
+        p.amount > 0,
+    )
     .sort(
       (a, b) => a.dueDate.localeCompare(b.dueDate) || a.id.localeCompare(b.id),
     );
@@ -405,9 +413,155 @@ export function materialsExpenseDraftsFromIncomes(
       label: baseLabel
         ? `Manufacture materials · ${baseLabel}`
         : "Manufacture materials",
-      ...(p.isMaintenance || !p.milestoneId
+      ...(p.isMaintenance || p.isOpex || !p.milestoneId
         ? {}
         : { milestoneId: p.milestoneId }),
     };
   });
+}
+
+export type InstallationCompleteResult =
+  | {
+      ok: true;
+      date: string;
+      /** Gantt activity id (Installation WBS 4.2) */
+      activityId: string;
+      label: string;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Installation complete = end of Installation activity (WBS 4.2).
+ */
+export function resolveInstallationCompleteDate(
+  schedule: ProjectSchedule | undefined,
+): InstallationCompleteResult {
+  if (!hasGanttSchedule(schedule)) {
+    return {
+      ok: false,
+      error: "Add a Gantt schedule first (auto-generate delivery Gantt).",
+    };
+  }
+  const activity = findActivity(schedule!, {
+    wbs: "4.2",
+    nameIncludes: ["installation"],
+  });
+  if (!activity?.startDate) {
+    return {
+      ok: false,
+      error:
+        "Missing Installation activity (WBS 4.2). Add it to the Gantt schedule.",
+    };
+  }
+  const date = activityEndDate(activity);
+  return {
+    ok: true,
+    date,
+    activityId: activity.id,
+    label: activityLabel(activity),
+  };
+}
+
+export type OpexIncomeDraft = {
+  amount: number;
+  dueDate: string;
+  label: string;
+  yearIndex: number;
+};
+
+export type OpexExpenseDraft = {
+  amount: number;
+  amountExVat: number;
+  percent: number;
+  dueDate: string;
+  label: string;
+  yearIndex: number;
+};
+
+export type OpexScheduleDrafts = {
+  incomes: OpexIncomeDraft[];
+  expenses: OpexExpenseDraft[];
+  installCompleteDate: string;
+  expensePercent: number;
+};
+
+export type OpexScheduleDraftsResult =
+  | { ok: true; drafts: OpexScheduleDrafts }
+  | { ok: false; error: string };
+
+/**
+ * Build yearly OPEX income + expense lines from installation complete.
+ *
+ * - First year is **one year after** Installation end (WBS 4.2).
+ * - Years 1..warrantyYears: expense only (no income).
+ * - Years warrantyYears+1..lifetime: income + expense.
+ * - Expense amount = opexValue × expensePercent / 100 (default 80%).
+ */
+export function opexScheduleDrafts(opts: {
+  opexValue: number;
+  opexExpensePercent?: number | null;
+  warrantyYears?: number | null;
+  systemLifetimeYears: number;
+  installCompleteDate: string;
+}): OpexScheduleDraftsResult {
+  const opexValue = opts.opexValue;
+  if (!(opexValue > 0)) {
+    return { ok: false, error: "Set a yearly OPEX income value first." };
+  }
+  const lifetime = Math.floor(opts.systemLifetimeYears);
+  if (!(lifetime > 0)) {
+    return {
+      ok: false,
+      error: "Set system lifetime years (at least 1).",
+    };
+  }
+  const warranty = Math.max(
+    0,
+    Math.floor(opts.warrantyYears ?? 0),
+  );
+  const expensePercent =
+    opts.opexExpensePercent != null &&
+    Number.isFinite(opts.opexExpensePercent) &&
+    opts.opexExpensePercent >= 0
+      ? opts.opexExpensePercent
+      : DEFAULT_OPEX_EXPENSE_PERCENT;
+  const expenseAmount =
+    Math.round(((opexValue * expensePercent) / 100) * 100) / 100;
+  const expenseExVat = amountExFromInc(expenseAmount);
+
+  const incomes: OpexIncomeDraft[] = [];
+  const expenses: OpexExpenseDraft[] = [];
+
+  for (let year = 1; year <= lifetime; year += 1) {
+    const dueDate = addCalendarYears(opts.installCompleteDate, year);
+    const inWarranty = year <= warranty;
+    expenses.push({
+      amount: expenseAmount,
+      amountExVat: expenseExVat,
+      percent: expensePercent,
+      dueDate,
+      label: inWarranty
+        ? `OPEX · Year ${year} (warranty)`
+        : `OPEX · Year ${year}`,
+      yearIndex: year,
+    });
+    if (!inWarranty) {
+      incomes.push({
+        amount: opexValue,
+        dueDate,
+        label: `OPEX · Year ${year}`,
+        yearIndex: year,
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    drafts: {
+      incomes,
+      expenses,
+      installCompleteDate: opts.installCompleteDate,
+      expensePercent,
+    },
+  };
 }

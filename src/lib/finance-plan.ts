@@ -76,6 +76,8 @@ type CashEvent = {
   actualDate?: string;
   /** Income from maintenance / service (not contract milestone payment) */
   isMaintenance?: boolean;
+  /** Yearly OPEX income generated from project OPEX settings */
+  isOpex?: boolean;
   /** Set for cash-affecting project outflows */
   expenseCategory?: Extract<
     ProjectExpenseCategory,
@@ -88,9 +90,10 @@ function collectEvents(project: Project): CashEvent[] {
   const events: CashEvent[] = [];
 
   for (const p of f.payments ?? []) {
-    const due = p.isMaintenance
-      ? p.dueDate
-      : effectiveScheduleDate(p, project);
+    const due =
+      p.isMaintenance || p.isOpex
+        ? p.dueDate
+        : effectiveScheduleDate(p, project);
     events.push({
       projectId: project.id,
       projectName: project.name,
@@ -102,6 +105,7 @@ function collectEvents(project: Project): CashEvent[] {
       dueDate: due,
       ...(p.actualDate ? { actualDate: p.actualDate } : {}),
       ...(p.isMaintenance ? { isMaintenance: true } : {}),
+      ...(p.isOpex ? { isOpex: true } : {}),
     });
   }
   for (const raw of f.expenseSchedule ?? []) {
@@ -110,7 +114,7 @@ function collectEvents(project: Project): CashEvent[] {
     // man-hr is allocated labour already covered by company salary — skip cash
     if (!CASH_EXPENSE_CATEGORIES.has(category)) continue;
 
-    const due = effectiveScheduleDate(e, project);
+    const due = e.isOpex ? e.dueDate : effectiveScheduleDate(e, project);
     events.push({
       projectId: project.id,
       projectName: project.name,
@@ -121,6 +125,7 @@ function collectEvents(project: Project): CashEvent[] {
       actualMonth: e.actualDate ? monthKey(e.actualDate) : null,
       dueDate: due,
       ...(e.actualDate ? { actualDate: e.actualDate } : {}),
+      ...(e.isOpex ? { isOpex: true } : {}),
       expenseCategory: category as
         | "materials"
         | "installation"
@@ -389,13 +394,21 @@ export function buildMonthlyPlan(
     if (ev.kind === "inflow") {
       add(month, "projectIn", ev.amount);
       if (b) {
+        const breakdownKey = ev.isOpex
+          ? `${ev.projectId}::opex`
+          : ev.isMaintenance
+            ? `${ev.projectId}::maint`
+            : ev.projectId;
+        const breakdownName = ev.isOpex
+          ? `${ev.projectName} · OPEX`
+          : ev.isMaintenance
+            ? `${ev.projectName} · Maintenance`
+            : ev.projectName;
         addProject(
           month,
           b.projectInById,
-          ev.isMaintenance ? `${ev.projectId}::maint` : ev.projectId,
-          ev.isMaintenance
-            ? `${ev.projectName} · Maintenance`
-            : ev.projectName,
+          breakdownKey,
+          breakdownName,
           ev.amount,
         );
       }
@@ -429,8 +442,8 @@ export function buildMonthlyPlan(
         addProject(
           month,
           b.maintenanceById,
-          ev.projectId,
-          ev.projectName,
+          ev.isOpex ? `${ev.projectId}::opex` : ev.projectId,
+          ev.isOpex ? `${ev.projectName} · OPEX` : ev.projectName,
           ev.amount,
         );
       }

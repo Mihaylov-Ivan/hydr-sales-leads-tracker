@@ -7,9 +7,11 @@ import {
   findLinkableDeadline,
   isFinanceImportId,
   projectLinkableDeadlines,
+  resolveInstallationCompleteDate,
   resolveStandardIncomeAnchors,
 } from "@/lib/gantt-finance";
 import {
+  DEFAULT_OPEX_EXPENSE_PERCENT,
   INSTALLATION_SUBCATEGORY_LABELS,
   InstallationSubcategory,
   PROJECT_EXPENSE_CATEGORIES,
@@ -449,9 +451,10 @@ function CashItemRow({
     );
   }
 
-  const displayLinked = paymentItem?.isMaintenance
-    ? undefined
-    : findLinkableDeadline(item.milestoneId, events);
+  const displayLinked =
+    paymentItem?.isMaintenance || paymentItem?.isOpex || expenseItem?.isOpex
+      ? undefined
+      : findLinkableDeadline(item.milestoneId, events);
   const expectedDate = displayLinked?.date ?? item.dueDate;
   const isActual = Boolean(item.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
@@ -590,11 +593,15 @@ function CashItemRow({
           )}
         </span>
       )}
-      {paymentItem?.isMaintenance && (
+      {paymentItem?.isOpex || expenseItem?.isOpex ? (
+        <span className="rounded-full bg-olive/15 px-2 py-0.5 text-[11px] font-semibold text-olive">
+          OPEX
+        </span>
+      ) : paymentItem?.isMaintenance ? (
         <span className="rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
           Maintenance
         </span>
-      )}
+      ) : null}
       <span className="text-muted">expected {formatDate(expectedDate)}</span>
       {isActual && (
         <span className="rounded-full bg-green-accent/15 px-2 py-0.5 text-[11px] font-semibold text-green-accent">
@@ -617,7 +624,9 @@ function CashItemRow({
           Delayed
         </span>
       )}
-      {paymentItem?.isMaintenance ? (
+      {paymentItem?.isMaintenance ||
+      paymentItem?.isOpex ||
+      expenseItem?.isOpex ? (
         <span className="rounded-full bg-muted/15 px-2 py-0.5 text-[11px] font-semibold text-muted">
           Standalone
         </span>
@@ -1071,11 +1080,16 @@ export default function GanttFinancials({
     updateFinancials,
     generateMaterialsExpensesFromIncomes,
     generateIncomesFromSchedule,
+    generateOpexSchedule,
   } = useProjects();
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [incomeGenerateError, setIncomeGenerateError] = useState<string | null>(
     null,
   );
+  const [opexGenerateError, setOpexGenerateError] = useState<string | null>(
+    null,
+  );
+  const [opexGenerateOk, setOpexGenerateOk] = useState<string | null>(null);
   const project = projects.find((p) => p.id === projectId);
 
   // Edit against live project financials so new lines show immediately.
@@ -1101,9 +1115,22 @@ export default function GanttFinancials({
     () => resolveStandardIncomeAnchors(project?.schedule),
     [project?.schedule],
   );
+  const installComplete = useMemo(
+    () => resolveInstallationCompleteDate(project?.schedule),
+    [project?.schedule],
+  );
   const canGenerateIncomes =
     (financials.contractValue != null && financials.contractValue > 0) &&
     incomeAnchors.ok;
+
+  const opexExpensePercent =
+    financials.opexExpensePercent ?? DEFAULT_OPEX_EXPENSE_PERCENT;
+  const canGenerateOpex =
+    financials.opexValue != null &&
+    financials.opexValue > 0 &&
+    financials.systemLifetimeYears != null &&
+    financials.systemLifetimeYears > 0 &&
+    installComplete.ok;
 
   function saveMaxExpense(
     field: "maxMaterialsExpense" | "maxManHrExpense",
@@ -1118,6 +1145,32 @@ export default function GanttFinancials({
     if (Number.isFinite(n) && n >= 0) {
       updateFinancials(projectId, { [field]: n });
     }
+  }
+
+  function saveOpexField(
+    field:
+      | "opexValue"
+      | "opexExpensePercent"
+      | "warrantyYears"
+      | "systemLifetimeYears",
+    raw: string,
+  ) {
+    const t = raw.trim().replace(/,/g, "");
+    if (!t) {
+      updateFinancials(projectId, { [field]: null });
+      return;
+    }
+    const n = Number(t);
+    if (!Number.isFinite(n) || n < 0) return;
+    updateFinancials(projectId, { [field]: n });
+  }
+
+  function applyOpexFromContractPercent(raw: string) {
+    const pct = parseOptionalNumber(raw);
+    const cv = financials.contractValue;
+    if (pct == null || pct < 0 || cv == null || !(cv > 0)) return;
+    const value = Math.round(((cv * pct) / 100) * 100) / 100;
+    updateFinancials(projectId, { opexValue: value });
   }
 
   return (
@@ -1141,6 +1194,178 @@ export default function GanttFinancials({
           date.
         </p>
       )}
+
+      <div className="mb-5 rounded-lg border border-line bg-panel/60 p-3">
+        <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-deep">
+          OPEX (yearly after installation)
+        </h4>
+        <p className="mb-3 text-[10px] text-muted">
+          Yearly OPEX income (e.g. 2.5% of contract) and our works expense as a
+          % of that income (default {DEFAULT_OPEX_EXPENSE_PERCENT}%). First
+          year is one year after Installation end (WBS 4.2). Warranty years:
+          expense only; remaining lifetime: income + expense. Generated lines
+          feed Monthly cashflow. Regenerating replaces previous OPEX lines.
+        </p>
+        <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block">
+            <span className={labelTiny}>Yearly OPEX income €</span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              defaultValue={
+                financials.opexValue != null ? String(financials.opexValue) : ""
+              }
+              key={`opex-val-${financials.opexValue ?? "empty"}`}
+              onBlur={(e) => saveOpexField("opexValue", e.target.value)}
+              placeholder="e.g. 25000"
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className={labelTiny}>Or % of contract → income €</span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={
+                financials.contractValue != null && financials.contractValue > 0
+                  ? "e.g. 2.5"
+                  : "Set contract value first"
+              }
+              disabled={
+                !(
+                  financials.contractValue != null &&
+                  financials.contractValue > 0
+                )
+              }
+              onBlur={(e) => {
+                applyOpexFromContractPercent(e.target.value);
+                e.target.value = "";
+              }}
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className={labelTiny}>
+              OPEX expense % of income (default {DEFAULT_OPEX_EXPENSE_PERCENT})
+            </span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              defaultValue={
+                financials.opexExpensePercent != null
+                  ? String(financials.opexExpensePercent)
+                  : ""
+              }
+              key={`opex-exp-pct-${financials.opexExpensePercent ?? "empty"}`}
+              onBlur={(e) =>
+                saveOpexField("opexExpensePercent", e.target.value)
+              }
+              placeholder={String(DEFAULT_OPEX_EXPENSE_PERCENT)}
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className={labelTiny}>Warranty years (expense only)</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              defaultValue={
+                financials.warrantyYears != null
+                  ? String(financials.warrantyYears)
+                  : ""
+              }
+              key={`warranty-${financials.warrantyYears ?? "empty"}`}
+              onBlur={(e) => saveOpexField("warrantyYears", e.target.value)}
+              placeholder="e.g. 2"
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className={labelTiny}>System lifetime years</span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              defaultValue={
+                financials.systemLifetimeYears != null
+                  ? String(financials.systemLifetimeYears)
+                  : ""
+              }
+              key={`lifetime-${financials.systemLifetimeYears ?? "empty"}`}
+              onBlur={(e) =>
+                saveOpexField("systemLifetimeYears", e.target.value)
+              }
+              placeholder="e.g. 15"
+              className={inputCls}
+            />
+          </label>
+          <div className="flex flex-col justify-end text-[10px] text-muted">
+            {financials.opexValue != null && financials.opexValue > 0 && (
+              <p>
+                Expense / year:{" "}
+                <span className="font-semibold text-deep">
+                  {formatMoney(
+                    Math.round(
+                      ((financials.opexValue * opexExpensePercent) / 100) * 100,
+                    ) / 100,
+                  )}
+                </span>{" "}
+                ({opexExpensePercent}% of income)
+              </p>
+            )}
+            {installComplete.ok ? (
+              <p className="mt-0.5">
+                Installation complete: {formatDate(installComplete.date)}
+              </p>
+            ) : (
+              <p className="mt-0.5">{installComplete.error}</p>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={!canGenerateOpex}
+          onClick={() => {
+            const result = generateOpexSchedule(projectId);
+            if (!result.ok) {
+              setOpexGenerateError(result.error);
+              setOpexGenerateOk(null);
+            } else {
+              setOpexGenerateError(null);
+              setOpexGenerateOk(
+                `Added ${result.incomeCount} income and ${result.expenseCount} expense line${result.expenseCount === 1 ? "" : "s"} (replaced prior OPEX lines).`,
+              );
+            }
+          }}
+          className="rounded-lg border border-deep/30 px-3 py-2 text-xs font-bold uppercase tracking-wide text-deep transition hover:bg-deep/5 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Generate OPEX schedule
+        </button>
+        {!canGenerateOpex && (
+          <p className="mt-1.5 text-[10px] text-muted">
+            {!(financials.opexValue != null && financials.opexValue > 0)
+              ? "Set yearly OPEX income first."
+              : !(
+                    financials.systemLifetimeYears != null &&
+                    financials.systemLifetimeYears > 0
+                  )
+                ? "Set system lifetime years first."
+                : installComplete.ok
+                  ? null
+                  : installComplete.error}
+          </p>
+        )}
+        {opexGenerateError && (
+          <p className="mt-1 text-[11px] text-amber-accent">{opexGenerateError}</p>
+        )}
+        {opexGenerateOk && (
+          <p className="mt-1 text-[11px] text-green-accent">{opexGenerateOk}</p>
+        )}
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div>

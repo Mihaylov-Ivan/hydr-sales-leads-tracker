@@ -1,5 +1,5 @@
 /**
- * One-off: upgrade a financial CSV to include history columns.
+ * One-off: upgrade a financial CSV to the current header set.
  * Usage: node scripts/upgrade-financial-csv-headers.mjs <input> <output>
  */
 import fs from "fs";
@@ -24,6 +24,10 @@ const NEW_HEADERS = [
   "expected_profit",
   "max_materials_expense",
   "max_man_hr_expense",
+  "opex_value",
+  "opex_expense_percent",
+  "warranty_years",
+  "system_lifetime_years",
   "milestone_kind",
   "milestone_note",
   "month",
@@ -38,7 +42,15 @@ const NEW_HEADERS = [
   "fixed_monthly",
   "category",
   "subcategory",
+  "warehouse_lot_id",
+  "warehouse_item_id",
+  "qty",
   "is_maintenance",
+  "is_opex",
+  "budget_amount",
+  "source_sklad",
+  "wh_site",
+  "wh_slot",
   "event_id",
   "intentional",
   "actor_user_id",

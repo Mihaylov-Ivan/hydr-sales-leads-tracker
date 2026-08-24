@@ -46,6 +46,7 @@ import {
   normalizeCompanyMonthlyExpense,
   parseInstallationSubcategory,
   parseIsMaintenanceFlag,
+  parseIsOpexFlag,
   parseProjectExpenseCategory,
   parseProjectExpenseSubcategory,
 } from "./types";
@@ -71,6 +72,10 @@ export const FINANCIAL_CSV_HEADERS = [
   "expected_profit",
   "max_materials_expense",
   "max_man_hr_expense",
+  "opex_value",
+  "opex_expense_percent",
+  "warranty_years",
+  "system_lifetime_years",
   "milestone_kind",
   "milestone_note",
   "month",
@@ -89,6 +94,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "warehouse_item_id",
   "qty",
   "is_maintenance",
+  "is_opex",
   "budget_amount",
   "source_sklad",
   "wh_site",
@@ -225,6 +231,10 @@ export function buildFinancialCsv(
     base.expected_profit = numStr(f.expectedProfit);
     base.max_materials_expense = numStr(f.maxMaterialsExpense);
     base.max_man_hr_expense = numStr(f.maxManHrExpense);
+    base.opex_value = numStr(f.opexValue);
+    base.opex_expense_percent = numStr(f.opexExpensePercent);
+    base.warranty_years = numStr(f.warrantyYears);
+    base.system_lifetime_years = numStr(f.systemLifetimeYears);
     lines.push(rowLine(base));
 
     for (const pay of f.payments) {
@@ -238,9 +248,11 @@ export function buildFinancialCsv(
       r.percent = numStr(pay.percent);
       r.due_date = pay.dueDate ?? "";
       r.actual_date = pay.actualDate ?? "";
-      r.milestone_id = pay.isMaintenance ? "" : (pay.milestoneId ?? "");
+      r.milestone_id =
+        pay.isMaintenance || pay.isOpex ? "" : (pay.milestoneId ?? "");
       r.created_at = pay.createdAt ?? "";
       r.is_maintenance = pay.isMaintenance ? "true" : "";
+      r.is_opex = pay.isOpex ? "true" : "";
       lines.push(rowLine(r));
     }
 
@@ -263,7 +275,7 @@ export function buildFinancialCsv(
       r.percent = numStr(exp.percent);
       r.due_date = exp.dueDate ?? "";
       r.actual_date = exp.actualDate ?? "";
-      r.milestone_id = exp.milestoneId ?? "";
+      r.milestone_id = exp.isOpex ? "" : (exp.milestoneId ?? "");
       r.created_at = exp.createdAt ?? "";
       r.category = exp.category ?? inferExpenseCategory(exp.label);
       r.subcategory =
@@ -276,6 +288,7 @@ export function buildFinancialCsv(
         exp.budgetAmount != null && exp.budgetAmount > 0
           ? numStr(exp.budgetAmount)
           : "";
+      r.is_opex = exp.isOpex ? "true" : "";
       lines.push(rowLine(r));
     }
 
@@ -666,6 +679,12 @@ export function parseFinancialCsv(text: string):
       const signed = cell(row, "contract_signed_date");
       const maxMat = parseOptionalNumber(cell(row, "max_materials_expense"));
       const maxMan = parseOptionalNumber(cell(row, "max_man_hr_expense"));
+      const opexVal = parseOptionalNumber(cell(row, "opex_value"));
+      const opexExpPct = parseOptionalNumber(cell(row, "opex_expense_percent"));
+      const warrantyYrs = parseOptionalNumber(cell(row, "warranty_years"));
+      const lifetimeYrs = parseOptionalNumber(
+        cell(row, "system_lifetime_years"),
+      );
       if (cv !== undefined) f.contractValue = cv;
       if (ex !== undefined) f.expenses = ex;
       if (ep !== undefined) f.expectedProfit = ep;
@@ -673,6 +692,10 @@ export function parseFinancialCsv(text: string):
       if (signed) f.contractSignedDate = signed;
       if (maxMat !== undefined) f.maxMaterialsExpense = maxMat;
       if (maxMan !== undefined) f.maxManHrExpense = maxMan;
+      if (opexVal !== undefined) f.opexValue = opexVal;
+      if (opexExpPct !== undefined) f.opexExpensePercent = opexExpPct;
+      if (warrantyYrs !== undefined) f.warrantyYears = warrantyYrs;
+      if (lifetimeYrs !== undefined) f.systemLifetimeYears = lifetimeYrs;
       continue;
     }
 
@@ -694,12 +717,14 @@ export function parseFinancialCsv(text: string):
       if (actual) payment.actualDate = actual;
       const label = cell(row, "label");
       if (label) payment.label = label;
+      const isOpex = parseIsOpexFlag(cell(row, "is_opex"));
+      if (isOpex) payment.isOpex = true;
       const isMaint =
         parseIsMaintenanceFlag(cell(row, "is_maintenance")) ||
         parseIsMaintenanceFlag(cell(row, "category"));
       if (isMaint) {
         payment.isMaintenance = true;
-      } else {
+      } else if (!isOpex) {
         const mid = cell(row, "milestone_id");
         if (mid) payment.milestoneId = mid;
       }
@@ -758,6 +783,10 @@ export function parseFinancialCsv(text: string):
       const budgetAmount = parseOptionalNumber(cell(row, "budget_amount"));
       if (budgetAmount != null && budgetAmount > 0) {
         expense.budgetAmount = budgetAmount;
+      }
+      if (parseIsOpexFlag(cell(row, "is_opex"))) {
+        expense.isOpex = true;
+        delete expense.milestoneId;
       }
       f.expenseSchedule.push(expense);
       continue;

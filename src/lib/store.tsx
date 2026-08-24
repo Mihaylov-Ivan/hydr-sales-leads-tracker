@@ -130,6 +130,8 @@ import {
 import {
   incomeDraftsFromScheduleAnchors,
   materialsExpenseDraftsFromIncomes,
+  opexScheduleDrafts,
+  resolveInstallationCompleteDate,
   resolveLinkedDeadlineDate,
   resolveStandardIncomeAnchors,
 } from "./gantt-finance";
@@ -436,6 +438,10 @@ export interface FinancialsPatch {
   expectedProfit?: number | null;
   maxMaterialsExpense?: number | null;
   maxManHrExpense?: number | null;
+  opexValue?: number | null;
+  opexExpensePercent?: number | null;
+  warrantyYears?: number | null;
+  systemLifetimeYears?: number | null;
 }
 
 export interface PaymentInput {
@@ -662,6 +668,11 @@ interface ProjectsApi {
   generateIncomesFromSchedule: (
     projectId: string,
   ) => { ok: true; count: number } | { ok: false; error: string };
+  generateOpexSchedule: (
+    projectId: string,
+  ) =>
+    | { ok: true; incomeCount: number; expenseCount: number }
+    | { ok: false; error: string };
   updatePayment: (projectId: string, paymentId: string, patch: PaymentInput) => void;
   deletePayment: (projectId: string, paymentId: string) => void;
   addExpense: (projectId: string, input: ExpenseInput) => void;
@@ -3041,6 +3052,26 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           label: "max_man_hr_expense",
           read: (f) => formatValue(f?.maxManHrExpense),
         },
+        {
+          key: "opexValue",
+          label: "opex_value",
+          read: (f) => formatValue(f?.opexValue),
+        },
+        {
+          key: "opexExpensePercent",
+          label: "opex_expense_percent",
+          read: (f) => formatValue(f?.opexExpensePercent),
+        },
+        {
+          key: "warrantyYears",
+          label: "warranty_years",
+          read: (f) => formatValue(f?.warrantyYears),
+        },
+        {
+          key: "systemLifetimeYears",
+          label: "system_lifetime_years",
+          read: (f) => formatValue(f?.systemLifetimeYears),
+        },
       ];
 
       for (const def of fieldDefs) {
@@ -3102,6 +3133,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.maxManHrExpense !== undefined) {
           if (patch.maxManHrExpense === null) delete next.maxManHrExpense;
           else next.maxManHrExpense = patch.maxManHrExpense;
+        }
+        if (patch.opexValue !== undefined) {
+          if (patch.opexValue === null) delete next.opexValue;
+          else next.opexValue = patch.opexValue;
+        }
+        if (patch.opexExpensePercent !== undefined) {
+          if (patch.opexExpensePercent === null) delete next.opexExpensePercent;
+          else next.opexExpensePercent = patch.opexExpensePercent;
+        }
+        if (patch.warrantyYears !== undefined) {
+          if (patch.warrantyYears === null) delete next.warrantyYears;
+          else next.warrantyYears = patch.warrantyYears;
+        }
+        if (patch.systemLifetimeYears !== undefined) {
+          if (patch.systemLifetimeYears === null) {
+            delete next.systemLifetimeYears;
+          } else {
+            next.systemLifetimeYears = patch.systemLifetimeYears;
+          }
         }
         if (next.contractValue != null && next.expenses != null) {
           next.expectedProfit = next.contractValue - next.expenses;
@@ -3236,6 +3286,113 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateFinancials, recordChangeEvent],
   );
 
+  const generateOpexSchedule = useCallback(
+    (
+      projectId: string,
+    ):
+      | { ok: true; incomeCount: number; expenseCount: number }
+      | { ok: false; error: string } => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      if (!current) return { ok: false, error: "Project not found." };
+      const f = current.financials;
+      const opexValue = f?.opexValue;
+      if (opexValue == null || !(opexValue > 0)) {
+        return { ok: false, error: "Set a yearly OPEX income value first." };
+      }
+      const lifetime = f?.systemLifetimeYears;
+      if (lifetime == null || !(lifetime > 0)) {
+        return {
+          ok: false,
+          error: "Set system lifetime years first.",
+        };
+      }
+      const install = resolveInstallationCompleteDate(current.schedule);
+      if (!install.ok) {
+        return { ok: false, error: install.error };
+      }
+      const built = opexScheduleDrafts({
+        opexValue,
+        opexExpensePercent: f?.opexExpensePercent,
+        warrantyYears: f?.warrantyYears,
+        systemLifetimeYears: lifetime,
+        installCompleteDate: install.date,
+      });
+      if (!built.ok) {
+        return { ok: false, error: built.error };
+      }
+      const { drafts } = built;
+      const createdAt = new Date().toISOString();
+      const payments: ProjectPayment[] = drafts.incomes.map((d) => ({
+        id: crypto.randomUUID(),
+        amount: d.amount,
+        dueDate: d.dueDate,
+        label: d.label,
+        isOpex: true,
+        createdAt,
+      }));
+      const expenses: ProjectExpenseItem[] = drafts.expenses.map((d) => ({
+        id: crypto.randomUUID(),
+        amount: d.amount,
+        amountExVat: d.amountExVat,
+        percent: d.percent,
+        category: "maintenance" as const,
+        dueDate: d.dueDate,
+        label: d.label,
+        isOpex: true,
+        createdAt,
+      }));
+      mutateFinancials(projectId, (prev) => ({
+        ...prev,
+        // Persist resolved expense % when it was unset (default 80).
+        ...(prev.opexExpensePercent == null
+          ? { opexExpensePercent: drafts.expensePercent }
+          : {}),
+        payments: [
+          ...(prev.payments ?? []).filter((p) => !p.isOpex),
+          ...payments,
+        ],
+        expenseSchedule: [
+          ...(prev.expenseSchedule ?? []).filter((e) => !e.isOpex),
+          ...expenses,
+        ],
+      }));
+      const projectName = current.name ?? projectId;
+      const summary = `${projectName}: generated OPEX schedule (${payments.length} income, ${expenses.length} expense) from installation complete`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "payment",
+          entityId: payments[0]?.id ?? expenses[0]?.id ?? projectId,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: {
+            incomeCount: payments.length,
+            expenseCount: expenses.length,
+            source: "opex",
+            installCompleteDate: drafts.installCompleteDate,
+          },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "payment",
+          entityId: payments[0]?.id ?? expenses[0]?.id ?? projectId,
+          action: "create",
+          newValue: formatValue(opexValue),
+          summary,
+        },
+      );
+      return {
+        ok: true,
+        incomeCount: payments.length,
+        expenseCount: expenses.length,
+      };
+    },
+    [mutateFinancials, recordChangeEvent],
+  );
+
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
@@ -3250,10 +3407,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (p.id !== paymentId) return p;
           const nextMaint =
             isMaintenance !== undefined ? isMaintenance : Boolean(p.isMaintenance);
-          const linkedDate =
-            nextMaint
-              ? undefined
-              : resolveLinkedDeadlineDate(patch.milestoneId, current);
+          const standalone = nextMaint || Boolean(p.isOpex);
+          const linkedDate = standalone
+            ? undefined
+            : resolveLinkedDeadlineDate(patch.milestoneId, current);
           const dueDate = linkedDate ?? patch.dueDate;
           const next: ProjectPayment = {
             id: p.id,
@@ -3271,7 +3428,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (nextMaint) {
             next.isMaintenance = true;
           }
-          if (!nextMaint && patch.milestoneId && linkedDate) {
+          if (p.isOpex) {
+            next.isOpex = true;
+          }
+          if (!standalone && patch.milestoneId && linkedDate) {
             next.milestoneId = patch.milestoneId;
           }
           // falsy milestoneId or maintenance clears the link
@@ -3553,6 +3713,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
         if (e.budgetAmount != null && e.budgetAmount > 0) {
           next.budgetAmount = e.budgetAmount;
+        }
+
+        if (e.isOpex) {
+          next.isOpex = true;
         }
 
         return next;
@@ -6625,6 +6789,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateFinancials,
         addPayment,
         generateIncomesFromSchedule,
+        generateOpexSchedule,
         updatePayment,
         deletePayment,
         addExpense,

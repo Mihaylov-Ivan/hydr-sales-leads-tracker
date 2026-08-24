@@ -326,6 +326,11 @@ export interface ProjectPayment {
    * dates only — not linkable to the Gantt chart.
    */
   isMaintenance?: boolean;
+  /**
+   * Yearly OPEX income generated from project OPEX settings.
+   * Standalone dates only (same linking rules as maintenance).
+   */
+  isOpex?: boolean;
   createdAt: string; // ISO
 }
 
@@ -342,6 +347,20 @@ export function parseIsMaintenanceFlag(
     t === "maint"
   );
 }
+
+export function parseIsOpexFlag(raw: string | null | undefined): boolean {
+  const t = (raw ?? "").trim().toLowerCase();
+  return (
+    t === "1" ||
+    t === "true" ||
+    t === "yes" ||
+    t === "y" ||
+    t === "opex"
+  );
+}
+
+/** Default share of yearly OPEX income booked as our OPEX works expense. */
+export const DEFAULT_OPEX_EXPENSE_PERCENT = 80;
 
 /**
  * Project expense kind.
@@ -694,6 +713,11 @@ export interface ProjectExpenseItem {
    * Kept for display when `amount` is later aligned to actual WH draws.
    */
   budgetAmount?: number;
+  /**
+   * Yearly OPEX works expense generated from project OPEX settings.
+   * Standalone dates (not Gantt-linked).
+   */
+  isOpex?: boolean;
   createdAt: string; // ISO
 }
 
@@ -1122,6 +1146,26 @@ export interface ProjectFinancials {
   maxMaterialsExpense?: number;
   /** Cap used when Man-hr expense lines are entered as a % */
   maxManHrExpense?: number;
+  /**
+   * Yearly OPEX income amount (€). Typically a % of contract value
+   * (e.g. 2.5% of €1M → €25,000 / year).
+   */
+  opexValue?: number;
+  /**
+   * Share of yearly OPEX income booked as our OPEX works expense
+   * (default 80 when generating the schedule).
+   */
+  opexExpensePercent?: number;
+  /**
+   * Warranty years after installation complete.
+   * During these years only OPEX expense is booked (no OPEX income).
+   */
+  warrantyYears?: number;
+  /**
+   * System lifetime in years from installation complete.
+   * OPEX lines run for this many anniversaries (first = install + 1 year).
+   */
+  systemLifetimeYears?: number;
   payments: ProjectPayment[];
   /** Dated cost outflows used on the portfolio cash chart */
   expenseSchedule: ProjectExpenseItem[];
@@ -1364,6 +1408,11 @@ export function addCalendarMonths(isoDate: string, months: number): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
+}
+
+/** Shift a calendar date by whole years (day-of-month clamped). */
+export function addCalendarYears(isoDate: string, years: number): string {
+  return addCalendarMonths(isoDate, years * 12);
 }
 
 export type ScheduleShiftUnit = "days" | "weeks" | "months";
