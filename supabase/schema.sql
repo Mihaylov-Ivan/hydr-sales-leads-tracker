@@ -20,17 +20,10 @@ create table if not exists public.projects (
   client text not null,
   country text not null,
   city text not null default '',
-  series text not null default 'Z Series'
-    check (series in ('Z Series', 'E Series', 'Custom')),
-  market text not null default 'Clean H2'
-    check (market in (
-      'Cement',
-      'Power Plants',
-      'Funding',
-      'Clean H2',
-      'Burner Optimisation',
-      'Tenders'
-    )),
+  series text not null default 'Z Series',
+  -- System categories: single tag or "Tag + Tag" (Z Series, E Series, Custom, w/ Stargate, MH)
+  -- Markets: single tag or "Tag + Tag" (Cement, Power Plants, Funding, Clean H2, Burner Optimisation, Tenders)
+  market text not null default 'Clean H2',
   size_kw integer not null
     check (size_kw >= 0),
   stage text not null default 'cold-lead'

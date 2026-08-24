@@ -1,5 +1,5 @@
 import type { Market, Series, Stage } from "@/lib/types";
-import { MARKETS } from "@/lib/types";
+import { MARKETS, SERIES } from "@/lib/types";
 import type { MetricsProject, StageHistoryEntry } from "./types";
 
 /** Deterministic seeded RNG (mulberry32). */
@@ -43,7 +43,6 @@ function daysBetween(from: string, to: string): number {
 }
 
 const OWNERS = ["u-andrew", "u-maria", "u-daniel", "u-irina"] as const;
-const SERIES: Series[] = ["Z Series", "E Series", "Custom"];
 const SIZES = [500, 1000, 2000, 2500, 5000, 10000];
 
 const CLIENTS = [

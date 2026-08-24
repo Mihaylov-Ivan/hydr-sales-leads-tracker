@@ -228,6 +228,20 @@ function OutstandingItem({
           </div>
           <p className="mt-1 text-xs leading-snug text-ink">{todo.text}</p>
           {todo.dueDate && <DeadlineBadge date={todo.dueDate} />}
+          {expanded && todo.dueDate && (
+            <button
+              type="button"
+              onClick={() =>
+                updateTodo(projectId, todo.id, {
+                  dueDate: addDays(todo.dueDate!, 1),
+                })
+              }
+              className="mt-1 inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+              title="Move deadline by 1 day"
+            >
+              +1 day
+            </button>
+          )}
           <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Owner: {ownerName}
           </p>

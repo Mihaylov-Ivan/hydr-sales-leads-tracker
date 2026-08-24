@@ -38,6 +38,8 @@ import {
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import CatalogItemSearchSelect from "@/components/CatalogItemSearchSelect";
 import WarehouseGroupSelect from "@/components/WarehouseGroupSelect";
+import SearchableSelect from "@/components/SearchableSelect";
+import type { SearchableOption } from "@/components/SearchableSelect";
 import type { WarehouseBomLineInput } from "@/lib/types";
 
 const inputCls =
@@ -272,6 +274,12 @@ export default function WarehousePage() {
         .filter((p) => !p.isWarehouseHolding && p.stage !== "cancelled")
         .sort((a, b) => a.name.localeCompare(b.name)),
     [projects],
+  );
+
+  const salesProjectOptions: SearchableOption[] = useMemo(
+    () =>
+      salesProjects.map((p) => ({ value: p.id, label: p.name })),
+    [salesProjects],
   );
 
   const holdingProject = useMemo(
@@ -825,6 +833,52 @@ export default function WarehousePage() {
     [projects],
   );
 
+  const allProjectsForEditOptions: SearchableOption[] = useMemo(
+    () =>
+      allProjectsForEdit.map((p) => ({
+        value: p.id,
+        label: p.name + (p.isWarehouseHolding ? " (holding)" : ""),
+      })),
+    [allProjectsForEdit],
+  );
+
+  const SUPPLIERS_LS_KEY = "wh_known_suppliers";
+
+  const knownSuppliers = useMemo(() => {
+    const fromLots = new Set<string>();
+    for (const lot of warehouse.lots) {
+      if (lot.supplier) fromLots.add(lot.supplier);
+    }
+    for (const item of warehouse.items) {
+      if (item.preferredSupplier) fromLots.add(item.preferredSupplier);
+    }
+    try {
+      const stored: string[] = JSON.parse(
+        localStorage.getItem(SUPPLIERS_LS_KEY) ?? "[]",
+      );
+      for (const s of stored) if (s) fromLots.add(s);
+    } catch { /* ignore */ }
+    return [...fromLots].sort((a, b) => a.localeCompare(b));
+  }, [warehouse.lots, warehouse.items]);
+
+  const supplierOptions: SearchableOption[] = useMemo(
+    () => knownSuppliers.map((s) => ({ value: s, label: s })),
+    [knownSuppliers],
+  );
+
+  function persistSupplier(name: string) {
+    if (!name) return;
+    try {
+      const stored: string[] = JSON.parse(
+        localStorage.getItem(SUPPLIERS_LS_KEY) ?? "[]",
+      );
+      if (!stored.includes(name)) {
+        stored.push(name);
+        localStorage.setItem(SUPPLIERS_LS_KEY, JSON.stringify(stored));
+      }
+    } catch { /* ignore */ }
+  }
+
   function closeLotEditor() {
     setEditingLot(false);
     setEditError(null);
@@ -965,6 +1019,7 @@ export default function WarehousePage() {
       setEditError(result.error);
       return;
     }
+    if (editSupplier.trim()) persistSupplier(editSupplier.trim());
     closeLotEditor();
   }
 
@@ -1100,6 +1155,7 @@ export default function WarehousePage() {
       setRecvError(result.error);
       return;
     }
+    if (recvSupplier.trim()) persistSupplier(recvSupplier.trim());
     setRecvQty("");
     setRecvEx("");
     setRecvInc("");
@@ -1560,18 +1616,13 @@ export default function WarehousePage() {
           {recvDestSlot === "project" && (
             <div className="col-span-2">
               <label className={labelCls}>Project</label>
-              <select
-                className={inputCls}
+              <SearchableSelect
+                options={salesProjectOptions}
                 value={recvProjectId}
-                onChange={(e) => setRecvProjectId(e.target.value)}
-              >
-                <option value="">Select…</option>
-                {salesProjects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setRecvProjectId}
+                inputClassName={inputCls}
+                placeholder="Search project…"
+              />
             </div>
           )}
           <div>
@@ -1624,10 +1675,13 @@ export default function WarehousePage() {
           </div>
           <div>
             <label className={labelCls}>Supplier</label>
-            <input
-              className={inputCls}
+            <SearchableSelect
+              options={supplierOptions}
               value={recvSupplier}
-              onChange={(e) => setRecvSupplier(e.target.value)}
+              onChange={setRecvSupplier}
+              inputClassName={inputCls}
+              placeholder="Search or type supplier…"
+              allowFreeText
             />
           </div>
           <div className="col-span-2">
@@ -2027,18 +2081,13 @@ export default function WarehousePage() {
                 {moveDestSlot === "project" && (
                   <div>
                     <label className={labelCls}>Project</label>
-                    <select
-                      className={inputCls}
+                    <SearchableSelect
+                      options={salesProjectOptions}
                       value={moveProjectId}
-                      onChange={(e) => setMoveProjectId(e.target.value)}
-                    >
-                      <option value="">Select…</option>
-                      {salesProjects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setMoveProjectId}
+                      inputClassName={inputCls}
+                      placeholder="Search project…"
+                    />
                   </div>
                 )}
                 <button
@@ -2210,36 +2259,24 @@ export default function WarehousePage() {
                       <label className={labelCls}>
                         Project (stock location)
                       </label>
-                      <select
-                        className={inputCls}
+                      <SearchableSelect
+                        options={allProjectsForEditOptions}
                         value={editProjectId}
-                        onChange={(e) => setEditProjectId(e.target.value)}
-                      >
-                        <option value="">Select project…</option>
-                        {allProjectsForEdit.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                            {p.isWarehouseHolding ? " (holding)" : ""}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={setEditProjectId}
+                        inputClassName={inputCls}
+                        placeholder="Search project…"
+                      />
                     </div>
                   )}
                   <div>
                     <label className={labelCls}>Purchase project</label>
-                    <select
-                      className={inputCls}
+                    <SearchableSelect
+                      options={allProjectsForEditOptions}
                       value={editPurchaseProjectId}
-                      onChange={(e) => setEditPurchaseProjectId(e.target.value)}
-                    >
-                      <option value="">Select project…</option>
-                      {allProjectsForEdit.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.isWarehouseHolding ? " (holding)" : ""}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setEditPurchaseProjectId}
+                      inputClassName={inputCls}
+                      placeholder="Search project…"
+                    />
                   </div>
                   <div>
                     <label className={labelCls}>Expense link</label>
@@ -2306,10 +2343,13 @@ export default function WarehousePage() {
                   </div>
                   <div>
                     <label className={labelCls}>Supplier</label>
-                    <input
-                      className={inputCls}
+                    <SearchableSelect
+                      options={supplierOptions}
                       value={editSupplier}
-                      onChange={(e) => setEditSupplier(e.target.value)}
+                      onChange={setEditSupplier}
+                      inputClassName={inputCls}
+                      placeholder="Search or type supplier…"
+                      allowFreeText
                     />
                   </div>
                   <div className="sm:col-span-2">

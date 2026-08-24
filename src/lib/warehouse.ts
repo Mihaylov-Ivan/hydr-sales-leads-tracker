@@ -465,7 +465,7 @@ function migrateBomLine(raw: unknown): WarehouseBomLine | null {
 
 export function loadWarehouseState(): WarehouseState {
   try {
-    const raw = window.localStorage.getItem("hydrogenera-warehouse-v1");
+    const raw = window.localStorage.getItem("hydrogenera-warehouse-v2");
     if (!raw) return emptyWarehouseState();
     const parsed = JSON.parse(raw) as Partial<WarehouseState> & {
       items?: unknown[];
@@ -509,7 +509,7 @@ export function loadWarehouseState(): WarehouseState {
 export function saveWarehouseState(state: WarehouseState): void {
   try {
     window.localStorage.setItem(
-      "hydrogenera-warehouse-v1",
+      "hydrogenera-warehouse-v2",
       JSON.stringify(state),
     );
   } catch {

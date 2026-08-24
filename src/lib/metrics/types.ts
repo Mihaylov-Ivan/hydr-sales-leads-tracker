@@ -9,7 +9,7 @@
  * Until live wiring lands, MetricsProject is populated from placeholder data.
  */
 
-import type { Market, Series, Stage } from "@/lib/types";
+import type { Market, MarketTag, Series, SeriesTag, Stage } from "@/lib/types";
 
 /** Pipeline stages used for coverage / required / bottleneck (excludes terminal). */
 export type PipelineStage = "cold-lead" | "hot-lead" | "under-development";
@@ -79,9 +79,9 @@ export interface MetricsFilters {
   cohortFrom?: string;
   /** Inclusive lead-creation cohort end (yyyy-mm-dd), optional */
   cohortTo?: string;
-  market?: Market | "";
+  market?: MarketTag | "";
   ownerId?: string | "";
-  series?: Series | "";
+  series?: SeriesTag | "";
   sizeBand?: SizeBand | "";
   targetOutcome: TargetOutcome;
 }

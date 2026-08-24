@@ -203,7 +203,7 @@ export default function MetricsPage() {
           </label>
           {!useDemoData && (
             <span className="text-xs text-muted">
-              Using {projects.length} live Board project
+              Using {projects.length} live Sales Project
               {projects.length === 1 ? "" : "s"}
             </span>
           )}

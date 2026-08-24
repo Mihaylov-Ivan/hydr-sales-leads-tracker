@@ -1,4 +1,4 @@
-import type { Market } from "./types";
+import type { Market, Series } from "./types";
 import {
   WarehouseBalance,
   WarehouseLocation,
@@ -37,7 +37,7 @@ export const SYSTEM_SKLAD_PROJECT_SEEDS: {
   client: string;
   country: string;
   city: string;
-  series: "Z Series" | "E Series" | "Custom";
+  series: Series;
   sizeKw: number;
   market: Market;
   baseDescription: string;

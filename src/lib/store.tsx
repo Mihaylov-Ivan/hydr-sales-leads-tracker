@@ -54,9 +54,13 @@ import {
   defaultMetricsSettings,
   categoryHasSubcategories,
   amountExFromInc,
+  formatSeriesTags,
+  formatMarketTags,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   normalizeStage,
+  parseSeriesTags,
+  parseMarketTags,
   todayDate,
   addDays,
   phaseEndDate,
@@ -123,7 +127,12 @@ import {
   isScheduleEmpty,
   munichBusFleetSchedule,
 } from "./gantt-munich";
-import { resolveLinkedDeadlineDate } from "./gantt-finance";
+import {
+  incomeDraftsFromScheduleAnchors,
+  materialsExpenseDraftsFromIncomes,
+  resolveLinkedDeadlineDate,
+  resolveStandardIncomeAnchors,
+} from "./gantt-finance";
 import {
   shiftProjectFinancials,
   shiftProjectSchedule as applyScheduleShift,
@@ -650,9 +659,15 @@ interface ProjectsApi {
   getProjectFileUrl: (file: ProjectFile) => Promise<string | null>;
   updateFinancials: (projectId: string, patch: FinancialsPatch) => void;
   addPayment: (projectId: string, input: PaymentInput) => void;
+  generateIncomesFromSchedule: (
+    projectId: string,
+  ) => { ok: true; count: number } | { ok: false; error: string };
   updatePayment: (projectId: string, paymentId: string, patch: PaymentInput) => void;
   deletePayment: (projectId: string, paymentId: string) => void;
   addExpense: (projectId: string, input: ExpenseInput) => void;
+  generateMaterialsExpensesFromIncomes: (
+    projectId: string,
+  ) => { ok: true; count: number } | { ok: false; error: string };
   updateExpense: (projectId: string, expenseId: string, patch: ExpenseInput) => void;
   deleteExpense: (
     projectId: string,
@@ -797,7 +812,7 @@ function loadLocal(): Project[] {
       return parsed.map((p) => ({
         ...p,
         stage: normalizeStage(p.stage),
-        market: p.market ?? "Clean H2",
+        market: formatMarketTags(parseMarketTags(p.market ?? "Clean H2")),
         ...(p.isWarehouseHolding ? { isWarehouseHolding: true as const } : {}),
         lastClientContactAt:
           p.lastClientContactAt ?? p.createdAt.slice(0, 10),
@@ -2035,6 +2050,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       : null;
     const project: Project = {
       ...input,
+      series: formatSeriesTags(parseSeriesTags(input.series)),
+      market: formatMarketTags(parseMarketTags(input.market)),
       id,
       lastClientContactAt: createdAt.slice(0, 10),
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
@@ -2268,6 +2285,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ? stageChangeTimestampPatch(current, patch.stage)
           : {};
       const mergedPatch = { ...stageExtras, ...patch };
+      if (mergedPatch.series !== undefined) {
+        mergedPatch.series = formatSeriesTags(
+          parseSeriesTags(mergedPatch.series),
+        );
+      }
+      if (mergedPatch.market !== undefined) {
+        mergedPatch.market = formatMarketTags(
+          parseMarketTags(mergedPatch.market),
+        );
+      }
       const updated: Project = { ...current, ...mergedPatch };
       // Empty strings clear optional text/date fields
       if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
@@ -3139,6 +3166,76 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [mutateFinancials, recordChangeEvent],
   );
 
+  const generateIncomesFromSchedule = useCallback(
+    (
+      projectId: string,
+    ): { ok: true; count: number } | { ok: false; error: string } => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      if (!current) return { ok: false, error: "Project not found." };
+      const contractValue = current.financials?.contractValue;
+      if (contractValue == null || !(contractValue > 0)) {
+        return {
+          ok: false,
+          error: "Set a contract value first.",
+        };
+      }
+      const anchors = resolveStandardIncomeAnchors(current.schedule);
+      if (!anchors.ok) {
+        return { ok: false, error: anchors.error };
+      }
+      const drafts = incomeDraftsFromScheduleAnchors(
+        contractValue,
+        anchors.anchors,
+      );
+      if (drafts.length === 0) {
+        return { ok: false, error: "Could not build income lines." };
+      }
+      const createdAt = new Date().toISOString();
+      const payments: ProjectPayment[] = drafts.map((d) => {
+        const linkedDate = resolveLinkedDeadlineDate(d.milestoneId, current);
+        const dueDate = linkedDate ?? d.dueDate;
+        return {
+          id: crypto.randomUUID(),
+          amount: d.amount,
+          percent: d.percent,
+          dueDate,
+          label: d.label,
+          ...(d.milestoneId && linkedDate ? { milestoneId: d.milestoneId } : {}),
+          createdAt,
+        };
+      });
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        payments: [...(f.payments ?? []), ...payments],
+      }));
+      const projectName = current.name ?? projectId;
+      const summary = `${projectName}: generated ${payments.length} income line${payments.length === 1 ? "" : "s"} from schedule`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "payment",
+          entityId: payments[0]!.id,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: { count: payments.length, source: "schedule" },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "payment",
+          entityId: payments[0]!.id,
+          action: "create",
+          newValue: formatValue(contractValue),
+          summary,
+        },
+      );
+      return { ok: true, count: payments.length };
+    },
+    [mutateFinancials, recordChangeEvent],
+  );
+
   const updatePayment = useCallback(
     (projectId: string, paymentId: string, patch: PaymentInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
@@ -3316,6 +3413,77 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           summary,
         },
       );
+    },
+    [mutateFinancials, recordChangeEvent],
+  );
+
+  const generateMaterialsExpensesFromIncomes = useCallback(
+    (
+      projectId: string,
+    ): { ok: true; count: number } | { ok: false; error: string } => {
+      const current = projectsRef.current.find((p) => p.id === projectId);
+      if (!current) return { ok: false, error: "Project not found." };
+      const maxMaterials = current.financials?.maxMaterialsExpense;
+      if (maxMaterials == null || !(maxMaterials > 0)) {
+        return {
+          ok: false,
+          error: "Set Max Manufacture materials € first.",
+        };
+      }
+      const drafts = materialsExpenseDraftsFromIncomes(
+        current.financials?.payments ?? [],
+        maxMaterials,
+      );
+      if (drafts.length === 0) {
+        return {
+          ok: false,
+          error: "Add income entries with amounts first.",
+        };
+      }
+      const createdAt = new Date().toISOString();
+      const expenses: ProjectExpenseItem[] = drafts.map((d) => {
+        const linkedDate = resolveLinkedDeadlineDate(d.milestoneId, current);
+        const dueDate = linkedDate ?? d.dueDate;
+        return {
+          id: crypto.randomUUID(),
+          amount: d.amount,
+          amountExVat: d.amountExVat,
+          percent: d.percent,
+          category: "materials",
+          dueDate,
+          label: d.label,
+          ...(d.milestoneId && linkedDate ? { milestoneId: d.milestoneId } : {}),
+          createdAt,
+        };
+      });
+      mutateFinancials(projectId, (f) => ({
+        ...f,
+        expenseSchedule: [...(f.expenseSchedule ?? []), ...expenses],
+      }));
+      const projectName = current.name ?? projectId;
+      const summary = `${projectName}: generated ${expenses.length} manufacture materials expense${expenses.length === 1 ? "" : "s"} from income`;
+      recordChangeEvent(
+        {
+          id: createEventId(),
+          domain: "finance_meta",
+          entityType: "expense",
+          entityId: expenses[0]!.id,
+          projectId,
+          action: "create",
+          summary,
+          payloadJson: { count: expenses.length, category: "materials" },
+        },
+        {
+          projectId,
+          projectName,
+          entityType: "expense",
+          entityId: expenses[0]!.id,
+          action: "create",
+          newValue: formatValue(maxMaterials),
+          summary,
+        },
+      );
+      return { ok: true, count: expenses.length };
     },
     [mutateFinancials, recordChangeEvent],
   );
@@ -4783,7 +4951,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       stage: "to-contact",
       isWarehouseHolding: true,
       baseDescription:
-        "Internal holding project for spare and buffer warehouse stock. Hidden from the sales board.",
+        "Internal holding project for spare and buffer warehouse stock. Hidden from Sales Projects.",
       lastClientContactAt: createdAt.slice(0, 10),
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: false,
@@ -6456,9 +6624,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         getProjectFileUrl,
         updateFinancials,
         addPayment,
+        generateIncomesFromSchedule,
         updatePayment,
         deletePayment,
         addExpense,
+        generateMaterialsExpensesFromIncomes,
         updateExpense,
         deleteExpense,
         warehouse,

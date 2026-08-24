@@ -5,7 +5,9 @@ import { useProjects } from "@/lib/store";
 import {
   type LinkableDeadline,
   findLinkableDeadline,
+  isFinanceImportId,
   projectLinkableDeadlines,
+  resolveStandardIncomeAnchors,
 } from "@/lib/gantt-finance";
 import {
   INSTALLATION_SUBCATEGORY_LABELS,
@@ -91,9 +93,6 @@ function formatPercentLabel(pct: number): string {
   return pct % 1 === 0 ? `${pct}%` : `${pct.toFixed(1)}%`;
 }
 
-function isImportedId(id: string): boolean {
-  return id.startsWith("import-");
-}
 
 function CashItemRow({
   kind,
@@ -456,7 +455,7 @@ function CashItemRow({
   const expectedDate = displayLinked?.date ?? item.dueDate;
   const isActual = Boolean(item.actualDate);
   const isDelayed = !isActual && expectedDate < todayDate();
-  const fromImport = isImportedId(item.id);
+  const fromImport = isFinanceImportId(item.id);
   const displayCategory =
     kind === "expense"
       ? (expenseItem?.category ?? inferExpenseCategory(item.label))
@@ -1066,7 +1065,17 @@ export default function GanttFinancials({
   projectId: string;
   financials: ProjectFinancials;
 }) {
-  const { financeImport, projects, updateFinancials } = useProjects();
+  const {
+    financeImport,
+    projects,
+    updateFinancials,
+    generateMaterialsExpensesFromIncomes,
+    generateIncomesFromSchedule,
+  } = useProjects();
+  const [generateError, setGenerateError] = useState<string | null>(null);
+  const [incomeGenerateError, setIncomeGenerateError] = useState<string | null>(
+    null,
+  );
   const project = projects.find((p) => p.id === projectId);
 
   // Edit against live project financials so new lines show immediately.
@@ -1078,15 +1087,23 @@ export default function GanttFinancials({
   }, [project]);
 
   const payments = [...(financials.payments ?? [])]
-    .filter((p) => !isImportedId(p.id))
+    .filter((p) => !isFinanceImportId(p.id))
     .sort(
       (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
     );
   const expenses = [...(financials.expenseSchedule ?? [])]
-    .filter((e) => !isImportedId(e.id))
+    .filter((e) => !isFinanceImportId(e.id))
     .sort(
       (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
     );
+
+  const incomeAnchors = useMemo(
+    () => resolveStandardIncomeAnchors(project?.schedule),
+    [project?.schedule],
+  );
+  const canGenerateIncomes =
+    (financials.contractValue != null && financials.contractValue > 0) &&
+    incomeAnchors.ok;
 
   function saveMaxExpense(
     field: "maxMaterialsExpense" | "maxManHrExpense",
@@ -1130,6 +1147,39 @@ export default function GanttFinancials({
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-olive">
             Income
           </h4>
+          <div className="mb-3">
+            <button
+              type="button"
+              disabled={!canGenerateIncomes}
+              onClick={() => {
+                const result = generateIncomesFromSchedule(projectId);
+                if (!result.ok) setIncomeGenerateError(result.error);
+                else setIncomeGenerateError(null);
+              }}
+              className="rounded-lg border border-olive/40 px-3 py-2 text-xs font-bold uppercase tracking-wide text-olive transition hover:bg-olive/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Generate incomes from schedule
+            </button>
+            <p className="mt-1.5 text-[10px] text-muted">
+              Adds 60% Prepayment, 10% Design approval, 10% Engineering done,
+              10% FAT, 5% Site prep and delivery, 5% Final certificate — using
+              Gantt dates and contract value. Existing incomes are kept.
+            </p>
+            {!canGenerateIncomes && (
+              <p className="mt-1 text-[10px] text-muted">
+                {!(financials.contractValue != null && financials.contractValue > 0)
+                  ? "Set a contract value first."
+                  : incomeAnchors.ok
+                    ? null
+                    : incomeAnchors.error}
+              </p>
+            )}
+            {incomeGenerateError && (
+              <p className="mt-1 text-[11px] text-amber-accent">
+                {incomeGenerateError}
+              </p>
+            )}
+          </div>
           <AddCashForm
             kind="payment"
             projectId={projectId}
@@ -1203,6 +1253,34 @@ export default function GanttFinancials({
                 className={inputCls}
               />
             </label>
+          </div>
+          <div className="mb-3">
+            <button
+              type="button"
+              disabled={
+                !(financials.maxMaterialsExpense != null &&
+                  financials.maxMaterialsExpense > 0) ||
+                !payments.some((p) => p.amount > 0)
+              }
+              onClick={() => {
+                const result = generateMaterialsExpensesFromIncomes(projectId);
+                if (!result.ok) setGenerateError(result.error);
+                else setGenerateError(null);
+              }}
+              className="rounded-lg border border-amber-accent/40 px-3 py-2 text-xs font-bold uppercase tracking-wide text-amber-accent transition hover:bg-amber-accent/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Generate materials from income
+            </button>
+            <p className="mt-1.5 text-[10px] text-muted">
+              Adds Manufacture materials expenses on the same dates as income,
+              each for that income&apos;s share of Max Manufacture materials.
+              Existing expenses are kept.
+            </p>
+            {generateError && (
+              <p className="mt-1 text-[11px] text-amber-accent">
+                {generateError}
+              </p>
+            )}
           </div>
           <AddCashForm
             kind="expense"

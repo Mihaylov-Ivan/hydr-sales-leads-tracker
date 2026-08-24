@@ -1408,8 +1408,9 @@ function AutoGenerateScheduleForm({
       <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
         Builds the standard initiation → engineering → procurement/FAT →
         installation/SAT template. Procurement and manufacturing start 1 month
-        after engineering starts. Sub-activities and milestones scale with each
-        phase duration (Ceramika / 8‑month proportions).
+        after engineering starts. Detailed Design and Design Approval stop 20
+        days before Engineering Complete. Other sub-activities and milestones
+        scale with each phase duration (Ceramika / 8‑month proportions).
       </p>
       <label className="block sm:col-span-2 lg:col-span-1">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">

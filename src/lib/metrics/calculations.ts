@@ -1,6 +1,8 @@
 import {
   daysBetween,
   defaultMetricsSettings,
+  marketIncludesTag,
+  seriesIncludesTag,
   todayDate,
   type CompanyMetricsSettings,
   type Stage,
@@ -75,9 +77,9 @@ export function applyMetricsFilters(
   return projects.filter((p) => {
     if (filters.cohortFrom && p.createdAt < filters.cohortFrom) return false;
     if (filters.cohortTo && p.createdAt > filters.cohortTo) return false;
-    if (filters.market && p.market !== filters.market) return false;
+    if (filters.market && !marketIncludesTag(p.market, filters.market)) return false;
     if (filters.ownerId && p.ownerId !== filters.ownerId) return false;
-    if (filters.series && p.series !== filters.series) return false;
+    if (filters.series && !seriesIncludesTag(p.series, filters.series)) return false;
     if (filters.sizeBand && sizeBandForKw(p.sizeKw) !== filters.sizeBand) {
       return false;
     }

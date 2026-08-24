@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Market, MARKETS, Series, Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Stage, STAGE_LABELS, STAGES } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
@@ -13,6 +13,8 @@ import FileAttachments from "@/components/FileAttachments";
 import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
 import ProjectChangeHistory from "@/components/ProjectChangeHistory";
+import SeriesMultiSelect from "@/components/SeriesMultiSelect";
+import MarketMultiSelect from "@/components/MarketMultiSelect";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -277,36 +279,26 @@ export default function ProjectPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             System
           </p>
-          <select
-            value={project.series}
-            onChange={(e) =>
-              updateProject(project.id, { series: e.target.value as Series })
-            }
-            title="Click to change system type"
-            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
-          >
-            <option>Z Series</option>
-            <option>E Series</option>
-            <option>Custom</option>
-          </select>
+          <div className="mt-1">
+            <SeriesMultiSelect
+              value={project.series}
+              onChange={(series) => updateProject(project.id, { series })}
+              compact
+            />
+          </div>
         </div>
 
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             Market
           </p>
-          <select
-            value={project.market}
-            onChange={(e) =>
-              updateProject(project.id, { market: e.target.value as Market })
-            }
-            title="Click to change market"
-            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
-          >
-            {MARKETS.map((m) => (
-              <option key={m}>{m}</option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <MarketMultiSelect
+              value={project.market}
+              onChange={(market) => updateProject(project.id, { market })}
+              compact
+            />
+          </div>
         </div>
 
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">

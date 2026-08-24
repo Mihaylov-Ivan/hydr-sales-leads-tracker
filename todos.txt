@@ -5,10 +5,9 @@ Update the database schema if required, ensruing the update is only additive/reo
 - Mechanism of tracking all project related expenses in the company, so they can be entered in the app.
   - debit card purchases and cash payments
 
+- check the existing inventory items with the item in the себестойност file to see what already exists
 - analyse the daily sales report and auto add them to the projects
-- Make the top bar (Real Change, Working As, Download History and Log Out) in a dropdown menu so we free up space 
-- lets rename the Board page to Sales Projects
-- add system category 'w/ Stargate' and 'MH' also allow combination of categories such as 'Z Series + MH' or 'Z Series + w/ Stargate'
+- add system category 'w/ Stargate' and 'MH' also allow combination of categories such as 'Z Series + MH' or 'Z Series + w/ Stargate' be dropdown multiple selection like on other 
 - add opex field for each project which is directly linked to yearly income at the date of installation complete + expense for the opex works by us
 - go though each project and add more info about it + fix finances for it
 - label current data as old and remove the projects linked to it

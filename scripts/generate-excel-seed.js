@@ -13,7 +13,13 @@ const MARKETS = new Set([
   "Burner Optimisation",
   "Tenders",
 ]);
-const SERIES = new Set(["Z Series", "E Series", "Custom"]);
+const SERIES = new Set([
+  "Z Series",
+  "E Series",
+  "Custom",
+  "w/ Stargate",
+  "MH",
+]);
 const STAGES = new Set([
   "cold-lead",
   "hot-lead",
@@ -74,12 +80,50 @@ function normalizeStage(v) {
 
 function normalizeMarket(v) {
   const s = String(v || "Clean H2").trim();
-  return MARKETS.has(s) ? s : "Clean H2";
+  if (!s) return "Clean H2";
+  const parts = s
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags = [];
+  const seen = new Set();
+  for (const part of parts) {
+    if (MARKETS.has(part) && !seen.has(part)) {
+      seen.add(part);
+      tags.push(part);
+    }
+  }
+  if (tags.length === 0 && MARKETS.has(s)) return s;
+  if (tags.length === 0) return "Clean H2";
+  // Stable order matching MARKETS set insertion order in this script
+  const order = [
+    "Cement",
+    "Power Plants",
+    "Funding",
+    "Clean H2",
+    "Burner Optimisation",
+    "Tenders",
+  ];
+  return order.filter((t) => tags.includes(t)).join(" + ");
 }
 
 function normalizeSeries(v) {
   const s = String(v || "Z Series").trim();
-  return SERIES.has(s) ? s : "Z Series";
+  if (!s) return "Z Series";
+  const parts = s
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags = [];
+  const seen = new Set();
+  for (const part of parts) {
+    if (SERIES.has(part) && !seen.has(part)) {
+      seen.add(part);
+      tags.push(part);
+    }
+  }
+  if (tags.length === 0 && SERIES.has(s)) return s;
+  return tags.length > 0 ? tags.join(" + ") : "Z Series";
 }
 
 const wb = XLSX.readFile(src);

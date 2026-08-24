@@ -84,7 +84,9 @@ export default function MetricsFiltersBar({
           <select
             value={filters.series ?? ""}
             onChange={(e) =>
-              patch({ series: (e.target.value || "") as MetricsFilters["series"] })
+              patch({
+                series: (e.target.value || "") as MetricsFilters["series"],
+              })
             }
             className={selectCls + " w-full"}
           >

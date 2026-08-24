@@ -48,11 +48,73 @@ export function normalizeStage(value: string | null | undefined): Stage {
   return "cold-lead";
 }
 
-export type Series = "Z Series" | "E Series" | "Custom";
+export type SeriesTag =
+  | "Z Series"
+  | "E Series"
+  | "Custom"
+  | "w/ Stargate"
+  | "MH";
 
-export const SERIES: Series[] = ["Z Series", "E Series", "Custom"];
+/** Canonical selectable system categories (multi-select; stored joined with " + "). */
+export const SERIES: SeriesTag[] = [
+  "Z Series",
+  "E Series",
+  "Custom",
+  "w/ Stargate",
+  "MH",
+];
 
-export type Market =
+/**
+ * Stored/display form for a project's system categories.
+ * Single tag: "Z Series". Combinations: "Z Series + MH".
+ */
+export type Series = string;
+
+const SERIES_TAG_SET = new Set<string>(SERIES);
+
+export function isSeriesTag(value: string): value is SeriesTag {
+  return SERIES_TAG_SET.has(value);
+}
+
+/** Split a stored series string into known tags (unknown fragments dropped). */
+export function parseSeriesTags(series: string | null | undefined): SeriesTag[] {
+  if (!series || !series.trim()) return ["Z Series"];
+  const parts = series
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags: SeriesTag[] = [];
+  const seen = new Set<SeriesTag>();
+  for (const part of parts) {
+    if (!isSeriesTag(part) || seen.has(part)) continue;
+    seen.add(part);
+    tags.push(part);
+  }
+  // Legacy exact match if somehow stored without " + "
+  if (tags.length === 0 && isSeriesTag(series.trim())) {
+    return [series.trim() as SeriesTag];
+  }
+  return tags.length > 0 ? tags : ["Z Series"];
+}
+
+/** Join tags in SERIES order for stable storage/display. */
+export function formatSeriesTags(tags: Iterable<string>): Series {
+  const wanted = new Set(
+    [...tags].filter(isSeriesTag) as SeriesTag[],
+  );
+  const ordered = SERIES.filter((t) => wanted.has(t));
+  return ordered.length > 0 ? ordered.join(" + ") : "Z Series";
+}
+
+export function seriesIncludesTag(
+  series: string | null | undefined,
+  tag: SeriesTag | "",
+): boolean {
+  if (!tag) return true;
+  return parseSeriesTags(series).includes(tag);
+}
+
+export type MarketTag =
   | "Cement"
   | "Power Plants"
   | "Funding"
@@ -60,7 +122,8 @@ export type Market =
   | "Burner Optimisation"
   | "Tenders";
 
-export const MARKETS: Market[] = [
+/** Canonical selectable markets (multi-select; stored joined with " + "). */
+export const MARKETS: MarketTag[] = [
   "Cement",
   "Power Plants",
   "Funding",
@@ -68,6 +131,55 @@ export const MARKETS: Market[] = [
   "Burner Optimisation",
   "Tenders",
 ];
+
+/**
+ * Stored/display form for a project's markets.
+ * Single tag: "Clean H2". Combinations: "Cement + Clean H2".
+ */
+export type Market = string;
+
+const MARKET_TAG_SET = new Set<string>(MARKETS);
+
+export function isMarketTag(value: string): value is MarketTag {
+  return MARKET_TAG_SET.has(value);
+}
+
+/** Split a stored market string into known tags (unknown fragments dropped). */
+export function parseMarketTags(market: string | null | undefined): MarketTag[] {
+  if (!market || !market.trim()) return ["Clean H2"];
+  const parts = market
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags: MarketTag[] = [];
+  const seen = new Set<MarketTag>();
+  for (const part of parts) {
+    if (!isMarketTag(part) || seen.has(part)) continue;
+    seen.add(part);
+    tags.push(part);
+  }
+  if (tags.length === 0 && isMarketTag(market.trim())) {
+    return [market.trim() as MarketTag];
+  }
+  return tags.length > 0 ? tags : ["Clean H2"];
+}
+
+/** Join tags in MARKETS order for stable storage/display. */
+export function formatMarketTags(tags: Iterable<string>): Market {
+  const wanted = new Set(
+    [...tags].filter(isMarketTag) as MarketTag[],
+  );
+  const ordered = MARKETS.filter((t) => wanted.has(t));
+  return ordered.length > 0 ? ordered.join(" + ") : "Clean H2";
+}
+
+export function marketIncludesTag(
+  market: string | null | undefined,
+  tag: MarketTag | "",
+): boolean {
+  if (!tag) return true;
+  return parseMarketTags(market).includes(tag);
+}
 
 export interface TeamMember {
   id: string;

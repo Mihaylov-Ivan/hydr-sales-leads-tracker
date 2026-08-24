@@ -20,7 +20,11 @@ import {
   defaultMetricsSettings,
   emptyFinancials,
   emptySchedule,
+  formatSeriesTags,
+  formatMarketTags,
   normalizeStage,
+  parseSeriesTags,
+  parseMarketTags,
 } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -340,9 +344,9 @@ export function projectFromRow(
     client: row.client,
     country: row.country,
     city: row.city,
-    series: row.series,
+    series: formatSeriesTags(parseSeriesTags(row.series)),
     // Rows created before the markets feature have no market column value
-    market: row.market ?? "Clean H2",
+    market: formatMarketTags(parseMarketTags(row.market ?? "Clean H2")),
     sizeKw: row.size_kw,
     stage: normalizeStage(row.stage),
     baseDescription: row.base_description,

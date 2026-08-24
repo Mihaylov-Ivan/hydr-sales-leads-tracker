@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects } from "@/lib/store";
-import { Market, MARKETS, Stage, STAGE_LABELS, BOARD_STAGES } from "@/lib/types";
+import {
+  MarketTag,
+  MARKETS,
+  Stage,
+  STAGE_LABELS,
+  BOARD_STAGES,
+  marketIncludesTag,
+} from "@/lib/types";
 import {
   KEY_DATE_COLUMNS,
   KEY_DATE_COLUMN_LABELS,
@@ -218,8 +225,8 @@ function MarketMultiSelect({
   onSelectAll,
   onClear,
 }: {
-  selected: Set<Market>;
-  onToggle: (m: Market) => void;
+  selected: Set<MarketTag>;
+  onToggle: (m: MarketTag) => void;
   onSelectAll: () => void;
   onClear: () => void;
 }) {
@@ -337,7 +344,7 @@ export default function Dashboard() {
     updateProject,
   } = useProjects();
   const [countryFilter, setCountryFilter] = useState("all");
-  const [marketFilter, setMarketFilter] = useState<Set<Market>>(
+  const [marketFilter, setMarketFilter] = useState<Set<MarketTag>>(
     () => new Set(MARKETS),
   );
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
@@ -416,7 +423,9 @@ export default function Dashboard() {
       (p) =>
         !p.isWarehouseHolding &&
         (countryFilter === "all" || p.country === countryFilter) &&
-        marketFilter.has(p.market) &&
+        MARKETS.some(
+          (m) => marketFilter.has(m) && marketIncludesTag(p.market, m),
+        ) &&
         bucket.match(p.sizeKw) &&
         (!q ||
           [p.name, p.client, p.city, p.country, p.market, p.baseDescription]
@@ -426,7 +435,7 @@ export default function Dashboard() {
     );
   }, [projects, countryFilter, marketFilter, sizeFilter, search]);
 
-  function toggleMarket(m: Market) {
+  function toggleMarket(m: MarketTag) {
     setMarketFilter((prev) => {
       const next = new Set(prev);
       if (next.has(m)) next.delete(m);

@@ -46,14 +46,11 @@ type MilestoneSpec = {
   offset: number;
 };
 
-/** Relative to REF_ENGINEERING_DAYS */
+/** Design work (Detailed Design + Design Approval) ends this many days before Engineering Complete. */
+export const DESIGN_STOP_BEFORE_ENGINEERING_DONE_DAYS = 20;
+
+/** Relative to REF_ENGINEERING_DAYS — Detailed Design is placed with a fixed lead before engineering done. */
 const ENG_ACTIVITIES: SpanSpec[] = [
-  {
-    name: "Detailed Design",
-    wbs: "2.1",
-    startOffset: 0,
-    duration: 31,
-  },
   {
     name: "Detailed Engineering",
     wbs: "2.2",
@@ -63,9 +60,16 @@ const ENG_ACTIVITIES: SpanSpec[] = [
 ];
 
 const ENG_MILESTONES: MilestoneSpec[] = [
-  { name: "Design Approval", wbs: "2.3", offset: 30 },
   { name: "Engineering Complete", wbs: "2.4", offset: 30 },
 ];
+
+/** Inclusive-day offset of the last day of design (clamped to the engineering phase). */
+function designEndOffset(engDays: number): number {
+  return Math.max(
+    0,
+    engDays - 1 - DESIGN_STOP_BEFORE_ENGINEERING_DONE_DAYS,
+  );
+}
 
 /** Relative to REF_PROCUREMENT_DAYS */
 const PROC_ACTIVITIES: SpanSpec[] = [
@@ -273,8 +277,25 @@ export function buildStandardDeliverySchedule(input: {
     });
   }
 
+  const designEnd = designEndOffset(engDays);
+  const designDuration = designEnd + 1;
+
   const activities: ProjectGanttActivity[] = [
-    ...buildActivities(pEng, engStart, engDays, REF_ENGINEERING_DAYS, ENG_ACTIVITIES),
+    {
+      id: crypto.randomUUID(),
+      phaseId: pEng,
+      name: "Detailed Design",
+      wbs: "2.1",
+      startDate: engStart,
+      durationDays: designDuration,
+      color: BAR,
+      status: "Planned",
+      sortOrder: 0,
+      createdAt,
+    },
+    ...buildActivities(pEng, engStart, engDays, REF_ENGINEERING_DAYS, ENG_ACTIVITIES).map(
+      (a, i) => ({ ...a, sortOrder: i + 1 }),
+    ),
     ...buildActivities(
       pProc,
       procStart,
@@ -298,6 +319,14 @@ export function buildStandardDeliverySchedule(input: {
       name: "Contract Signed / Prepayment",
       wbs: "1.1",
       date: startDate,
+      createdAt,
+    },
+    {
+      id: crypto.randomUUID(),
+      phaseId: pEng,
+      name: "Design Approval",
+      wbs: "2.3",
+      date: addDays(engStart, designEnd),
       createdAt,
     },
     ...buildMilestones(pEng, engStart, engDays, REF_ENGINEERING_DAYS, ENG_MILESTONES),

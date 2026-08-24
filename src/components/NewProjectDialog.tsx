@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
+import SeriesMultiSelect from "@/components/SeriesMultiSelect";
+import MarketMultiSelect from "@/components/MarketMultiSelect";
 import {
-  Market,
-  MARKETS,
   Series,
   Stage,
   STAGE_LABELS,
@@ -25,7 +25,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [series, setSeries] = useState<Series>("Z Series");
-  const [market, setMarket] = useState<Market>("Clean H2");
+  const [market, setMarket] = useState("Clean H2");
   const [sizeKw, setSizeKw] = useState("");
   const [stage, setStage] = useState<Stage>("cold-lead");
   const [leadUserId, setLeadUserId] = useState("");
@@ -105,15 +105,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <label className={labelCls}>System</label>
-            <select
-              className={inputCls}
-              value={series}
-              onChange={(e) => setSeries(e.target.value as Series)}
-            >
-              <option>Z Series</option>
-              <option>E Series</option>
-              <option>Custom</option>
-            </select>
+            <SeriesMultiSelect value={series} onChange={setSeries} />
           </div>
           <div>
             <label className={labelCls}>Size (kW)</label>
@@ -128,15 +120,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Market</label>
-            <select
-              className={inputCls}
-              value={market}
-              onChange={(e) => setMarket(e.target.value as Market)}
-            >
-              {MARKETS.map((m) => (
-                <option key={m}>{m}</option>
-              ))}
-            </select>
+            <MarketMultiSelect value={market} onChange={setMarket} />
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>Stage</label>
