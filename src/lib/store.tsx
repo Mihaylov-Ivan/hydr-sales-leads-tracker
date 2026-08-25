@@ -160,6 +160,16 @@ import {
 import { linkProjectSlotLotsToMaterialsExpenses } from "./warehouse-expense-link";
 import { buildSavedBom, mergeBomsAfterImport } from "./warehouse-bom";
 import {
+  SEBESTOYNOST_PROJECT_NAME,
+  applySebestoynostManufacturingSeed,
+  findSebestoynostProject,
+  type SebestoynostSeed,
+} from "./manufacturing-bom-seed";
+import {
+  loadManufacturingCostReferenceProjectId,
+  saveManufacturingCostReferenceProjectId,
+} from "./manufacturing-costs";
+import {
   expenseProjectIdForLocation,
   findBalance,
   applyBalanceDelta,
@@ -773,6 +783,32 @@ interface ProjectsApi {
   deleteWarehouseBom: (
     bomId: string,
   ) => { ok: true } | { ok: false; error: string };
+  /**
+   * Seed Example 500kW Z-Series used-material history from the себестойност
+   * workbook (groups/subgroups + catalog + consume movements, no on-hand stock,
+   * no cashflow expenses).
+   */
+  seedSebestoynostManufacturingBom: () => Promise<
+    | {
+        ok: true;
+        projectId: string;
+        projectCreated: boolean;
+        alreadyApplied: boolean;
+        stats: {
+          modules: number;
+          subgroups: number;
+          itemsMatched: number;
+          itemsCreated: number;
+          lotsCreated: number;
+          consumedLines: number;
+          totalExVat: number;
+          totalIncVat: number;
+        };
+      }
+    | { ok: false; error: string }
+  >;
+  manufacturingCostReferenceProjectId: string | null;
+  setManufacturingCostReferenceProjectId: (projectId: string | null) => void;
   addMilestone: (projectId: string, input: MilestoneInput) => void;
   updateMilestone: (
     projectId: string,
@@ -1187,6 +1223,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     null,
   );
   const [warehouse, setWarehouse] = useState<WarehouseState>(emptyWarehouseState);
+  const [manufacturingCostReferenceProjectId, setManufacturingCostReferenceProjectIdState] =
+    useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
@@ -1235,6 +1273,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     async function boot() {
       const wh = loadWarehouseState();
       setWarehouse(wh);
+      setManufacturingCostReferenceProjectIdState(
+        loadManufacturingCostReferenceProjectId(),
+      );
       if (supabase) {
         const [members, remoteProjects, remoteMetrics] = await Promise.all([
           loadRemoteTeamMembers().catch((e) => {
@@ -5867,6 +5908,126 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [recordChangeEvent],
   );
 
+  const setManufacturingCostReferenceProjectId = useCallback(
+    (projectId: string | null) => {
+      setManufacturingCostReferenceProjectIdState(projectId);
+      saveManufacturingCostReferenceProjectId(projectId);
+    },
+    [],
+  );
+
+  const seedSebestoynostManufacturingBom = useCallback(async (): Promise<
+    | {
+        ok: true;
+        projectId: string;
+        projectCreated: boolean;
+        alreadyApplied: boolean;
+        stats: {
+          modules: number;
+          subgroups: number;
+          itemsMatched: number;
+          itemsCreated: number;
+          lotsCreated: number;
+          consumedLines: number;
+          totalExVat: number;
+          totalIncVat: number;
+        };
+      }
+    | { ok: false; error: string }
+  > => {
+    try {
+      const res = await fetch("/api/warehouse/sebestoynost-seed");
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        seed?: SebestoynostSeed;
+      };
+      if (!res.ok || !data.ok || !data.seed) {
+        return {
+          ok: false,
+          error: data.error || "Failed to load себестойност seed",
+        };
+      }
+
+      let project = findSebestoynostProject(projectsRef.current);
+      let projectCreated = false;
+      let projectId = project?.id ?? "";
+      if (!project) {
+        const seedProj = data.seed.project;
+        projectId = addProject({
+          name: seedProj.name || SEBESTOYNOST_PROJECT_NAME,
+          client: seedProj.client || "Hydrogenera",
+          country: seedProj.country || "Bulgaria",
+          city: seedProj.city || "Sofia",
+          series: "Z Series",
+          market: "Power Plants",
+          sizeKw: seedProj.sizeKw || 500,
+          stage: "commissioned",
+          baseDescription:
+            seedProj.notes ||
+            "Baseline manufacturing BOM from себестойност workbook. Materials are used-history only (not on-hand stock).",
+        });
+        projectCreated = true;
+        const waiter =
+          projectInsertWaitersRef.current.get(projectId) ??
+          Promise.resolve(true);
+        await waiter;
+      }
+
+      const applied = applySebestoynostManufacturingSeed({
+        seed: data.seed,
+        warehouse: warehouseRef.current,
+        projectId,
+      });
+
+      setWarehouse(applied.warehouse);
+      warehouseRef.current = applied.warehouse;
+
+      if (!manufacturingCostReferenceProjectId) {
+        setManufacturingCostReferenceProjectId(projectId);
+      }
+
+      const projectName =
+        projectsRef.current.find((p) => p.id === projectId)?.name ||
+        data.seed.project.name ||
+        SEBESTOYNOST_PROJECT_NAME;
+
+      recordChangeEvent({
+        domain: "warehouse",
+        entityType: "bom",
+        entityId: projectId,
+        projectId,
+        action: applied.alreadyApplied ? "update" : "create",
+        summary: applied.alreadyApplied
+          ? `Sebestoynost BOM already seeded for ${projectName}`
+          : `Seeded себестойност used materials for ${projectName}: ${applied.stats.consumedLines} components, ${applied.stats.modules} modules`,
+        payloadJson: {
+          ...applied.stats,
+          projectCreated,
+          alreadyApplied: applied.alreadyApplied,
+        },
+      });
+
+      return {
+        ok: true,
+        projectId,
+        projectCreated,
+        alreadyApplied: applied.alreadyApplied,
+        stats: applied.stats,
+      };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }, [
+    addProject,
+    manufacturingCostReferenceProjectId,
+    recordChangeEvent,
+    setManufacturingCostReferenceProjectId,
+  ]);
+
   const applySystemSkladMapping = useCallback(async (): Promise<
     | {
         ok: true;
@@ -6813,6 +6974,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         saveWarehouseBom,
         duplicateWarehouseBom,
         deleteWarehouseBom,
+        seedSebestoynostManufacturingBom,
+        manufacturingCostReferenceProjectId,
+        setManufacturingCostReferenceProjectId,
         addMilestone,
         updateMilestone,
         deleteMilestone,

@@ -1,0 +1,3311 @@
+{
+  "sourceFile": "Себестойност 500kW Z-series (LE Power) (99,999%).xlsx",
+  "project": {
+    "name": "Example 500kW Z-Series",
+    "series": "Z Series",
+    "sizeKw": 500,
+    "client": "Hydrogenera (BOM baseline)",
+    "city": "Sofia",
+    "country": "Bulgaria",
+    "notes": "Baseline manufacturing BOM from себестойност workbook. Materials are recorded as used history only (not on-hand stock)."
+  },
+  "modules": [
+    {
+      "name": "Електролизьор (500kW)",
+      "groups": [
+        {
+          "name": "Основни части",
+          "items": [
+            {
+              "name": "Черна ламарина 2010х1500х70 S355 (+ газово прерязване)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1542.07,
+              "lineCostExVat": 3084.14,
+              "supplier": "Ангел Стоилов - 96 АД",
+              "sourceRow": 3
+            },
+            {
+              "name": "Лист неръждаема стомана 316L 2500х1250х5",
+              "sku": "193101",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 478.7,
+              "lineCostExVat": 957.4,
+              "supplier": "Филипекс",
+              "sourceRow": 4
+            },
+            {
+              "name": "Лист неръждаема стомана 316L 2500х1250х2",
+              "sku": "193311",
+              "unit": "бр.",
+              "qty": 46,
+              "unitCostExVat": 191.48,
+              "lineCostExVat": 8808.08,
+              "supplier": "Филипекс",
+              "sourceRow": 5
+            },
+            {
+              "name": "Sealing Gasket Modified PTFE 1060х900х5 (+транспорт) (+мито 6,5%)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 188,
+              "unitCostExVat": 86.06265,
+              "lineCostExVat": 16179.7782,
+              "supplier": "Suzhou VMA",
+              "sourceRow": 6
+            },
+            {
+              "name": "Уплътнение от експандиран тефлон ф1060хф900х0,5",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 282,
+              "unitCostExVat": 57.69928879299326,
+              "lineCostExVat": 16271.199439624099,
+              "supplier": "ДЕАТРЕЙД",
+              "sourceRow": 7
+            },
+            {
+              "name": "Гумен лист 5/1200мм EPDM/",
+              "sku": null,
+              "unit": "кв.м.",
+              "qty": 4.8,
+              "unitCostExVat": 43.459809901678575,
+              "lineCostExVat": 208.60708752805715,
+              "supplier": "Микромакс трейд",
+              "sourceRow": 8
+            },
+            {
+              "name": "Тефлонов лист 1000х1000х1",
+              "sku": "SKU0000000427",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 57.56123998507028,
+              "lineCostExVat": 57.56123998507028,
+              "supplier": "ДЕАТРЕЙД",
+              "sourceRow": 9
+            },
+            {
+              "name": "Мембрани (Composite Membrane, 1*1m) (+транспорт) (+мито 6,5%)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 90,
+              "unitCostExVat": 116.79854999999999,
+              "lineCostExVat": 10511.869499999999,
+              "supplier": "Suzhou VMA",
+              "sourceRow": 10
+            },
+            {
+              "name": "Перфорирана ламарина LB 1000x2000x0,5; RV 2-3: 1.4404",
+              "sku": "00721431",
+              "unit": "лист",
+              "qty": 90,
+              "unitCostExVat": 60.122812309863335,
+              "lineCostExVat": 5411.0531078877,
+              "supplier": "ДФ България",
+              "sourceRow": 11
+            },
+            {
+              "name": "Плетена мрежа INOX AISI 316L H 1000 mm (+ транспорт)",
+              "sku": "02112004",
+              "unit": "кг.",
+              "qty": 92.24,
+              "unitCostExVat": 12.67,
+              "lineCostExVat": 1168.6807999999999,
+              "supplier": "SOTAR S.R.L",
+              "sourceRow": 12
+            }
+          ]
+        },
+        {
+          "name": "КРЕПЕЖИ",
+          "items": [
+            {
+              "name": "Ринг гайка, DIN 582, C15, vZn, M 24",
+              "sku": "00582 0001 24",
+              "unit": "100 бр.",
+              "qty": 0.06,
+              "unitCostExVat": 437.1545584227668,
+              "lineCostExVat": 26.229273505366006,
+              "supplier": "ИТТ",
+              "sourceRow": 14
+            },
+            {
+              "name": "Шпилка М56х4, 8.8, черна L=2000mm",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 10,
+              "unitCostExVat": 176.9069908938916,
+              "lineCostExVat": 1769.069908938916,
+              "supplier": "Аронов 87",
+              "sourceRow": 15
+            },
+            {
+              "name": "Гайка M56x4, 8.8",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 20,
+              "unitCostExVat": 16.616986138877103,
+              "lineCostExVat": 332.3397227775421,
+              "supplier": "Аронов 87",
+              "sourceRow": 16
+            },
+            {
+              "name": "Шайба подложна, DIN 125A, vZn, M56",
+              "sku": "00125 0001 56",
+              "unit": "100 бр.",
+              "qty": 0.1,
+              "unitCostExVat": 170.43914859675945,
+              "lineCostExVat": 17.043914859675947,
+              "supplier": "ИТТ",
+              "sourceRow": 17
+            },
+            {
+              "name": "Disc Spring 112х57х4mm (+транспорт) (+мито 6,5%)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 200,
+              "unitCostExVat": 4.07895,
+              "lineCostExVat": 815.79,
+              "supplier": "Suzhou VMA",
+              "sourceRow": 18
+            },
+            {
+              "name": "ПП тръба за т. вода Ф63/PN20",
+              "sku": "702",
+              "unit": "м.",
+              "qty": 12,
+              "unitCostExVat": 10.31787016253969,
+              "lineCostExVat": 123.81444195047627,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 19
+            }
+          ]
+        },
+        {
+          "name": "ПОДПОРА ПОЛИАМИД + СТОПЕР",
+          "items": [
+            {
+              "name": "Полиамид",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 1057.6583854424975,
+              "lineCostExVat": 1057.6583854424975,
+              "supplier": "Гумпласт",
+              "sourceRow": 21
+            },
+            {
+              "name": "Шпилка, DIN 976, 10.9, Bl., M 16 x 2000",
+              "sku": "00975 1000 16 2000",
+              "unit": "100 бр.",
+              "qty": 0.04,
+              "unitCostExVat": 824.652449343757,
+              "lineCostExVat": 32.98609797375028,
+              "supplier": "ИТТ",
+              "sourceRow": 22
+            },
+            {
+              "name": "Гайка самоосигурителна, DIN 985, 10, vZn, M16",
+              "sku": "00985 1001 16",
+              "unit": "100 бр.",
+              "qty": 0.05,
+              "unitCostExVat": 37.804921695648396,
+              "lineCostExVat": 1.8902460847824198,
+              "supplier": "ИТТ",
+              "sourceRow": 23
+            },
+            {
+              "name": "Болт за дърво, Din 571, vZn, ф8 х 100",
+              "sku": "00571 0001 8 100",
+              "unit": "бр.",
+              "qty": 0.12,
+              "unitCostExVat": 0.09,
+              "lineCostExVat": 0.010799999999999999,
+              "supplier": "ИТТ",
+              "sourceRow": 24
+            }
+          ]
+        },
+        {
+          "name": "УСЛУГИ",
+          "items": [
+            {
+              "name": "Транспорт ДУНАВ-СВ (Притискаща плоча)",
+              "sku": "080155",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 102.2583762392437,
+              "lineCostExVat": 102.2583762392437,
+              "supplier": "ДУНОВ-СВ",
+              "sourceRow": 26
+            },
+            {
+              "name": "ВОДНО Рязане метал (Притискаща плоча 100mm)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 2556.4594059810925,
+              "lineCostExVat": 5112.918811962185,
+              "supplier": "Джусита-ДЕС",
+              "sourceRow": 27
+            },
+            {
+              "name": "Обработка на полиамид",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 255.65,
+              "lineCostExVat": 255.65,
+              "supplier": null,
+              "sourceRow": 28
+            },
+            {
+              "name": "Опаковка (Филипекс) (за 2 палета с листа)",
+              "sku": "15000",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 40.9,
+              "lineCostExVat": 40.9,
+              "supplier": "Филипекс",
+              "sourceRow": 29
+            },
+            {
+              "name": "Транспорт (Филипекс)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 127.82,
+              "lineCostExVat": 127.82,
+              "supplier": "Филипекс",
+              "sourceRow": 30
+            },
+            {
+              "name": "Лазерно рязане (Патлиджански 500kW)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3000,
+              "lineCostExVat": 3000,
+              "supplier": "Патлиджански",
+              "sourceRow": 31
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Съдове",
+      "groups": [
+        {
+          "name": "БУФЕРНИ СЪДОВЕ",
+          "items": [
+            {
+              "name": "Буферен съд 500л",
+              "sku": "450",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 2215.5964475440096,
+              "lineCostExVat": 4431.192895088019,
+              "supplier": "Светлю Шишков С",
+              "sourceRow": 34
+            },
+            {
+              "name": "Тръба шевна 316L (609,6х3) 24\"",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": "Крисметал",
+              "sourceRow": 35
+            },
+            {
+              "name": "Тръба шевна 304L (88,9х2) 3\"",
+              "sku": "072702",
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 16.71,
+              "lineCostExVat": 0,
+              "supplier": "Крисметал",
+              "sourceRow": 36
+            },
+            {
+              "name": "Капа 316L заварка (609,6х3) 24\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": "Крисметал",
+              "sourceRow": 37
+            },
+            {
+              "name": "Капа 304L заварка (88,9х2) 3\"",
+              "sku": "103242",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 4.177254669373105,
+              "lineCostExVat": 0,
+              "supplier": "Крисметал",
+              "sourceRow": 38
+            }
+          ]
+        },
+        {
+          "name": "ВОДНИ БАНИ",
+          "items": [
+            {
+              "name": "Тръба шевна 316L (323,8х2) 12\"",
+              "sku": null,
+              "unit": "м.",
+              "qty": 3,
+              "unitCostExVat": 128.53,
+              "lineCostExVat": 385.59000000000003,
+              "supplier": "Крисметал",
+              "sourceRow": 40
+            },
+            {
+              "name": "Капа 304L заварка (323.9x3) 12\"",
+              "sku": "103253",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 66.46794455550841,
+              "lineCostExVat": 265.87177822203364,
+              "supplier": "Крисметал",
+              "sourceRow": 41
+            },
+            {
+              "name": "Домакинска неръждаема тел",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 10,
+              "unitCostExVat": 1.49,
+              "lineCostExVat": 14.9,
+              "supplier": "Masterhouse",
+              "sourceRow": 42
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x35",
+              "sku": "00933 8801 6 35",
+              "unit": "100 бр.",
+              "qty": 0.16,
+              "unitCostExVat": 2.6331531881605255,
+              "lineCostExVat": 0.4213045101056841,
+              "supplier": "ИТТ",
+              "sourceRow": 43
+            },
+            {
+              "name": "Гайка шестостенна, DIN 934, А2, M6",
+              "sku": "00934 9200 6",
+              "unit": "100 бр.",
+              "qty": 0.16,
+              "unitCostExVat": 2.6484919445964117,
+              "lineCostExVat": 0.4237587111354259,
+              "supplier": "ИТТ",
+              "sourceRow": 44
+            }
+          ]
+        },
+        {
+          "name": "ДЕМИСТРИ",
+          "items": [
+            {
+              "name": "Тръба шевна 304L (168,3х2) 6\"",
+              "sku": "073800",
+              "unit": "м.",
+              "qty": 2.6,
+              "unitCostExVat": 33.64300578271118,
+              "lineCostExVat": 87.47181503504906,
+              "supplier": "Крисметал",
+              "sourceRow": 46
+            },
+            {
+              "name": "Капа 316L заварка (168.3x2.0) 6\"",
+              "sku": "102664",
+              "unit": "бр.",
+              "qty": 10,
+              "unitCostExVat": 16.83,
+              "lineCostExVat": 168.29999999999998,
+              "supplier": "Крисметал",
+              "sourceRow": 47
+            },
+            {
+              "name": "Гъба демистър (Wire mesh separator mono circolare 316L d.164 Sp tot 112)",
+              "sku": "0000002194",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 82.00099190624952,
+              "lineCostExVat": 492.0059514374972,
+              "supplier": "AFP Tech",
+              "sourceRow": 48
+            }
+          ]
+        },
+        {
+          "name": "ОБЩИ",
+          "items": [
+            {
+              "name": "Тръба шевна 304L (114,3х2) 4\"",
+              "sku": "073001",
+              "unit": "м.",
+              "qty": 4,
+              "unitCostExVat": 31.23993394108895,
+              "lineCostExVat": 124.9597357643558,
+              "supplier": "Крисметал",
+              "sourceRow": 50
+            },
+            {
+              "name": "Капа 316L заварка (114,3х2) 4\"",
+              "sku": "102662",
+              "unit": "бр.",
+              "qty": 12,
+              "unitCostExVat": 7.9863791842849325,
+              "lineCostExVat": 95.8365502114192,
+              "supplier": "Крисметал",
+              "sourceRow": 51
+            }
+          ]
+        },
+        {
+          "name": "Каталитична колона",
+          "items": [
+            {
+              "name": "OxiGone 113, 0,125% Pd on AI203, 2-4 mm Beads",
+              "sku": null,
+              "unit": "кг.",
+              "qty": 20,
+              "unitCostExVat": 265.21,
+              "lineCostExVat": 5304.2,
+              "supplier": "Research Catalysts, Inc.",
+              "sourceRow": 53
+            }
+          ]
+        },
+        {
+          "name": "Изсушител",
+          "items": [
+            {
+              "name": "Molecular sieve 4A",
+              "sku": null,
+              "unit": "кг.",
+              "qty": 20,
+              "unitCostExVat": 8.39,
+              "lineCostExVat": 167.8,
+              "supplier": "ZEST s.r.l.",
+              "sourceRow": 55
+            },
+            {
+              "name": "Тръба шевна 316L (139,7х2) 5\"",
+              "sku": "093409",
+              "unit": "м.",
+              "qty": 3.2,
+              "unitCostExVat": 40.88,
+              "lineCostExVat": 130.816,
+              "supplier": "Крисметал",
+              "sourceRow": 56
+            },
+            {
+              "name": "Фланец глух 316L T15 PN10 DN125",
+              "sku": "101913",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 79.25,
+              "lineCostExVat": 158.5,
+              "supplier": "Крисметал",
+              "sourceRow": 57
+            },
+            {
+              "name": "Капа 316L заварка (139,7х2) 5\"",
+              "sku": "102663",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 9.79,
+              "lineCostExVat": 19.58,
+              "supplier": "Крисметал",
+              "sourceRow": 58
+            },
+            {
+              "name": "Тръба шевна 316L (26.9x2.0) 3/4\"",
+              "sku": "091023",
+              "unit": "бр.",
+              "qty": 9,
+              "unitCostExVat": 10.03,
+              "lineCostExVat": 90.27,
+              "supplier": "Крисметал",
+              "sourceRow": 59
+            },
+            {
+              "name": "Капа 316L заварка (26,9х2) 3/4\"",
+              "sku": "102655",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 2,
+              "lineCostExVat": 12,
+              "supplier": "Крисметал",
+              "sourceRow": 60
+            },
+            {
+              "name": "Патронен нагревател ф22х1510mm, 230V, 1500W, с ТД тип К 0-400C",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 134.98,
+              "lineCostExVat": 809.8799999999999,
+              "supplier": "Нагревател БГ",
+              "sourceRow": 61
+            }
+          ]
+        },
+        {
+          "name": "Охладител (серпентина)",
+          "items": [
+            {
+              "name": "Тръба 304 50х50х4",
+              "sku": "011102-071",
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 22.496842772633613,
+              "lineCostExVat": 0,
+              "supplier": "Интерметал",
+              "sourceRow": 63
+            },
+            {
+              "name": "Тръба оребрена (25х2 - 50) 2м",
+              "sku": "А110586",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 48.138130614623975,
+              "lineCostExVat": 0,
+              "supplier": "Климатех",
+              "sourceRow": 64
+            },
+            {
+              "name": "Тапа 304L 150LBS 1/2\"",
+              "sku": "101004",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 0.690244039614895,
+              "lineCostExVat": 0,
+              "supplier": "Крисметал",
+              "sourceRow": 65
+            },
+            {
+              "name": "Тапа 50х50",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 3,
+              "lineCostExVat": 0,
+              "supplier": null,
+              "sourceRow": 66
+            },
+            {
+              "name": "Тапа с отвор 50х50",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 4,
+              "lineCostExVat": 0,
+              "supplier": null,
+              "sourceRow": 67
+            },
+            {
+              "name": "Профилна тръба ЕЗ 30х30х1,5",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 1.157401205626256,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 68
+            },
+            {
+              "name": "Профилна тръба ЕЗ 40х40х2",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 1.9513659162606156,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 69
+            },
+            {
+              "name": "Профилна тръба ЕЗ 50х50х2",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 2.4789884601422414,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 70
+            },
+            {
+              "name": "Ламарина S235 ГВ 1000х1000х1",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 6.5,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 71
+            },
+            {
+              "name": "Ламарина S235 ГВ 1000х1000х6",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 38.52712147783806,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 72
+            },
+            {
+              "name": "Компенсатор DN40",
+              "sku": "2834 08",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 67.01093653333879,
+              "lineCostExVat": 0,
+              "supplier": "Genebre",
+              "sourceRow": 73
+            },
+            {
+              "name": "Винт самонарезен, DIN 6928 C, vZn, ф4,8х19",
+              "sku": "0692800014819",
+              "unit": "100 бр.",
+              "qty": 0,
+              "unitCostExVat": 4.739675738688946,
+              "lineCostExVat": 0,
+              "supplier": "ИТТ",
+              "sourceRow": 74
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x70",
+              "sku": "00933 8801 6 70",
+              "unit": "100 бр.",
+              "qty": 0,
+              "unitCostExVat": 4.530046067398495,
+              "lineCostExVat": 0,
+              "supplier": "ИТТ",
+              "sourceRow": 75
+            },
+            {
+              "name": "Шайба подложна, DIN 125, vZn, M6",
+              "sku": "00125 0001 6",
+              "unit": "100 бр.",
+              "qty": 0,
+              "unitCostExVat": 0.276097615845958,
+              "lineCostExVat": 0,
+              "supplier": "ИТТ",
+              "sourceRow": 76
+            },
+            {
+              "name": "Шайба пружинна, DIN 127B, vZn, M8",
+              "sku": "0012700218",
+              "unit": "100 бр.",
+              "qty": 0,
+              "unitCostExVat": 0.5573081505038782,
+              "lineCostExVat": 0,
+              "supplier": "ИТТ",
+              "sourceRow": 77
+            },
+            {
+              "name": "Zaplus axial fan with sickle blades",
+              "sku": "182429",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 1251.4,
+              "lineCostExVat": 0,
+              "supplier": "ZIEHL-ABEGG",
+              "sourceRow": 78
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Тръбни връзки",
+      "groups": [
+        {
+          "name": "ТРЪБИ",
+          "items": [
+            {
+              "name": "Тръба шевна 304L (21.3x2) 1/2\"",
+              "sku": "070709",
+              "unit": "м.",
+              "qty": 1.01,
+              "unitCostExVat": 5.7213561505856845,
+              "lineCostExVat": 5.778569712091541,
+              "supplier": "Крисметал",
+              "sourceRow": 81
+            },
+            {
+              "name": "Тръба безшевна 316L 6x1.0",
+              "sku": "098050",
+              "unit": "м.",
+              "qty": 14,
+              "unitCostExVat": 5.051563786218639,
+              "lineCostExVat": 70.72189300706096,
+              "supplier": "Крисметал",
+              "sourceRow": 82
+            },
+            {
+              "name": "Тръба шевна 304L (33.7x2.0) 1\"",
+              "sku": "071323",
+              "unit": "м.",
+              "qty": 64,
+              "unitCostExVat": 6.71,
+              "lineCostExVat": 429.44,
+              "supplier": "Крисметал",
+              "sourceRow": 83
+            },
+            {
+              "name": "Тръба шевна 304L (48,3х2) 1 1/2\"",
+              "sku": "071711",
+              "unit": "м.",
+              "qty": 61.400000000000006,
+              "unitCostExVat": 14.909271255681732,
+              "lineCostExVat": 915.4292550988584,
+              "supplier": "Крисметал",
+              "sourceRow": 84
+            },
+            {
+              "name": "Тръба шевна 304L (60,3х2) 2\"",
+              "sku": "072110",
+              "unit": "м.",
+              "qty": 1.6,
+              "unitCostExVat": 12.061375477418794,
+              "lineCostExVat": 19.29820076387007,
+              "supplier": "Крисметал",
+              "sourceRow": 85
+            }
+          ]
+        },
+        {
+          "name": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+          "items": [
+            {
+              "name": "Коляно 90o 304L заварка (33,7х2) 1\"",
+              "sku": "106306",
+              "unit": "бр.",
+              "qty": 111,
+              "unitCostExVat": 2.4951043802375463,
+              "lineCostExVat": 276.95658620636766,
+              "supplier": "Крисметал",
+              "sourceRow": 87
+            },
+            {
+              "name": "Коляно 90o 304L заварка (48,3х2) 1 1/2\"",
+              "sku": "106308",
+              "unit": "бр.",
+              "qty": 89,
+              "unitCostExVat": 3.7988986772879034,
+              "lineCostExVat": 338.1019822786234,
+              "supplier": "Крисметал",
+              "sourceRow": 88
+            },
+            {
+              "name": "Концентричен намалител 316L SCH10 (33,7х21,3х2) 1\"-1/2\"",
+              "sku": "102702",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 4.17,
+              "lineCostExVat": 8.34,
+              "supplier": "Крисметал",
+              "sourceRow": 89
+            },
+            {
+              "name": "Концентричен намалител 316L SCH10 (48,3х33,7х2) 1 1/2\"-1\"",
+              "sku": "102709",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 6.17,
+              "lineCostExVat": 12.34,
+              "supplier": "Крисметал",
+              "sourceRow": 90
+            },
+            {
+              "name": "Концентричен намалител (60,3х33,7х2) 2\"-1\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 4.28,
+              "lineCostExVat": 8.56,
+              "supplier": "Крисметал",
+              "sourceRow": 91
+            },
+            {
+              "name": "Полунипел 316L 150LBS 1\"",
+              "sku": "108606",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.2884555406144707,
+              "lineCostExVat": 2.5769110812289413,
+              "supplier": "Крисметал",
+              "sourceRow": 92
+            },
+            {
+              "name": "Преход 304L 1 1/2\" x 1/2\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 2.5,
+              "lineCostExVat": 10,
+              "supplier": "Крисметал",
+              "sourceRow": 93
+            },
+            {
+              "name": "Тройник 304L заварка (48,3х2) 1 1/2\"",
+              "sku": "106508",
+              "unit": "бр.",
+              "qty": 22,
+              "unitCostExVat": 6.4831810535680505,
+              "lineCostExVat": 142.6299831784971,
+              "supplier": "Крисметал",
+              "sourceRow": 94
+            },
+            {
+              "name": "Тройник 316L заварка SCH40 (33,4x3,38) 1\"",
+              "sku": "103606",
+              "unit": "бр.",
+              "qty": 17,
+              "unitCostExVat": 11.67790656652163,
+              "lineCostExVat": 198.52441163086772,
+              "supplier": "Крисметал",
+              "sourceRow": 95
+            },
+            {
+              "name": "Кръст DIN11850 SERIE2 W/W 316L DN32",
+              "sku": "AB1345",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 12.63,
+              "lineCostExVat": 25.26,
+              "supplier": "Крисметал",
+              "sourceRow": 96
+            }
+          ]
+        },
+        {
+          "name": "ФЛАНЦИ",
+          "items": [
+            {
+              "name": "Уплътнение CF3000 PTFE PN10/16/25/40 DN25",
+              "sku": "453986",
+              "unit": "бр.",
+              "qty": 56,
+              "unitCostExVat": 0.9203253861531934,
+              "lineCostExVat": 51.53822162457883,
+              "supplier": "Крисметал",
+              "sourceRow": 98
+            },
+            {
+              "name": "Уплътнение CF3000 PTFE PN10/16/25/40 DN40",
+              "sku": "453988",
+              "unit": "бр.",
+              "qty": 64,
+              "unitCostExVat": 1.0890517069479453,
+              "lineCostExVat": 69.6993092446685,
+              "supplier": "Крисметал",
+              "sourceRow": 99
+            },
+            {
+              "name": "Уплътнение CF3000 PTFE PN10/16/25/40 DN50",
+              "sku": "453989",
+              "unit": "бр.",
+              "qty": 10,
+              "unitCostExVat": 2.7200728079638825,
+              "lineCostExVat": 27.200728079638825,
+              "supplier": "Крисметал",
+              "sourceRow": 100
+            },
+            {
+              "name": "Фланец плосък 304 T10 PN16 DN50",
+              "sku": "102939",
+              "unit": "бр.",
+              "qty": 8,
+              "unitCostExVat": 10.607568142425468,
+              "lineCostExVat": 84.86054513940374,
+              "supplier": "Крисметал",
+              "sourceRow": 101
+            },
+            {
+              "name": "Фланец плосък 304 T10 PN16 DN40",
+              "sku": "102938",
+              "unit": "бр.",
+              "qty": 58,
+              "unitCostExVat": 11.015118900926973,
+              "lineCostExVat": 638.8768962537645,
+              "supplier": "Крисметал",
+              "sourceRow": 102
+            },
+            {
+              "name": "Фланец плосък 304 T8 PN16 DN25",
+              "sku": "102936",
+              "unit": "бр.",
+              "qty": 78,
+              "unitCostExVat": 5.682088934109815,
+              "lineCostExVat": 443.20293686056556,
+              "supplier": "Крисметал",
+              "sourceRow": 103
+            },
+            {
+              "name": "Фланец плосък с резба 304L PN10/16 DN50x2''",
+              "sku": "951039",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 29.51278996640812,
+              "lineCostExVat": 59.02557993281624,
+              "supplier": "Крисметал",
+              "sourceRow": 104
+            },
+            {
+              "name": "Фланец плосък с резба 304L PN10/16/40 DN25x1''",
+              "sku": "951036",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 17.166522652786796,
+              "lineCostExVat": 102.99913591672077,
+              "supplier": "Крисметал",
+              "sourceRow": 105
+            },
+            {
+              "name": "Фланец плосък с резба 304L PN10/16/40 DN40x1 1/2''",
+              "sku": "951038",
+              "unit": "бр.",
+              "qty": 14,
+              "unitCostExVat": 32.45680861833595,
+              "lineCostExVat": 454.3953206567033,
+              "supplier": "Крисметал",
+              "sourceRow": 106
+            }
+          ]
+        },
+        {
+          "name": "ПП ЧАСТИ",
+          "items": [
+            {
+              "name": "ПП тръба за т. вода Ф20/PN20",
+              "sku": "697",
+              "unit": "м.",
+              "qty": 14,
+              "unitCostExVat": 1.135067976255605,
+              "lineCostExVat": 15.89095166757847,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 108
+            },
+            {
+              "name": "Връзка PP - резба 1\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 5.5,
+              "lineCostExVat": 33,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 109
+            },
+            {
+              "name": "Коляно PP 1\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 17,
+              "unitCostExVat": 4.88,
+              "lineCostExVat": 82.96,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 110
+            },
+            {
+              "name": "Кран сферичен ПП Ф20",
+              "sku": "815",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 5.215177188201428,
+              "lineCostExVat": 15.645531564604285,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 111
+            },
+            {
+              "name": "Муфа PP 1\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 8,
+              "unitCostExVat": 2.48,
+              "lineCostExVat": 19.84,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 112
+            },
+            {
+              "name": "ПП скоба Ф20",
+              "sku": "950",
+              "unit": "бр.",
+              "qty": 9,
+              "unitCostExVat": 0.11759713267513026,
+              "lineCostExVat": 1.0583741940761724,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 113
+            },
+            {
+              "name": "ПП тройник Ф20",
+              "sku": "738",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 0.3067751287177311,
+              "lineCostExVat": 1.8406507723063865,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 114
+            },
+            {
+              "name": "ПП тръба за т. вода Ф110",
+              "sku": null,
+              "unit": "м.",
+              "qty": 3,
+              "unitCostExVat": 7,
+              "lineCostExVat": 21,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 115
+            },
+            {
+              "name": "Холендър PP 1\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 5,
+              "unitCostExVat": 6,
+              "lineCostExVat": 30,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 116
+            }
+          ]
+        },
+        {
+          "name": "Крепежи",
+          "items": [
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x100",
+              "sku": "00933 8801 12 100",
+              "unit": "100 бр.",
+              "qty": 0.08,
+              "unitCostExVat": 25.83557875684492,
+              "lineCostExVat": 2.066846300547594,
+              "supplier": "ИТТ",
+              "sourceRow": 118
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x40",
+              "sku": "00933 8801 12 40",
+              "unit": "100 бр.",
+              "qty": 2.6,
+              "unitCostExVat": 14.224140134878798,
+              "lineCostExVat": 36.982764350684874,
+              "supplier": "ИТТ",
+              "sourceRow": 119
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x60",
+              "sku": "00933 8801 12 60",
+              "unit": "100 бр.",
+              "qty": 0.44000000000000006,
+              "unitCostExVat": 17.087374669577624,
+              "lineCostExVat": 7.518444854614156,
+              "supplier": "ИТТ",
+              "sourceRow": 120
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M16x45",
+              "sku": "00933 8801 16 45",
+              "unit": "100 бр.",
+              "qty": 2.8600000000000003,
+              "unitCostExVat": 28.51986113312507,
+              "lineCostExVat": 81.56680284073771,
+              "supplier": "ИТТ",
+              "sourceRow": 121
+            },
+            {
+              "name": "Гайка шестостенна, DIN 934, 8, vZn, M12",
+              "sku": "00934 8001 12",
+              "unit": "100 бр.",
+              "qty": 3.0399999999999996,
+              "unitCostExVat": 2.6996211327160338,
+              "lineCostExVat": 8.206848243456742,
+              "supplier": "ИТТ",
+              "sourceRow": 122
+            },
+            {
+              "name": "Гайка шестостенна, DIN 934, 8, vZn, M16",
+              "sku": "00934 8001 16",
+              "unit": "100 бр.",
+              "qty": 3.01,
+              "unitCostExVat": 6.109937980294811,
+              "lineCostExVat": 18.39091332068738,
+              "supplier": "ИТТ",
+              "sourceRow": 123
+            },
+            {
+              "name": "Тампон MGP 50x50mm M10x28",
+              "sku": "68531750",
+              "unit": "бр.",
+              "qty": 16,
+              "unitCostExVat": 6.268438463465639,
+              "lineCostExVat": 100.29501541545022,
+              "supplier": "Бактрейд",
+              "sourceRow": 124
+            },
+            {
+              "name": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M8x25",
+              "sku": "00933 8801 8 25",
+              "unit": "100 бр.",
+              "qty": 0.08,
+              "unitCostExVat": 4.085222130757786,
+              "lineCostExVat": 0.3268177704606229,
+              "supplier": "ИТТ",
+              "sourceRow": 125
+            },
+            {
+              "name": "Гайка шестостенна, DIN 934, 8, vZn, M8",
+              "sku": "00934 8001 8",
+              "unit": "100 бр.",
+              "qty": 0.08,
+              "unitCostExVat": 0.8334057663498361,
+              "lineCostExVat": 0.06667246130798689,
+              "supplier": "ИТТ",
+              "sourceRow": 126
+            },
+            {
+              "name": "Шайба подложна, DIN 125, vZn, M8",
+              "sku": "00125 0001 8",
+              "unit": "100 бр.",
+              "qty": 0.08,
+              "unitCostExVat": 0.4397110178287479,
+              "lineCostExVat": 0.03517688142629983,
+              "supplier": "ИТТ",
+              "sourceRow": 127
+            },
+            {
+              "name": "Шайба подложна, DIN 125, vZn, M12",
+              "sku": "00125 0001 12",
+              "unit": "100 бр.",
+              "qty": 2.5600000000000005,
+              "unitCostExVat": 1.4929722930929579,
+              "lineCostExVat": 3.8220090703179728,
+              "supplier": "ИТТ",
+              "sourceRow": 128
+            },
+            {
+              "name": "Шайба подложна, DIN 125, vZn, M16",
+              "sku": "00125 0001 16",
+              "unit": "100 бр.",
+              "qty": 2.91,
+              "unitCostExVat": 2.622927350536601,
+              "lineCostExVat": 7.632718590061509,
+              "supplier": "ИТТ",
+              "sourceRow": 129
+            },
+            {
+              "name": "Шайба пружинна, DIN 127B, vZn, M12",
+              "sku": "00127002112",
+              "unit": "100 бр.",
+              "qty": 2.4400000000000004,
+              "unitCostExVat": 1.46,
+              "lineCostExVat": 3.5624000000000007,
+              "supplier": "ИТТ",
+              "sourceRow": 130
+            },
+            {
+              "name": "Шайба пружинна, DIN 127B, vZn, M16",
+              "sku": "00127002116",
+              "unit": "100 бр.",
+              "qty": 2.8600000000000003,
+              "unitCostExVat": 2.6689436198442604,
+              "lineCostExVat": 7.633178752754586,
+              "supplier": "ИТТ",
+              "sourceRow": 131
+            }
+          ]
+        },
+        {
+          "name": "Кранове",
+          "items": [
+            {
+              "name": "Valve 2PC FULL BORE BALL VALVE 1\" PN40",
+              "sku": "2528 06",
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 66.72870341491847,
+              "lineCostExVat": 0,
+              "supplier": "Genebre",
+              "sourceRow": 133
+            },
+            {
+              "name": "Valve 2PC full bore ball PN40 1 1/2''",
+              "sku": "2528 08",
+              "unit": "бр.",
+              "qty": 9,
+              "unitCostExVat": 109.95408598906857,
+              "lineCostExVat": 989.5867739016171,
+              "supplier": "Genebre",
+              "sourceRow": 134
+            },
+            {
+              "name": "Valve 2 pieces full bore ball valve - flanged ends 1 1/2\" with GE-0 24/240V",
+              "sku": "5628 08 47",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 359.76899832807555,
+              "lineCostExVat": 1439.0759933123022,
+              "supplier": "Genebre",
+              "sourceRow": 135
+            },
+            {
+              "name": "Valve 2 pieces full bore ball valve - flanges ends 1\"  with GE-0 24/240V",
+              "sku": "5628 06 51",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 274.57652249939923,
+              "lineCostExVat": 1647.4591349963953,
+              "supplier": "Genebre",
+              "sourceRow": 136
+            },
+            {
+              "name": "Valve 3PC full bore ball (welded ends) 1''",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 15,
+              "lineCostExVat": 30,
+              "supplier": "Genebre",
+              "sourceRow": 137
+            },
+            {
+              "name": "Valve 3PC full bore ball (welded ends) 1'' with GE-0 24/240V",
+              "sku": "5637 06 51",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 181.61241007654039,
+              "lineCostExVat": 726.4496403061615,
+              "supplier": "Genebre",
+              "sourceRow": 138
+            },
+            {
+              "name": "Кран сферичен, G1/2'', PN64",
+              "sku": "VP 704000 1/2",
+              "unit": "бр.",
+              "qty": 8,
+              "unitCostExVat": 38.85818297091261,
+              "lineCostExVat": 310.86546376730087,
+              "supplier": "LD GmbH",
+              "sourceRow": 139
+            },
+            {
+              "name": "Седлови кран (НЕРЖ. ВЕНТИЛ 316 PN40 DN40  )",
+              "sku": "957208",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 836.97,
+              "lineCostExVat": 1673.94,
+              "supplier": "Крисметал",
+              "sourceRow": 140
+            },
+            {
+              "name": "Valve 2PC full bore ball (flanges ends) 2'' with GE-1 24/240V",
+              "sku": "5628 09 52",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 438.66619286952334,
+              "lineCostExVat": 877.3323857390467,
+              "supplier": "Genebre",
+              "sourceRow": 141
+            },
+            {
+              "name": "Valve T3 ways ball ACT. Electric 1 1/2\"",
+              "sku": "5643E 08 52",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 537.8220499736684,
+              "lineCostExVat": 1075.6440999473368,
+              "supplier": "Genebre",
+              "sourceRow": 142
+            }
+          ]
+        },
+        {
+          "name": "Фитинги",
+          "items": [
+            {
+              "name": "Права връзка 1510 15/12,5-1/2",
+              "sku": "1510 15/12,5-1/2",
+              "unit": "бр.",
+              "qty": 8,
+              "unitCostExVat": 2.6331531881605255,
+              "lineCostExVat": 21.065225505284204,
+              "supplier": "LD GmbH",
+              "sourceRow": 144
+            },
+            {
+              "name": "Вътрешно редуциращ нипел 3/4-1/4",
+              "sku": "102108",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 3.53,
+              "lineCostExVat": 7.06,
+              "supplier": "Крисметал",
+              "sourceRow": 145
+            },
+            {
+              "name": "Крепежи - сини",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 25,
+              "unitCostExVat": 1,
+              "lineCostExVat": 25,
+              "supplier": null,
+              "sourceRow": 146
+            },
+            {
+              "name": "Муфа 304L резбa 150LBS L42 1\"",
+              "sku": "101806",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 2.970605829750029,
+              "lineCostExVat": 5.941211659500058,
+              "supplier": "Крисметал",
+              "sourceRow": 147
+            },
+            {
+              "name": "Муфа 316L резбa 150LBS L33 1/2\"",
+              "sku": "101804",
+              "unit": "бр.",
+              "qty": 30,
+              "unitCostExVat": 1.799747421810689,
+              "lineCostExVat": 53.99242265432067,
+              "supplier": "Крисметал",
+              "sourceRow": 148
+            },
+            {
+              "name": "Нипел 316L шестостен 150LBS EU 1\"",
+              "sku": "100826",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 3.262042202031874,
+              "lineCostExVat": 19.572253212191242,
+              "supplier": "Крисметал",
+              "sourceRow": 149
+            },
+            {
+              "name": "Нипел 316L шестостен 1/4\"",
+              "sku": "100802",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 0.7822765782302143,
+              "lineCostExVat": 3.1291063129208574,
+              "supplier": "Крисметал",
+              "sourceRow": 150
+            },
+            {
+              "name": "Права връзка неръждаема X1510 8/6-1/4",
+              "sku": "X1510 8/6-1/4",
+              "unit": "бр.",
+              "qty": 14,
+              "unitCostExVat": 9.116334241728575,
+              "lineCostExVat": 127.62867938420005,
+              "supplier": "LD GmbH",
+              "sourceRow": 151
+            },
+            {
+              "name": "Холендър 316L вътрешнa резбa 150LBS 1 1/2\"",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 18,
+              "lineCostExVat": 72,
+              "supplier": "Крисметал",
+              "sourceRow": 152
+            },
+            {
+              "name": "Холендър 316 PTFE М/Ж BSP 1\"",
+              "sku": "9594941",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 14.980852119049203,
+              "lineCostExVat": 59.92340847619681,
+              "supplier": "Крисметал",
+              "sourceRow": 153
+            },
+            {
+              "name": "Холендър 316L вътрешнa резбa 150LBS 1\"",
+              "sku": "101366",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 11.790390780384797,
+              "lineCostExVat": 23.580781560769594,
+              "supplier": "Крисметал",
+              "sourceRow": 154
+            }
+          ]
+        },
+        {
+          "name": "Устройства",
+          "items": [
+            {
+              "name": "Температурен сензор",
+              "sku": "TA3105",
+              "unit": "бр.",
+              "qty": 12,
+              "unitCostExVat": 86.09567293680944,
+              "lineCostExVat": 1033.1480752417133,
+              "supplier": "ifm",
+              "sourceRow": 156
+            },
+            {
+              "name": "Центробежна помпа с магнитно задвижна AISI316 1,5kW",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 2479.76562380166,
+              "lineCostExVat": 4959.53124760332,
+              "supplier": "Тапфло",
+              "sourceRow": 157
+            },
+            {
+              "name": "Sliding Gate Motor Valve 8038 H2",
+              "sku": "4029081",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3502.835113481233,
+              "lineCostExVat": 3502.835113481233,
+              "supplier": "Schubert & Salzer",
+              "sourceRow": 158
+            },
+            {
+              "name": "Sliding Gate Motor Valve 8038 О2",
+              "sku": "4029075",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3172.949591733433,
+              "lineCostExVat": 3172.949591733433,
+              "supplier": "Schubert & Salzer",
+              "sourceRow": 159
+            },
+            {
+              "name": "Захранване 275 kW",
+              "sku": "GA-2500A/110V-SCR6",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 24984.73,
+              "lineCostExVat": 49969.46,
+              "supplier": "Green Power",
+              "sourceRow": 160
+            },
+            {
+              "name": "Магнетвентил 1\"",
+              "sku": "21IH6K1V250",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 402.77000000000004,
+              "lineCostExVat": 1611.0800000000002,
+              "supplier": "LD GmbH",
+              "sourceRow": 161
+            },
+            {
+              "name": "Магнетвентил 1/4''",
+              "sku": "21L2K1V25",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 76.14,
+              "lineCostExVat": 304.56,
+              "supplier": "LD GmbH",
+              "sourceRow": 162
+            },
+            {
+              "name": "Поплавъчен нивомер тип 8181",
+              "sku": "W KSR 118332",
+              "unit": "бр.",
+              "qty": 16,
+              "unitCostExVat": 86.65886094394708,
+              "lineCostExVat": 1386.5417751031532,
+              "supplier": "LD GmbH",
+              "sourceRow": 163
+            },
+            {
+              "name": "Сензор за газ H2 GS-220",
+              "sku": "GS-220.B.V.02-06/H2",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 156.45531564604286,
+              "lineCostExVat": 312.9106312920857,
+              "supplier": "Инвест Електроникс",
+              "sourceRow": 164
+            },
+            {
+              "name": "Сензор за поток (flowmeter)",
+              "sku": "SM2100",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 512.2666591677191,
+              "lineCostExVat": 1024.5333183354383,
+              "supplier": "ifm",
+              "sourceRow": 165
+            },
+            {
+              "name": "Монтажен комплект (flowmeter)",
+              "sku": "E40240",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 159.8400678995618,
+              "lineCostExVat": 319.6801357991236,
+              "supplier": "ifm",
+              "sourceRow": 166
+            },
+            {
+              "name": "Трансмитер за налягане, взривозащитен",
+              "sku": "IPS-G-403-05-I-04-D",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 260.7588594100714,
+              "lineCostExVat": 1043.0354376402856,
+              "supplier": "Сензорматик",
+              "sourceRow": 167
+            },
+            {
+              "name": "Филтър INOX 316 Фл. PN16 DN50",
+              "sku": "TH7309",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 354.2179023739282,
+              "lineCostExVat": 708.4358047478564,
+              "supplier": "Крисметал",
+              "sourceRow": 168
+            }
+          ]
+        },
+        {
+          "name": "Метални елементи",
+          "items": [
+            {
+              "name": "Винкел 304L 25x25x2",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 4,
+              "lineCostExVat": 0,
+              "supplier": null,
+              "sourceRow": 170
+            },
+            {
+              "name": "Винкел ГВ 40х40х3",
+              "sku": null,
+              "unit": "м.",
+              "qty": 14.5,
+              "unitCostExVat": 4.64,
+              "lineCostExVat": 67.28,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 171
+            },
+            {
+              "name": "Ламарина S235 ГВ 1000х1000х3",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1.2000000000000002,
+              "unitCostExVat": 18.422613417321546,
+              "lineCostExVat": 22.10713610078586,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 172
+            },
+            {
+              "name": "Лист неръждаема стомана 316L 1000х2000х3",
+              "sku": "193211",
+              "unit": "бр.",
+              "qty": 1.4,
+              "unitCostExVat": 382.08,
+              "lineCostExVat": 534.9119999999999,
+              "supplier": "Филипекс",
+              "sourceRow": 173
+            },
+            {
+              "name": "Профилна тръба ГВ 60х60х1,5",
+              "sku": null,
+              "unit": "м.",
+              "qty": 6,
+              "unitCostExVat": 2.670216736628439,
+              "lineCostExVat": 16.021300419770633,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 174
+            },
+            {
+              "name": "Профилна тръба ГВ 30х30х1,5",
+              "sku": null,
+              "unit": "м.",
+              "qty": 0,
+              "unitCostExVat": 1.157401205626256,
+              "lineCostExVat": 0,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 175
+            },
+            {
+              "name": "Профилна тръба ГВ 40х20х1,5",
+              "sku": null,
+              "unit": "м.",
+              "qty": 4.5,
+              "unitCostExVat": 1.09,
+              "lineCostExVat": 4.905,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 176
+            },
+            {
+              "name": "Профилна тръба ГВ 40х40х2",
+              "sku": null,
+              "unit": "м.",
+              "qty": 37,
+              "unitCostExVat": 1.9513659162606156,
+              "lineCostExVat": 72.20053890164277,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 177
+            },
+            {
+              "name": "Шина 50х3",
+              "sku": null,
+              "unit": "кг.",
+              "qty": 2,
+              "unitCostExVat": 0.8420977283301718,
+              "lineCostExVat": 1.6841954566603436,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 178
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ел. табло",
+      "groups": [
+        {
+          "name": "Основни части",
+          "items": [
+            {
+              "name": "Табло с 2 врати 1200х1200х300",
+              "sku": "WSA1212309",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 369.6255999999999,
+              "lineCostExVat": 739.2511999999998,
+              "supplier": "Schrack",
+              "sourceRow": 180
+            },
+            {
+              "name": "DIN-релса за модулна апаратура перфорирана 2m",
+              "sku": "BK14005--A",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 3.2021187935556776,
+              "lineCostExVat": 6.404237587111355,
+              "supplier": "Schrack",
+              "sourceRow": 181
+            },
+            {
+              "name": "MАП AMPARO 6kA C32/1",
+              "sku": "AM617132--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 1.9094999999999998,
+              "lineCostExVat": 1.9094999999999998,
+              "supplier": "Schrack",
+              "sourceRow": 182
+            },
+            {
+              "name": "MАП AMPARO 6kA C32/3",
+              "sku": "AM617332--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 6.275596549802385,
+              "lineCostExVat": 6.275596549802385,
+              "supplier": "Schrack",
+              "sourceRow": 183
+            },
+            {
+              "name": "MАП AMPARO 6kA C6",
+              "sku": "AM617106--",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 2.0635999999999997,
+              "lineCostExVat": 6.190799999999999,
+              "supplier": "Schrack",
+              "sourceRow": 184
+            },
+            {
+              "name": "Бутон - stop reset",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": null,
+              "sourceRow": 185
+            },
+            {
+              "name": "Виличен гребен, 3P, 1m, 10mm",
+              "sku": "BSA90113--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 16.0063,
+              "lineCostExVat": 16.0063,
+              "supplier": "Schrack",
+              "sourceRow": 186
+            },
+            {
+              "name": "Винтова PЕ клема 2,5-4mm",
+              "sku": "IK622002--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 2.2377999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 187
+            },
+            {
+              "name": "Винтова клема 2,5mm синя",
+              "sku": "IK601002--",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 0.29479999999999995,
+              "lineCostExVat": 0.8843999999999999,
+              "supplier": "Schrack",
+              "sourceRow": 188
+            },
+            {
+              "name": "Винтова клема 6mm сива",
+              "sku": "IK600006--",
+              "unit": "бр.",
+              "qty": 16,
+              "unitCostExVat": 0.37896954234263713,
+              "lineCostExVat": 6.063512677482194,
+              "supplier": "Schrack",
+              "sourceRow": 189
+            },
+            {
+              "name": "Захранващо устройство SDR-240-24",
+              "sku": "2079",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 76.7,
+              "lineCostExVat": 76.7,
+              "supplier": "Унител",
+              "sourceRow": 190
+            },
+            {
+              "name": "Кабелен канал 40x25mm",
+              "sku": "RH229246--",
+              "unit": "м.",
+              "qty": 4,
+              "unitCostExVat": 3.618,
+              "lineCostExVat": 14.472,
+              "supplier": "Schrack",
+              "sourceRow": 191
+            },
+            {
+              "name": "Кабелен канал 40x40mm",
+              "sku": "RH229206--",
+              "unit": "м.",
+              "qty": 4,
+              "unitCostExVat": 4.6376,
+              "lineCostExVat": 18.5504,
+              "supplier": "Schrack",
+              "sourceRow": 192
+            },
+            {
+              "name": "Кабелен канал 60x60mm",
+              "sku": "RH229213--",
+              "unit": "м.",
+              "qty": 4,
+              "unitCostExVat": 8.098799999999999,
+              "lineCostExVat": 32.395199999999996,
+              "supplier": "Schrack",
+              "sourceRow": 193
+            },
+            {
+              "name": "Кабелна превръзка бяла 2,5x96mm",
+              "sku": "BGH262500-",
+              "unit": "100 бр.",
+              "qty": 2,
+              "unitCostExVat": 0.5158999999999999,
+              "lineCostExVat": 1.0317999999999998,
+              "supplier": "Schrack",
+              "sourceRow": 194
+            },
+            {
+              "name": "Клеми маркировки хор. 101-150",
+              "sku": "IK697042--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 2.2377999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 195
+            },
+            {
+              "name": "Клеми маркировки хор. 1-50",
+              "sku": "IK697040--",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 3.356699999999999,
+              "supplier": "Schrack",
+              "sourceRow": 196
+            },
+            {
+              "name": "Клеми маркировки хор. 151-200",
+              "sku": "IK697043--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 2.2377999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 197
+            },
+            {
+              "name": "Клеми маркировки хор. 51-100",
+              "sku": "IK697041--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 2.2377999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 198
+            },
+            {
+              "name": "Компютър LENOVO",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 85.22,
+              "lineCostExVat": 85.22,
+              "supplier": "ЖИЛАНОВИ ООД",
+              "sourceRow": 199
+            },
+            {
+              "name": "Контактор 15kW/32A, 1NO, 230VAC",
+              "sku": "LTD13213--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 36.8634,
+              "lineCostExVat": 36.8634,
+              "supplier": "Schrack",
+              "sourceRow": 200
+            },
+            {
+              "name": "Контактор 7,5kW/15A, 1NO, 230VAC",
+              "sku": "LTD01513--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 17.031399999999998,
+              "lineCostExVat": 34.062799999999996,
+              "supplier": "Schrack",
+              "sourceRow": 201
+            },
+            {
+              "name": "Контактор за DIN релса 16А",
+              "sku": "BZ325004--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3.4638999999999998,
+              "lineCostExVat": 3.4638999999999998,
+              "supplier": "Schrack",
+              "sourceRow": 202
+            },
+            {
+              "name": "Крайна секция 2,5-10mm сива",
+              "sku": "IK600210--",
+              "unit": "бр.",
+              "qty": 7,
+              "unitCostExVat": 0.20769999999999997,
+              "lineCostExVat": 1.4538999999999997,
+              "supplier": "Schrack",
+              "sourceRow": 203
+            },
+            {
+              "name": "Крайна секция за дву/три редова клема",
+              "sku": "IK690202--",
+              "unit": "бр.",
+              "qty": 9,
+              "unitCostExVat": 0.33499999999999996,
+              "lineCostExVat": 3.0149999999999997,
+              "supplier": "Schrack",
+              "sourceRow": 204
+            },
+            {
+              "name": "Крайна скоба за DIN релса, винтова",
+              "sku": "IK623001--",
+              "unit": "бр.",
+              "qty": 30,
+              "unitCostExVat": 0.27469999999999994,
+              "lineCostExVat": 8.240999999999998,
+              "supplier": "Schrack",
+              "sourceRow": 205
+            },
+            {
+              "name": "Миниатюрен автоматичен прексвач MCB 10kA D10/3",
+              "sku": "AM019310--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 10.492199999999999,
+              "lineCostExVat": 10.492199999999999,
+              "supplier": "Schrack",
+              "sourceRow": 206
+            },
+            {
+              "name": "Миниатюрен автоматичен прексвач MCB 10kA D16/3",
+              "sku": "AM019316--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 10.492199999999999,
+              "lineCostExVat": 10.492199999999999,
+              "supplier": "Schrack",
+              "sourceRow": 207
+            },
+            {
+              "name": "Миниатюрен автоматичен прексвач MCB 10kA D25/3",
+              "sku": "AM019325--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 10.673099999999998,
+              "lineCostExVat": 10.673099999999998,
+              "supplier": "Schrack",
+              "sourceRow": 208
+            },
+            {
+              "name": "Нулева / земна шина, 1m, 10mm",
+              "sku": "IK0200420--",
+              "unit": "м.",
+              "qty": 1,
+              "unitCostExVat": 14.672999999999998,
+              "lineCostExVat": 14.672999999999998,
+              "supplier": "Schrack",
+              "sourceRow": 209
+            },
+            {
+              "name": "Пач кабел RJ45 екраниран, Cat. 6, сив, 0,5m",
+              "sku": "H6GLG00K5G",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 0.9245999999999999,
+              "lineCostExVat": 2.7737999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 210
+            },
+            {
+              "name": "Пач кабел RJ45 екраниран, Cat. 6, сив, 1m",
+              "sku": "H6GLG01K0G",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 1.1188999999999998,
+              "lineCostExVat": 2.2377999999999996,
+              "supplier": "Schrack",
+              "sourceRow": 211
+            },
+            {
+              "name": "Платки (Ангел Касабов)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 2630,
+              "lineCostExVat": 2630,
+              "supplier": "Green Innovation",
+              "sourceRow": 212
+            },
+            {
+              "name": "Потенциометър",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": null,
+              "sourceRow": 213
+            },
+            {
+              "name": "Пружинна клема 2,5mm сива",
+              "sku": "IK660002--",
+              "unit": "бр.",
+              "qty": 75,
+              "unitCostExVat": 1.1590999999999998,
+              "lineCostExVat": 86.93249999999999,
+              "supplier": "Schrack",
+              "sourceRow": 214
+            },
+            {
+              "name": "Пружинна клема триред 2,5mm",
+              "sku": "IK690001--",
+              "unit": "бр.",
+              "qty": 20,
+              "unitCostExVat": 1.6079999999999999,
+              "lineCostExVat": 32.16,
+              "supplier": "Schrack",
+              "sourceRow": 215
+            },
+            {
+              "name": "Реле с 14 пина, 6А",
+              "sku": "PT570730--",
+              "unit": "бр.",
+              "qty": 20,
+              "unitCostExVat": 4.0156864349151,
+              "lineCostExVat": 80.313728698302,
+              "supplier": "Schrack",
+              "sourceRow": 216
+            },
+            {
+              "name": "Станция за сензор за газ GA-220",
+              "sku": "GA-220.EI.01",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 121.94311366529811,
+              "lineCostExVat": 121.94311366529811,
+              "supplier": "Инвест Електроникс",
+              "sourceRow": 217
+            },
+            {
+              "name": "Термично реле 12-16A",
+              "sku": "LTD01600--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 20.649399999999996,
+              "lineCostExVat": 20.649399999999996,
+              "supplier": "Schrack",
+              "sourceRow": 218
+            },
+            {
+              "name": "Термично реле 24-32A",
+              "sku": "LTT13200--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 35.2018,
+              "lineCostExVat": 35.2018,
+              "supplier": "Schrack",
+              "sourceRow": 219
+            },
+            {
+              "name": "Термично реле 4-6A",
+              "sku": "LTD00600--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 17.755,
+              "lineCostExVat": 17.755,
+              "supplier": "Schrack",
+              "sourceRow": 220
+            },
+            {
+              "name": "Трансмитер с галванично разделяне PISO-U",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 92.03253861531933,
+              "lineCostExVat": 368.1301544612773,
+              "supplier": "delta Instruments",
+              "sourceRow": 221
+            },
+            {
+              "name": "Цокъл за реле с 14 пина, 10А",
+              "sku": "YRS50004--",
+              "unit": "бр.",
+              "qty": 20,
+              "unitCostExVat": 1.8503653180491146,
+              "lineCostExVat": 37.00730636098229,
+              "supplier": "Schrack",
+              "sourceRow": 222
+            },
+            {
+              "name": "Шина нулева/земна 1m, 25mm",
+              "sku": "IK020013--",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 64.02199999999999,
+              "lineCostExVat": 128.04399999999998,
+              "supplier": "Schrack",
+              "sourceRow": 223
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Газ анализ табло",
+      "groups": [
+        {
+          "name": "Основни части",
+          "items": [
+            {
+              "name": "Electrochemical Oxygen analyser: 0-5% vol. H2",
+              "sku": "OxyTrend-G-A",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 1746.2399999999998,
+              "lineCostExVat": 1746.2399999999998,
+              "supplier": "ADEV SRL",
+              "sourceRow": 225
+            },
+            {
+              "name": "Electrochemical Oxygen analyser: 0-100ppm vol. O2",
+              "sku": "OxyTrend-G-A",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 1746.2399999999998,
+              "lineCostExVat": 1746.2399999999998,
+              "supplier": "ADEV SRL",
+              "sourceRow": 226
+            },
+            {
+              "name": "PRV-Pressure reducing valve (Wittgas)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": "",
+              "sourceRow": 227
+            },
+            {
+              "name": "8866 - Thermal Comductivity Analyser 0-5% vol. H2",
+              "sku": "8866-03-16-2G-S-GF",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3033.6,
+              "lineCostExVat": 3033.6,
+              "supplier": "ADEV SRL",
+              "sourceRow": 228
+            },
+            {
+              "name": "Control Unit with display for 8866 Thermal Conductivity Analyser",
+              "sku": "Sirius-G-LIN-000-N-N-N-EN",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 1527.68,
+              "lineCostExVat": 1527.68,
+              "supplier": "ADEV SRL",
+              "sourceRow": 229
+            },
+            {
+              "name": "Dew Point Analyser with integral touchscreen LCD display",
+              "sku": "DP324B[A59047]",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 990.7599999999999,
+              "lineCostExVat": 990.7599999999999,
+              "supplier": "ADEV SRL",
+              "sourceRow": 230
+            },
+            {
+              "name": "SS 316 measuring chamber for Dew Point Analyser 1/8\" FNPT",
+              "sku": "A42339",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 300.55999999999995,
+              "lineCostExVat": 300.55999999999995,
+              "supplier": "ADEV SRL",
+              "sourceRow": 231
+            },
+            {
+              "name": "Flow meter in Plexiglass for hydrogen, Scale 0,02-0,5 NL/min",
+              "sku": "A43309",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 195.29999999999998,
+              "lineCostExVat": 390.59999999999997,
+              "supplier": "ADEV SRL",
+              "sourceRow": 232
+            },
+            {
+              "name": "Flow meter in Plexiglass for oxygen, Scale 0,2-3 NL/min",
+              "sku": "A43311",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 195.29999999999998,
+              "lineCostExVat": 195.29999999999998,
+              "supplier": "ADEV SRL",
+              "sourceRow": 233
+            },
+            {
+              "name": "Flowmeter and needle valve bracket",
+              "sku": "A26040",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 9.766799772986404,
+              "lineCostExVat": 29.300399318959215,
+              "supplier": "ADEV SRL",
+              "sourceRow": 234
+            },
+            {
+              "name": "Male connector 6MM SWA-1/8\" NPT",
+              "sku": "SS-6M0-1-2",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 11.437599382359409,
+              "lineCostExVat": 68.62559629415645,
+              "supplier": "Swagelok",
+              "sourceRow": 235
+            },
+            {
+              "name": "Bulkhead union 6mm SWA",
+              "sku": "SS-6M0-61",
+              "unit": "бр.",
+              "qty": 6,
+              "unitCostExVat": 27.676229529151307,
+              "lineCostExVat": 166.05737717490786,
+              "supplier": "Swagelok",
+              "sourceRow": 236
+            },
+            {
+              "name": "Male connector 6MM SWA-1/4\" GAS-CONICO",
+              "sku": "SS-6M0-1-4RT",
+              "unit": "бр.",
+              "qty": 10,
+              "unitCostExVat": 11.948891263555627,
+              "lineCostExVat": 119.48891263555626,
+              "supplier": "Swagelok",
+              "sourceRow": 237
+            },
+            {
+              "name": "Male elbow 6MM SWA-1/8\" GAS-CONICO",
+              "sku": "SS-6M0-2-2RT",
+              "unit": "бр.",
+              "qty": 12,
+              "unitCostExVat": 20.932289616173183,
+              "lineCostExVat": 251.1874753940782,
+              "supplier": "Swagelok",
+              "sourceRow": 238
+            },
+            {
+              "name": "Needle valve integral bonnet",
+              "sku": "0",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 113.5477009760562,
+              "lineCostExVat": 340.6431029281686,
+              "supplier": "Swagelok",
+              "sourceRow": 239
+            },
+            {
+              "name": "Ball valve 3-way 40G",
+              "sku": "SS-42GXS 6mm",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 147.51793356273296,
+              "lineCostExVat": 442.55380068819886,
+              "supplier": "Swagelok",
+              "sourceRow": 240
+            },
+            {
+              "name": "Support kit Twin Bolted Plastic Clamp Tube 6mm",
+              "sku": "304-S1T-PP-6TM",
+              "unit": "бр.",
+              "qty": 20,
+              "unitCostExVat": 9.090769647668765,
+              "lineCostExVat": 181.8153929533753,
+              "supplier": "Swagelok",
+              "sourceRow": 241
+            },
+            {
+              "name": "Нит-гайка с накат фрез. намал. гл. vZn M4/ф6х10",
+              "sku": "88418 0011 4 10",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 4.9,
+              "lineCostExVat": 0.9800000000000001,
+              "supplier": "ИТТ",
+              "sourceRow": 242
+            },
+            {
+              "name": "Нит-гайка с накат фрез. намал. гл. vZn M5/ф7х12",
+              "sku": "88418 0011 5 12",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 5.25,
+              "lineCostExVat": 1.05,
+              "supplier": "ИТТ",
+              "sourceRow": 243
+            },
+            {
+              "name": "Нит-гайка с накат фрез. намал. гл. vZn M6/ф9х15",
+              "sku": "88418 0011 6 15",
+              "unit": "100 бр.",
+              "qty": 0.5,
+              "unitCostExVat": 6.54,
+              "lineCostExVat": 3.27,
+              "supplier": "ИТТ",
+              "sourceRow": 244
+            },
+            {
+              "name": "Нит-гайка с накат фрез. намал. гл. vZn M8/ф11х16",
+              "sku": "88418 0011 8 16",
+              "unit": "100 бр.",
+              "qty": 0.1,
+              "unitCostExVat": 7.6,
+              "lineCostExVat": 0.76,
+              "supplier": "ИТТ",
+              "sourceRow": 245
+            },
+            {
+              "name": "Винт с вътрешен шестостен, DIN912, А2, М6х30",
+              "sku": "00912 9200 6 30",
+              "unit": "100 бр.",
+              "qty": 0.5,
+              "unitCostExVat": 11.2,
+              "lineCostExVat": 5.6,
+              "supplier": "ИТТ",
+              "sourceRow": 246
+            },
+            {
+              "name": "Винт с вътрешен шестостен, DIN912, А2, М5х20",
+              "sku": "00912 9200 5 20",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 6.6,
+              "lineCostExVat": 1.32,
+              "supplier": "ИТТ",
+              "sourceRow": 247
+            },
+            {
+              "name": "Винт с вътрешен шестостен, DIN912, А2, М4х10",
+              "sku": "00912 9200 4 10",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 3.8,
+              "lineCostExVat": 0.76,
+              "supplier": "ИТТ",
+              "sourceRow": 248
+            },
+            {
+              "name": "Винт с вътрешен шестостен, DIN912, А2, М4х5",
+              "sku": "00912 9200 4 5",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 6.95,
+              "lineCostExVat": 1.3900000000000001,
+              "supplier": "ИТТ",
+              "sourceRow": 249
+            },
+            {
+              "name": "Винт с конусна глава, DIN963, A2, M4х8",
+              "sku": "00963 9200 4 8",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 1.8,
+              "lineCostExVat": 0.36000000000000004,
+              "supplier": "ИТТ",
+              "sourceRow": 250
+            },
+            {
+              "name": "Шайба с широка периферия, DIN 9021, А2, M8",
+              "sku": "09021 9200 8",
+              "unit": "100 бр.",
+              "qty": 0.1,
+              "unitCostExVat": 7.6,
+              "lineCostExVat": 0.76,
+              "supplier": "ИТТ",
+              "sourceRow": 251
+            },
+            {
+              "name": "Шайба с широка периферия, DIN 9021, А2, M5",
+              "sku": "09021 9200 5",
+              "unit": "100 бр.",
+              "qty": 0.3,
+              "unitCostExVat": 1.8,
+              "lineCostExVat": 0.54,
+              "supplier": "ИТТ",
+              "sourceRow": 252
+            },
+            {
+              "name": "Шайба с широка периферия, DIN 9021, А2, M4",
+              "sku": "09021 9200 4",
+              "unit": "100 бр.",
+              "qty": 0.2,
+              "unitCostExVat": 1.35,
+              "lineCostExVat": 0.27,
+              "supplier": "ИТТ",
+              "sourceRow": 253
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Кабели",
+      "groups": [
+        {
+          "name": "КАБЕЛНИ ВРЪЗКИ",
+          "items": [
+            {
+              "name": "HO7V-K 70.00 червен",
+              "sku": "05.01.02.00100",
+              "unit": "м.",
+              "qty": 95,
+              "unitCostExVat": 8.144879667455761,
+              "lineCostExVat": 773.7635684082974,
+              "supplier": "Тилком",
+              "sourceRow": 256
+            },
+            {
+              "name": "HO7V-K 70.00 черен",
+              "sku": "05.01.02.00099",
+              "unit": "м.",
+              "qty": 95,
+              "unitCostExVat": 8.144879667455761,
+              "lineCostExVat": 773.7635684082974,
+              "supplier": "Тилком",
+              "sourceRow": 257
+            },
+            {
+              "name": "Кабел сигнален 2х1",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 100,
+              "unitCostExVat": 0.6,
+              "lineCostExVat": 60,
+              "supplier": null,
+              "sourceRow": 258
+            },
+            {
+              "name": "Кабел ШВПС 2х0,75 бял",
+              "sku": "644",
+              "unit": "м.",
+              "qty": 206,
+              "unitCostExVat": 0.41,
+              "lineCostExVat": 84.46,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 259
+            },
+            {
+              "name": "Кабел ШВПС-Б 2х0,5 бял",
+              "sku": "642",
+              "unit": "м.",
+              "qty": 200,
+              "unitCostExVat": 0.27,
+              "lineCostExVat": 54,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 260
+            },
+            {
+              "name": "Кабел 3х1",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 80,
+              "unitCostExVat": 1.1,
+              "lineCostExVat": 88,
+              "supplier": null,
+              "sourceRow": 261
+            },
+            {
+              "name": "Кабел ШВПС 5х1 бял",
+              "sku": "1521",
+              "unit": "м.",
+              "qty": 40,
+              "unitCostExVat": 0.9203253861531934,
+              "lineCostExVat": 36.813015446127736,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 262
+            },
+            {
+              "name": "Кабел ШВПС 5х1,5 бял",
+              "sku": null,
+              "unit": "м.",
+              "qty": 25,
+              "unitCostExVat": 1.656585695075748,
+              "lineCostExVat": 41.4146423768937,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 263
+            },
+            {
+              "name": "Кабел 5х2,5",
+              "sku": "0",
+              "unit": "м.",
+              "qty": 23,
+              "unitCostExVat": 3.58,
+              "lineCostExVat": 82.34,
+              "supplier": "Schrack",
+              "sourceRow": 264
+            },
+            {
+              "name": "Кабел ШВПС 5х6 бял",
+              "sku": "9988",
+              "unit": "м.",
+              "qty": 20,
+              "unitCostExVat": 5.936098740688097,
+              "lineCostExVat": 118.72197481376193,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 265
+            },
+            {
+              "name": "Кабел 8х0,22",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 40,
+              "unitCostExVat": 0.6,
+              "lineCostExVat": 24,
+              "supplier": null,
+              "sourceRow": 266
+            },
+            {
+              "name": "Кабел за температурен сензор",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 90,
+              "unitCostExVat": 2.1,
+              "lineCostExVat": 189,
+              "supplier": null,
+              "sourceRow": 267
+            },
+            {
+              "name": "Кабел сигнален (за датчик за налягане)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": "Green Innovation",
+              "sourceRow": 268
+            }
+          ]
+        },
+        {
+          "name": "КАБЕЛНИ НАКРАЙНИЦИ И ГОФРИ",
+          "items": [
+            {
+              "name": "Гофрирана тръба за ел. проводник Ф19",
+              "sku": "20116",
+              "unit": "м.",
+              "qty": 50,
+              "unitCostExVat": 0.19429091485456304,
+              "lineCostExVat": 9.714545742728152,
+              "supplier": "ИВДА-ГЕО",
+              "sourceRow": 270
+            },
+            {
+              "name": "Тръба инсталационна гъвкава M25 320N 50m",
+              "sku": "GTPTXL25--",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 32.05595578347811,
+              "lineCostExVat": 32.05595578347811,
+              "supplier": "Schrack",
+              "sourceRow": 271
+            },
+            {
+              "name": "Кабелна обувка за силови кабели",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 10.2,
+              "lineCostExVat": 10.2,
+              "supplier": null,
+              "sourceRow": 272
+            },
+            {
+              "name": "Кабелен накрайник 8mm бял 0,5mm",
+              "sku": "BGH270800-",
+              "unit": "100 бр.",
+              "qty": 4,
+              "unitCostExVat": 0.8309515653200943,
+              "lineCostExVat": 3.323806261280377,
+              "supplier": "Schrack",
+              "sourceRow": 273
+            },
+            {
+              "name": "Кабелен накрайник 8mm сив 0,75mm",
+              "sku": "BGH270803-",
+              "unit": "100 бр.",
+              "qty": 4,
+              "unitCostExVat": 0.9665461722133313,
+              "lineCostExVat": 3.866184688853325,
+              "supplier": "Schrack",
+              "sourceRow": 274
+            },
+            {
+              "name": "Кабелен накрайник 8mm червен 1,0mm",
+              "sku": "BGH270804-",
+              "unit": "100 бр.",
+              "qty": 1,
+              "unitCostExVat": 0.9874068809661369,
+              "lineCostExVat": 0.9874068809661369,
+              "supplier": "Schrack",
+              "sourceRow": 275
+            },
+            {
+              "name": "Кабелен накрайник 8mm черен 1,5mm",
+              "sku": "BGH270808-",
+              "unit": "100 бр.",
+              "qty": 1,
+              "unitCostExVat": 0.9665461722133313,
+              "lineCostExVat": 0.9665461722133313,
+              "supplier": "Schrack",
+              "sourceRow": 276
+            },
+            {
+              "name": "Кабелен накрайник 8mm син 2,5mm",
+              "sku": "BGH270810-",
+              "unit": "100 бр.",
+              "qty": 1,
+              "unitCostExVat": 1.1751532597413885,
+              "lineCostExVat": 1.1751532597413885,
+              "supplier": "Schrack",
+              "sourceRow": 277
+            },
+            {
+              "name": "Кабелен накрайник 12mm жълт 6mm",
+              "sku": "BGH270818-",
+              "unit": "100 бр.",
+              "qty": 1,
+              "unitCostExVat": 2.7675206945388915,
+              "lineCostExVat": 2.7675206945388915,
+              "supplier": "Schrack",
+              "sourceRow": 278
+            }
+          ]
+        },
+        {
+          "name": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+          "items": [
+            {
+              "name": "Проводник 500V 0,5mm бял",
+              "sku": "XC01040107",
+              "unit": "100 м.",
+              "qty": 0.045,
+              "unitCostExVat": 11.230014878593742,
+              "lineCostExVat": 0.5053506695367184,
+              "supplier": "Schrack",
+              "sourceRow": 280
+            },
+            {
+              "name": "Проводник 500V 0,5mm син",
+              "sku": "XC01040112",
+              "unit": "100 м.",
+              "qty": 0.13,
+              "unitCostExVat": 11.111804195661177,
+              "lineCostExVat": 1.444534545435953,
+              "supplier": "Schrack",
+              "sourceRow": 281
+            },
+            {
+              "name": "Проводник 500V 0,5mm червен",
+              "sku": "XC01040111",
+              "unit": "100 м.",
+              "qty": 0.23,
+              "unitCostExVat": 11.230014878593742,
+              "lineCostExVat": 2.5829034220765608,
+              "supplier": "Schrack",
+              "sourceRow": 282
+            },
+            {
+              "name": "Проводник 500V 0,5mm кафяв",
+              "sku": "XC01040103",
+              "unit": "100 м.",
+              "qty": 0.145,
+              "unitCostExVat": 11.111804195661177,
+              "lineCostExVat": 1.6112116083708705,
+              "supplier": "Schrack",
+              "sourceRow": 283
+            },
+            {
+              "name": "Проводник 500V 0,5mm жълт",
+              "sku": "XC01040110",
+              "unit": "100 м.",
+              "qty": 0.2,
+              "unitCostExVat": 11.230014878593742,
+              "lineCostExVat": 2.2460029757187487,
+              "supplier": "Schrack",
+              "sourceRow": 284
+            },
+            {
+              "name": "Проводник 500V 0,5mm зелен",
+              "sku": "XC01040109",
+              "unit": "100 м.",
+              "qty": 0.08,
+              "unitCostExVat": 11.230014878593742,
+              "lineCostExVat": 0.8984011902874994,
+              "supplier": "Schrack",
+              "sourceRow": 285
+            },
+            {
+              "name": "Проводник 500V 0,5mm виолетов",
+              "sku": "XC01040106",
+              "unit": "100 м.",
+              "qty": 0.08,
+              "unitCostExVat": 11.230014878593742,
+              "lineCostExVat": 0.8984011902874994,
+              "supplier": "Schrack",
+              "sourceRow": 286
+            },
+            {
+              "name": "Проводник 500V 0,75mm бял",
+              "sku": "XC01040207",
+              "unit": "100 м.",
+              "qty": 0,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 0,
+              "supplier": "Schrack",
+              "sourceRow": 287
+            },
+            {
+              "name": "Проводник 500V 0,75mm черен",
+              "sku": "XC01040201",
+              "unit": "100 м.",
+              "qty": 0.16,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 2.345856234948845,
+              "supplier": "Schrack",
+              "sourceRow": 288
+            },
+            {
+              "name": "Проводник 500V 0,75mm син",
+              "sku": "XC01040212",
+              "unit": "100 м.",
+              "qty": 0.14,
+              "unitCostExVat": 14.164421243155079,
+              "lineCostExVat": 1.9830189740417112,
+              "supplier": "Schrack",
+              "sourceRow": 289
+            },
+            {
+              "name": "Проводник 500V 0,75mm червен",
+              "sku": "XC01040211",
+              "unit": "100 м.",
+              "qty": 0.14,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 2.0526242055802397,
+              "supplier": "Schrack",
+              "sourceRow": 290
+            },
+            {
+              "name": "Проводник 500V 0,75mm кафяв",
+              "sku": "XC01040203",
+              "unit": "100 м.",
+              "qty": 0,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 0,
+              "supplier": "Schrack",
+              "sourceRow": 291
+            },
+            {
+              "name": "Проводник 500V 0,75mm жълт",
+              "sku": "XC01040210",
+              "unit": "100 м.",
+              "qty": 0.16,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 2.345856234948845,
+              "supplier": "Schrack",
+              "sourceRow": 292
+            },
+            {
+              "name": "Проводник 500V 0,75mm зелен",
+              "sku": "XC01040209",
+              "unit": "100 м.",
+              "qty": 0,
+              "unitCostExVat": 14.661601468430282,
+              "lineCostExVat": 0,
+              "supplier": "Schrack",
+              "sourceRow": 293
+            },
+            {
+              "name": "Кабел S/FTP",
+              "sku": "HSKP423HB5",
+              "unit": "100 м.",
+              "qty": 0.15,
+              "unitCostExVat": 79.096854021055,
+              "lineCostExVat": 11.864528103158248,
+              "supplier": "Schrack",
+              "sourceRow": 294
+            }
+          ]
+        },
+        {
+          "name": "Кабелни канали",
+          "items": [
+            {
+              "name": "Стенна конзола 90x610mm 2,5kN",
+              "sku": "KTA 600",
+              "unit": "бр.",
+              "qty": 15,
+              "unitCostExVat": 6.017905441679491,
+              "lineCostExVat": 90.26858162519237,
+              "supplier": "НИДАКС",
+              "sourceRow": 296
+            },
+            {
+              "name": "Окачвач, широчина 100mm 0,2kN",
+              "sku": "REBI 60.100 DV",
+              "unit": "бр.",
+              "qty": 15,
+              "unitCostExVat": 1.5236498059647312,
+              "lineCostExVat": 22.85474708947097,
+              "supplier": "НИДАКС",
+              "sourceRow": 297
+            },
+            {
+              "name": "Окачвач, широчина 200mm 0,2kN",
+              "sku": "REBI 60.200 DV",
+              "unit": "бр.",
+              "qty": 15,
+              "unitCostExVat": 1.9377962297336682,
+              "lineCostExVat": 29.066943446005023,
+              "supplier": "НИДАКС",
+              "sourceRow": 298
+            },
+            {
+              "name": "Капак за кабелна скара/стълба с лайстна 102х3000mm t=0,75mm със заключване",
+              "sku": "RDV 100",
+              "unit": "м.",
+              "qty": 2,
+              "unitCostExVat": 2.955267073314143,
+              "lineCostExVat": 5.910534146628286,
+              "supplier": "НИДАКС",
+              "sourceRow": 299
+            },
+            {
+              "name": "Капак за кабелна скара/стълба с лайстна 202х3000mm t=0,75mm със заключване",
+              "sku": "RDV 200",
+              "unit": "м.",
+              "qty": 4.5,
+              "unitCostExVat": 4.253948451552538,
+              "lineCostExVat": 19.14276803198642,
+              "supplier": "НИДАКС",
+              "sourceRow": 300
+            },
+            {
+              "name": "Капак за ъгъл 90° за кабелна скара широчина 105,5mm CITO",
+              "sku": "RESCD 100 S",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 4.985095841663131,
+              "lineCostExVat": 19.940383366652522,
+              "supplier": "НИДАКС",
+              "sourceRow": 301
+            },
+            {
+              "name": "Кабелна скара перфорирана с интегриран съединител 60х100х3000mm CITO",
+              "sku": "RLVC 60.100",
+              "unit": "м.",
+              "qty": 4,
+              "unitCostExVat": 4.320416396108046,
+              "lineCostExVat": 17.281665584432183,
+              "supplier": "НИДАКС",
+              "sourceRow": 302
+            },
+            {
+              "name": "Кабелна скара перфорирана с интегриран съединител, 60х200х3000mm CITO",
+              "sku": "RLVC 60.200",
+              "unit": "м.",
+              "qty": 5,
+              "unitCostExVat": 5.603759017910555,
+              "lineCostExVat": 28.018795089552775,
+              "supplier": "НИДАКС",
+              "sourceRow": 303
+            },
+            {
+              "name": "Кабелна стълба на 100мм с капак",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 4.5,
+              "lineCostExVat": 4.5,
+              "supplier": null,
+              "sourceRow": 304
+            },
+            {
+              "name": "Кабелна стълба 60x200x3000mm t=1,5mm",
+              "sku": "KL 60.203/3",
+              "unit": "м.",
+              "qty": 4.5,
+              "unitCostExVat": 8.881139976378316,
+              "lineCostExVat": 39.965129893702425,
+              "supplier": "НИДАКС",
+              "sourceRow": 305
+            },
+            {
+              "name": "Редуцираща/затваряща/ъглова планка за кабелни скари 60х100mm",
+              "sku": "RAW 60.100",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 2.1832163327078526,
+              "lineCostExVat": 2.1832163327078526,
+              "supplier": "НИДАКС",
+              "sourceRow": 306
+            },
+            {
+              "name": "T-образно разклонение за кабелна скар, 60х152mm с неперфорирани бордове CITO",
+              "sku": "RTAC 60.150 S",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 6.3962614337646935,
+              "lineCostExVat": 25.585045735058774,
+              "supplier": "НИДАКС",
+              "sourceRow": 307
+            },
+            {
+              "name": "T-образно разклонение за кабелна скара 60х202mm с неперфорирани бордове CITO",
+              "sku": "RTAC 60.200 S",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 6.682584887234576,
+              "lineCostExVat": 13.365169774469152,
+              "supplier": "НИДАКС",
+              "sourceRow": 308
+            },
+            {
+              "name": "T-разклонение за кабелна скара 60х202mm с неперфорирани бордове CITO",
+              "sku": "RTSC 60.200 S",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 16.05456506956126,
+              "lineCostExVat": 16.05456506956126,
+              "supplier": "НИДАКС",
+              "sourceRow": 309
+            },
+            {
+              "name": "Фуния за кабелна скара напречна 60х150mm",
+              "sku": "RTQ 60.150",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 38.30598773922069,
+              "lineCostExVat": 38.30598773922069,
+              "supplier": "НИДАКС",
+              "sourceRow": 310
+            },
+            {
+              "name": "Фуния за кабелна скара напречна 60х200mm",
+              "sku": "RTQ 60.200",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 39.09849015507483,
+              "lineCostExVat": 117.29547046522448,
+              "supplier": "НИДАКС",
+              "sourceRow": 311
+            },
+            {
+              "name": "Вертканел ъгъл понижаващ 60х152mm с неперфориран борд",
+              "sku": "RFD 60.150",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 16.075016744809112,
+              "lineCostExVat": 32.150033489618224,
+              "supplier": "НИДАКС",
+              "sourceRow": 312
+            },
+            {
+              "name": "Вертканел ъгъл понижаващ 60х202mm с неперфориран борд",
+              "sku": "RFD 60.200",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 16.739696190364196,
+              "lineCostExVat": 16.739696190364196,
+              "supplier": "НИДАКС",
+              "sourceRow": 313
+            },
+            {
+              "name": "Ъгъл 90° за кабелна скара 60х202mm с неперфорирани бордове CITO",
+              "sku": "RESC 60.200 S",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 8.906704570438126,
+              "lineCostExVat": 26.72011371131438,
+              "supplier": "НИДАКС",
+              "sourceRow": 314
+            },
+            {
+              "name": "С-профил, шлиц 16 mm, 30x15x3000mm, перфорирана",
+              "sku": "2970/3 SL",
+              "unit": "бр.",
+              "qty": 3,
+              "unitCostExVat": 2.101409631716458,
+              "lineCostExVat": 6.304228895149374,
+              "supplier": "НИДАКС",
+              "sourceRow": 315
+            },
+            {
+              "name": "Болт с гладка глава в комплект с широкопола гайка M6х12mm",
+              "sku": "FLM 6X12",
+              "unit": "бр.",
+              "qty": 50,
+              "unitCostExVat": 0.08180670099139496,
+              "lineCostExVat": 4.090335049569748,
+              "supplier": "НИДАКС",
+              "sourceRow": 316
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Пречистване на вода",
+      "groups": [
+        {
+          "name": "Основни части",
+          "items": [
+            {
+              "name": "Water treatment system APRO-MCR-500-DI cabinet",
+              "sku": "218177",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 6230,
+              "lineCostExVat": 6230,
+              "supplier": "Аквафор",
+              "sourceRow": 318
+            },
+            {
+              "name": "Допълнителна колона",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 0,
+              "unitCostExVat": 0,
+              "lineCostExVat": 0,
+              "supplier": "",
+              "sourceRow": 319
+            },
+            {
+              "name": "Delivery - Water treatment system",
+              "sku": "512864",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 350,
+              "lineCostExVat": 350,
+              "supplier": "Аквафор",
+              "sourceRow": 320
+            },
+            {
+              "name": "Conductivity UPW HYG G1/2",
+              "sku": "LDL101",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 620.48,
+              "lineCostExVat": 620.48,
+              "supplier": "ifm",
+              "sourceRow": 321
+            },
+            {
+              "name": "ADAPT G1/2-WELDING FOR PIPE",
+              "sku": "E43301",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 24.5,
+              "lineCostExVat": 24.5,
+              "supplier": "ifm",
+              "sourceRow": 322
+            },
+            {
+              "name": "Shipping ifm",
+              "sku": "7835454",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 40,
+              "lineCostExVat": 40,
+              "supplier": "ifm",
+              "sourceRow": 323
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Други",
+      "groups": [
+        {
+          "name": "КОМПОНЕНТИ",
+          "items": [
+            {
+              "name": "20' Контейнер MCDU3039129",
+              "sku": "1324",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 3527.9139802539075,
+              "lineCostExVat": 3527.9139802539075,
+              "supplier": "СИТИ СКЛАД",
+              "sourceRow": 326
+            },
+            {
+              "name": "Осветително тяло овално 100W 1XE27 G FILO 1V EEx",
+              "sku": "831172Ex",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 107.491448643287,
+              "lineCostExVat": 429.965794573148,
+              "supplier": "Мерком",
+              "sourceRow": 327
+            },
+            {
+              "name": "Liquid drainer SA-61 DN25 10 BAR",
+              "sku": "703280105014",
+              "unit": "бр.",
+              "qty": 2,
+              "unitCostExVat": 429.99647208601976,
+              "lineCostExVat": 859.9929441720395,
+              "supplier": "AYVAZ",
+              "sourceRow": 328
+            },
+            {
+              "name": "Топлообменник HEXONIC H2 K FF.PRO.SS",
+              "sku": "01100003",
+              "unit": "бр.",
+              "qty": 4,
+              "unitCostExVat": 780.0013293588911,
+              "lineCostExVat": 3120.0053174355644,
+              "supplier": "АПОГЕЙ 99 ООД",
+              "sourceRow": 329
+            },
+            {
+              "name": "EAS.HK 191 Chiller.V1.EC.MBO",
+              "sku": "0",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 6077.470945838852,
+              "lineCostExVat": 6077.470945838852,
+              "supplier": "ERACO",
+              "sourceRow": 330
+            },
+            {
+              "name": "Охладител - TD80W/HS-114/GL11/2.0/8/DN25/S/B",
+              "sku": "0",
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 4632.81,
+              "lineCostExVat": 4632.81,
+              "supplier": "Transtherm Cooling Industries ltd",
+              "sourceRow": 331
+            }
+          ]
+        },
+        {
+          "name": "КОНСУМАТИВИ",
+          "items": [
+            {
+              "name": "Калиева основа *2",
+              "sku": null,
+              "unit": "кг.",
+              "qty": 450,
+              "unitCostExVat": 7.669378217943278,
+              "lineCostExVat": 3451.220198074475,
+              "supplier": "Валерус",
+              "sourceRow": 333
+            },
+            {
+              "name": "Питейна вода",
+              "sku": null,
+              "unit": "м3",
+              "qty": 25,
+              "unitCostExVat": 1.759,
+              "lineCostExVat": 43.974999999999994,
+              "supplier": "Софийска вода",
+              "sourceRow": 334
+            }
+          ]
+        },
+        {
+          "name": "ДРУГИ УСЛУГИ",
+          "items": [
+            {
+              "name": "Рязане на метал (НИРСТРОЙ)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 20.45,
+              "lineCostExVat": 20.45,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 336
+            },
+            {
+              "name": "Транспорт на метал (НИРСТРОЙ)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 16.66,
+              "lineCostExVat": 16.66,
+              "supplier": "НИРСТРОЙ",
+              "sourceRow": 337
+            },
+            {
+              "name": "Транспорт контейнер (Шапкаров)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 997,
+              "lineCostExVat": 997,
+              "supplier": "Иван Шапкаров 2016",
+              "sourceRow": 338
+            },
+            {
+              "name": "Транспорт 20' контейнер (ФРИЛАЙН)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 138.048807922979,
+              "lineCostExVat": 138.048807922979,
+              "supplier": "ФРИЛАЙН",
+              "sourceRow": 339
+            },
+            {
+              "name": "Транспорт Green Power + митнически услуги",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 880,
+              "lineCostExVat": 880,
+              "supplier": "Green Power",
+              "sourceRow": 340
+            },
+            {
+              "name": "Митнически услуги (Suzhou)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 88,
+              "lineCostExVat": 88,
+              "supplier": "Планет Експрес",
+              "sourceRow": 341
+            },
+            {
+              "name": "Авиейшън Сървисиз България (Suzhou)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 175.3,
+              "lineCostExVat": 175.3,
+              "supplier": "Авиейшън Сервисиз Б-я",
+              "sourceRow": 342
+            },
+            {
+              "name": "Авиейшън Сървисиз България (Green Power)",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 324.41,
+              "lineCostExVat": 324.41,
+              "supplier": "Авиейшън Сервисиз Б-я",
+              "sourceRow": 343
+            },
+            {
+              "name": "Доставка Schubert & Salzer",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 150.9998312736792,
+              "lineCostExVat": 150.9998312736792,
+              "supplier": "Schubert & Salzer",
+              "sourceRow": 344
+            },
+            {
+              "name": "Доставка ADEV SRL",
+              "sku": null,
+              "unit": "бр.",
+              "qty": 1,
+              "unitCostExVat": 135,
+              "lineCostExVat": 135,
+              "supplier": "ADEV SRL",
+              "sourceRow": 345
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "modules": 8,
+    "subgroups": 30,
+    "items": 310,
+    "itemsWithQty": 282,
+    "totalExVat": 223986.93842599844
+  }
+}

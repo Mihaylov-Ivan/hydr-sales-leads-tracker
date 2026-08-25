@@ -35,6 +35,12 @@ import {
   isUserOwnedBomSourceKey,
   listBomsWithLines,
 } from "@/lib/warehouse-bom";
+import {
+  buildManufacturingProjectCosts,
+  buildManufacturingSeriesSizeStats,
+  formatSystemSizeKw,
+} from "@/lib/manufacturing-costs";
+import { SEBESTOYNOST_PROJECT_NAME } from "@/lib/manufacturing-bom-seed";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import CatalogItemSearchSelect from "@/components/CatalogItemSearchSelect";
 import WarehouseGroupSelect from "@/components/WarehouseGroupSelect";
@@ -161,6 +167,9 @@ export default function WarehousePage() {
     saveWarehouseBom,
     duplicateWarehouseBom,
     deleteWarehouseBom,
+    seedSebestoynostManufacturingBom,
+    manufacturingCostReferenceProjectId,
+    setManufacturingCostReferenceProjectId,
   } = useProjects();
 
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
@@ -257,7 +266,10 @@ export default function WarehousePage() {
     emptyBomDraftLine(),
   ]);
   const [bomEditError, setBomEditError] = useState<string | null>(null);
-  const [pageTab, setPageTab] = useState<"stock" | "analysis">("stock");
+  const [pageTab, setPageTab] = useState<
+    "stock" | "analysis" | "manufacturing"
+  >("stock");
+  const [seedingBom, setSeedingBom] = useState(false);
   const [lotModalMounted, setLotModalMounted] = useState(false);
 
   useEffect(() => {
@@ -357,6 +369,31 @@ export default function WarehousePage() {
     if (!p) return null;
     return buildProjectWarehouseMetrics(p.id, p.name, warehouse);
   }, [analysisProjectId, projects, warehouse]);
+
+  const manufacturingCostRows = useMemo(
+    () => buildManufacturingProjectCosts(projects, warehouse),
+    [projects, warehouse],
+  );
+
+  const manufacturingSeriesStats = useMemo(
+    () => buildManufacturingSeriesSizeStats(manufacturingCostRows),
+    [manufacturingCostRows],
+  );
+
+  const referenceMfgProject = useMemo(() => {
+    const id = manufacturingCostReferenceProjectId;
+    if (!id) return manufacturingCostRows[0] ?? null;
+    return manufacturingCostRows.find((r) => r.projectId === id) ?? null;
+  }, [manufacturingCostReferenceProjectId, manufacturingCostRows]);
+
+  const referenceMfgMetrics = useMemo(() => {
+    if (!referenceMfgProject) return null;
+    return buildProjectWarehouseMetrics(
+      referenceMfgProject.projectId,
+      referenceMfgProject.projectName,
+      warehouse,
+    );
+  }, [referenceMfgProject, warehouse]);
 
   const bomCatalog = useMemo(
     () => listBomsWithLines(warehouse),
@@ -1231,13 +1268,52 @@ export default function WarehousePage() {
           <p className="text-[11px] text-muted">
             {pageTab === "stock"
               ? "Track receipts, dedicated use, leftovers, and transfers. Materials cost moves with stock; purchase dates stay on the original buy."
-              : "Parts ordered, used, sent to Spares, and spare parts drawn into each project — with actual vs construction spend."}
+              : pageTab === "analysis"
+                ? "Parts ordered, used, sent to Spares, and spare parts drawn into each project — with actual vs construction spend."
+                : "Compare manufacture material costs by series and system size from warehouse used-material history. Pick a reference project for the latest full BOM baseline."}
           </p>
           {importMsg && (
             <p className="mt-1 text-[11px] text-teal-accent">{importMsg}</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {pageTab === "manufacturing" && (
+            <button
+              type="button"
+              disabled={seedingBom}
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    `Create/update “${SEBESTOYNOST_PROJECT_NAME}” and import the себестойност BOM as used-material history only (no on-hand stock, no cashflow expenses)? Groups/subgroups from the Excel modules will be created.`,
+                  )
+                ) {
+                  return;
+                }
+                setSeedingBom(true);
+                setImportMsg(null);
+                const res = await seedSebestoynostManufacturingBom();
+                setSeedingBom(false);
+                if (!res.ok) {
+                  setImportMsg(`Seed failed: ${res.error}`);
+                  return;
+                }
+                if (res.alreadyApplied) {
+                  setImportMsg(
+                    `Sebestoynost BOM already seeded on this warehouse (project ${res.projectId.slice(0, 8)}…).`,
+                  );
+                  return;
+                }
+                setImportMsg(
+                  `Seeded ${res.stats.consumedLines} used components · ${res.stats.modules} modules · ${res.stats.subgroups} subgroups · matched ${res.stats.itemsMatched} / created ${res.stats.itemsCreated} catalog items · total ${formatMoney(res.stats.totalIncVat)} (inc VAT)` +
+                    (res.projectCreated ? " · example project created" : ""),
+                );
+                setPageTab("manufacturing");
+              }}
+              className="rounded-lg border border-teal-accent/40 bg-teal-soft px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-deep hover:border-teal-accent disabled:opacity-50"
+            >
+              {seedingBom ? "Seeding…" : "Seed 500kW Z-Series BOM"}
+            </button>
+          )}
           {pageTab === "stock" && (
             <button
               type="button"
@@ -1362,6 +1438,7 @@ export default function WarehousePage() {
           [
             { id: "stock" as const, label: "Stock" },
             { id: "analysis" as const, label: "Analysis" },
+            { id: "manufacturing" as const, label: "Manufacturing Costs" },
           ] as const
         ).map((t) => (
           <button
@@ -3232,6 +3309,288 @@ export default function WarehousePage() {
           </>
         )}
       </section>
+      )}
+
+      {pageTab === "manufacturing" && (
+        <section className="space-y-4">
+          <div className="rounded-lg border border-line bg-panel p-3">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wide text-deep">
+                  Manufacturing material costs
+                </h2>
+                <p className="mt-0.5 max-w-2xl text-[10px] text-muted">
+                  Aggregates warehouse components that were used on each
+                  project, grouped by series and system size. Seed the
+                  себестойност workbook as history-only used materials for{" "}
+                  {SEBESTOYNOST_PROJECT_NAME} to establish a baseline.
+                </p>
+              </div>
+              <div className="min-w-[220px]">
+                <label className={labelCls}>
+                  Reference project (latest full BOM)
+                </label>
+                <select
+                  className={inputCls}
+                  value={manufacturingCostReferenceProjectId ?? ""}
+                  onChange={(e) =>
+                    setManufacturingCostReferenceProjectId(
+                      e.target.value || null,
+                    )
+                  }
+                >
+                  <option value="">Auto (first with used materials)</option>
+                  {manufacturingCostRows.map((r) => (
+                    <option key={r.projectId} value={r.projectId}>
+                      {r.projectName} · {r.series} ·{" "}
+                      {formatSystemSizeKw(r.sizeKw)} ·{" "}
+                      {formatMoney(r.totalCostIncVat)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {referenceMfgProject ? (
+              <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  {
+                    label: "Reference project",
+                    value: referenceMfgProject.projectName,
+                    sub: `${referenceMfgProject.series} · ${formatSystemSizeKw(referenceMfgProject.sizeKw)}`,
+                  },
+                  {
+                    label: "Components used",
+                    value: String(referenceMfgProject.componentCount),
+                    sub: `${formatQty(referenceMfgProject.usedQty)} qty`,
+                  },
+                  {
+                    label: "Material cost (inc VAT)",
+                    value: formatMoney(referenceMfgProject.totalCostIncVat),
+                    sub: "Used materials",
+                  },
+                  {
+                    label: "Construction cost",
+                    value: formatMoney(
+                      referenceMfgProject.constructionCostIncVat,
+                    ),
+                    sub: "Excl. spare-sourced use",
+                  },
+                ].map((k) => (
+                  <div
+                    key={k.label}
+                    className="rounded-lg border border-line bg-surface px-3 py-2"
+                  >
+                    <div className="text-[9px] font-semibold uppercase tracking-wide text-muted">
+                      {k.label}
+                    </div>
+                    <div className="mt-0.5 text-sm font-bold text-ink">
+                      {k.value}
+                    </div>
+                    <div className="text-[10px] text-muted">{k.sub}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mb-3 text-[11px] text-muted">
+                No used-material history yet. Seed the 500kW Z-Series BOM or
+                consume stock on a project.
+              </p>
+            )}
+
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+              By series &amp; system size
+            </h3>
+            {manufacturingSeriesStats.length === 0 ? (
+              <p className="text-[11px] text-muted">No statistics yet.</p>
+            ) : (
+              <div className="overflow-x-auto rounded border border-line">
+                <table className="w-full min-w-[720px] border-collapse text-left text-[11px]">
+                  <thead className="bg-surface text-[9px] uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Series</th>
+                      <th className="px-2 py-1.5 font-semibold">Size</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Projects
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Components
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Avg cost
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Min
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Max
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manufacturingSeriesStats.map((s) => (
+                      <tr
+                        key={s.key}
+                        className="border-t border-line/70 hover:bg-surface/80"
+                      >
+                        <td className="px-2 py-1.5 font-medium text-ink">
+                          {s.series}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {formatSystemSizeKw(s.sizeKw)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {s.projectCount}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {s.totalComponents}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                          {formatMoney(s.avgCostIncVat)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatMoney(s.minCostIncVat)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {formatMoney(s.maxCostIncVat)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-line bg-panel p-3">
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+              Projects with used materials
+            </h3>
+            {manufacturingCostRows.length === 0 ? (
+              <p className="text-[11px] text-muted">No projects yet.</p>
+            ) : (
+              <div className="overflow-x-auto rounded border border-line">
+                <table className="w-full min-w-[800px] border-collapse text-left text-[11px]">
+                  <thead className="bg-surface text-[9px] uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Project</th>
+                      <th className="px-2 py-1.5 font-semibold">Series</th>
+                      <th className="px-2 py-1.5 font-semibold">Size</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Components
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Used qty
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Total cost
+                      </th>
+                      <th className="px-2 py-1.5 font-semibold">Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manufacturingCostRows.map((r) => {
+                      const isRef =
+                        (manufacturingCostReferenceProjectId ||
+                          manufacturingCostRows[0]?.projectId) === r.projectId;
+                      return (
+                        <tr
+                          key={r.projectId}
+                          className={`border-t border-line/70 hover:bg-surface/80 ${
+                            isRef ? "bg-teal-soft/40" : ""
+                          }`}
+                        >
+                          <td className="px-2 py-1.5 font-medium text-ink">
+                            {r.projectName}
+                          </td>
+                          <td className="px-2 py-1.5">{r.series}</td>
+                          <td className="px-2 py-1.5">
+                            {formatSystemSizeKw(r.sizeKw)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {r.componentCount}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {formatQty(r.usedQty)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                            {formatMoney(r.totalCostIncVat)}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setManufacturingCostReferenceProjectId(
+                                  r.projectId,
+                                )
+                              }
+                              className={`rounded border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                                isRef
+                                  ? "border-teal-accent bg-teal-soft text-deep"
+                                  : "border-line text-muted hover:border-teal-accent hover:text-ink"
+                              }`}
+                            >
+                              {isRef ? "Selected" : "Use as latest"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {referenceMfgMetrics && referenceMfgMetrics.lines.length > 0 && (
+            <div className="rounded-lg border border-line bg-panel p-3">
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+                Reference BOM components — {referenceMfgProject?.projectName}
+              </h3>
+              <div className="overflow-x-auto rounded border border-line">
+                <table className="w-full min-w-[720px] border-collapse text-left text-[11px]">
+                  <thead className="bg-surface text-[9px] uppercase tracking-wide text-muted">
+                    <tr>
+                      <th className="px-2 py-1.5 font-semibold">Component</th>
+                      <th className="px-2 py-1.5 font-semibold">SKU</th>
+                      <th className="px-2 py-1.5 font-semibold">Unit</th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Used qty
+                      </th>
+                      <th className="px-2 py-1.5 text-right font-semibold">
+                        Used value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {referenceMfgMetrics.lines
+                      .filter((l) => l.usedQty > 0)
+                      .map((l) => (
+                        <tr
+                          key={l.itemId}
+                          className="border-t border-line/70 hover:bg-surface/80"
+                        >
+                          <td className="px-2 py-1.5 font-medium text-ink">
+                            {l.itemName}
+                          </td>
+                          <td className="px-2 py-1.5 text-muted">
+                            {l.sku || "—"}
+                          </td>
+                          <td className="px-2 py-1.5">{l.unit}</td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">
+                            {formatQty(l.usedQty)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                            {formatMoney(l.usedValue)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

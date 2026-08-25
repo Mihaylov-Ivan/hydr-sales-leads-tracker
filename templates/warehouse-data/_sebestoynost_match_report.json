@@ -1,0 +1,2181 @@
+{
+  "total": 310,
+  "matchedSku": 0,
+  "matchedName": 112,
+  "matchedFuzzy": 38,
+  "unmatchedCount": 160,
+  "matches": [
+    {
+      "excel": "Лист неръждаема стомана 316L 2500х1250х5",
+      "sku": "193101",
+      "how": "name",
+      "wh": "Лист неръждаема стомана 316L 2500х1250х5",
+      "whSku": null
+    },
+    {
+      "excel": "Sealing Gasket Modified PTFE 1060х900х5 (+транспорт) (+мито 6,5%)",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Sealing Gasket Modified PTFE 1060х900х5",
+      "whSku": null
+    },
+    {
+      "excel": "Гумен лист 5/1200мм EPDM/",
+      "sku": null,
+      "how": "name",
+      "wh": "Гумен лист 5/1200мм EPDM/",
+      "whSku": null
+    },
+    {
+      "excel": "Тефлонов лист 1000х1000х1",
+      "sku": "SKU0000000427",
+      "how": "fuzzy",
+      "wh": "Тефлонов лист 1000х1000х1.",
+      "whSku": null
+    },
+    {
+      "excel": "Ринг гайка, DIN 582, C15, vZn, M 24",
+      "sku": "00582 0001 24",
+      "how": "name",
+      "wh": "Ринг гайка, DIN 582, C15, vZn, M 24",
+      "whSku": null
+    },
+    {
+      "excel": "Шпилка М56х4, 8.8, черна L=2000mm",
+      "sku": null,
+      "how": "name",
+      "wh": "Шпилка М56х4, 8.8, черна L=2000mm",
+      "whSku": null
+    },
+    {
+      "excel": "Disc Spring 112х57х4mm (+транспорт) (+мито 6,5%)",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Disc Spring 112х57х4mm",
+      "whSku": null
+    },
+    {
+      "excel": "ПП тръба за т. вода Ф63/PN20",
+      "sku": "702",
+      "how": "fuzzy",
+      "wh": "ПП тръба за т. вода Ф63/PN20.",
+      "whSku": null
+    },
+    {
+      "excel": "Полиамид",
+      "sku": null,
+      "how": "name",
+      "wh": "Полиамид",
+      "whSku": null
+    },
+    {
+      "excel": "Шпилка, DIN 976, 10.9, Bl., M 16 x 2000",
+      "sku": "00975 1000 16 2000",
+      "how": "name",
+      "wh": "Шпилка, DIN 976, 10.9, Bl., M 16 x 2000",
+      "whSku": null
+    },
+    {
+      "excel": "Гайка самоосигурителна, DIN 985, 10, vZn, M16",
+      "sku": "00985 1001 16",
+      "how": "name",
+      "wh": "Гайка самоосигурителна, DIN 985, 10, vZn, M16",
+      "whSku": null
+    },
+    {
+      "excel": "Транспорт ДУНАВ-СВ (Притискаща плоча)",
+      "sku": "080155",
+      "how": "name",
+      "wh": "Транспорт ДУНАВ-СВ (Притискаща плоча)",
+      "whSku": null
+    },
+    {
+      "excel": "ВОДНО Рязане метал (Притискаща плоча 100mm)",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Водно Рязане метал (Притискаща плоча)",
+      "whSku": null
+    },
+    {
+      "excel": "Обработка на полиамид",
+      "sku": null,
+      "how": "name",
+      "wh": "Обработка на полиамид",
+      "whSku": null
+    },
+    {
+      "excel": "Опаковка (Филипекс) (за 2 палета с листа)",
+      "sku": "15000",
+      "how": "fuzzy",
+      "wh": "Опаковка (Филипекс)",
+      "whSku": null
+    },
+    {
+      "excel": "Транспорт (Филипекс)",
+      "sku": null,
+      "how": "name",
+      "wh": "Транспорт (Филипекс)",
+      "whSku": null
+    },
+    {
+      "excel": "Капа 316L заварка (609,6х3) 24\"",
+      "sku": null,
+      "how": "name",
+      "wh": "Капа 316L заварка (609,6х3) 24\"",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x35",
+      "sku": "00933 8801 6 35",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба шевна 304L (168,3х2) 6\"",
+      "sku": "073800",
+      "how": "name",
+      "wh": "Тръба шевна 304L (168,3х2) 6\"",
+      "whSku": null
+    },
+    {
+      "excel": "Гъба демистър (Wire mesh separator mono circolare 316L d.164 Sp tot 112)",
+      "sku": "0000002194",
+      "how": "fuzzy",
+      "wh": "Гъба демистър (Wire mesh separator mono circolar",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба шевна 304L (114,3х2) 4\"",
+      "sku": "073001",
+      "how": "name",
+      "wh": "Тръба шевна 304L (114,3х2) 4\"",
+      "whSku": null
+    },
+    {
+      "excel": "Molecular sieve 4A",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Dryer with molecular sieve 4A and desiccant",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба 304 50х50х4",
+      "sku": "011102-071",
+      "how": "name",
+      "wh": "Тръба 304 50х50х4",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба оребрена (25х2 - 50) 2м",
+      "sku": "А110586",
+      "how": "name",
+      "wh": "Тръба оребрена (25х2 - 50) 2м",
+      "whSku": null
+    },
+    {
+      "excel": "Тапа 304L 150LBS 1/2\"",
+      "sku": "101004",
+      "how": "name",
+      "wh": "Тапа 304L 150LBS 1/2\"",
+      "whSku": null
+    },
+    {
+      "excel": "Тапа 50х50",
+      "sku": null,
+      "how": "name",
+      "wh": "Тапа 50х50",
+      "whSku": null
+    },
+    {
+      "excel": "Тапа с отвор 50х50",
+      "sku": null,
+      "how": "name",
+      "wh": "Тапа с отвор 50х50",
+      "whSku": null
+    },
+    {
+      "excel": "Профилна тръба ЕЗ 30х30х1,5",
+      "sku": null,
+      "how": "name",
+      "wh": "Профилна тръба ЕЗ 30х30х1,5",
+      "whSku": null
+    },
+    {
+      "excel": "Профилна тръба ЕЗ 40х40х2",
+      "sku": null,
+      "how": "name",
+      "wh": "Профилна тръба ЕЗ 40х40х2",
+      "whSku": null
+    },
+    {
+      "excel": "Профилна тръба ЕЗ 50х50х2",
+      "sku": null,
+      "how": "name",
+      "wh": "Профилна тръба ЕЗ 50х50х2",
+      "whSku": null
+    },
+    {
+      "excel": "Ламарина S235 ГВ 1000х1000х1",
+      "sku": null,
+      "how": "name",
+      "wh": "Ламарина S235 ГВ 1000х1000х1",
+      "whSku": null
+    },
+    {
+      "excel": "Ламарина S235 ГВ 1000х1000х6",
+      "sku": null,
+      "how": "name",
+      "wh": "Ламарина S235 ГВ 1000х1000х6",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x70",
+      "sku": "00933 8801 6 70",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M6x",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба подложна, DIN 125, vZn, M6",
+      "sku": "00125 0001 6",
+      "how": "name",
+      "wh": "Шайба подложна, DIN 125, vZn, M6",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба пружинна, DIN 127B, vZn, M8",
+      "sku": "0012700218",
+      "how": "name",
+      "wh": "Шайба пружинна, DIN 127B, vZn, M8",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба шевна 304L (48,3х2) 1 1/2\"",
+      "sku": "071711",
+      "how": "name",
+      "wh": "Тръба шевна 304L (48,3х2) 1 1/2\"",
+      "whSku": null
+    },
+    {
+      "excel": "Тръба шевна 304L (60,3х2) 2\"",
+      "sku": "072110",
+      "how": "name",
+      "wh": "Тръба шевна 304L (60,3х2) 2\"",
+      "whSku": null
+    },
+    {
+      "excel": "Полунипел 316L 150LBS 1\"",
+      "sku": "108606",
+      "how": "name",
+      "wh": "Полунипел 316L 150LBS 1\"",
+      "whSku": null
+    },
+    {
+      "excel": "Тройник 304L заварка (48,3х2) 1 1/2\"",
+      "sku": "106508",
+      "how": "name",
+      "wh": "Тройник 304L заварка (48,3х2) 1 1/2\"",
+      "whSku": null
+    },
+    {
+      "excel": "Уплътнение CF3000 PTFE PN10/16/25/40 DN25",
+      "sku": "453986",
+      "how": "name",
+      "wh": "Уплътнение CF3000 PTFE PN10/16/25/40 DN25",
+      "whSku": null
+    },
+    {
+      "excel": "Уплътнение CF3000 PTFE PN10/16/25/40 DN40",
+      "sku": "453988",
+      "how": "name",
+      "wh": "Уплътнение CF3000 PTFE PN10/16/25/40 DN40",
+      "whSku": null
+    },
+    {
+      "excel": "Уплътнение CF3000 PTFE PN10/16/25/40 DN50",
+      "sku": "453989",
+      "how": "name",
+      "wh": "Уплътнение CF3000 PTFE PN10/16/25/40 DN50",
+      "whSku": null
+    },
+    {
+      "excel": "Фланец плосък 304 T10 PN16 DN50",
+      "sku": "102939",
+      "how": "name",
+      "wh": "Фланец плосък 304 T10 PN16 DN50",
+      "whSku": null
+    },
+    {
+      "excel": "Фланец плосък 304 T10 PN16 DN40",
+      "sku": "102938",
+      "how": "name",
+      "wh": "Фланец плосък 304 T10 PN16 DN40",
+      "whSku": null
+    },
+    {
+      "excel": "Фланец плосък 304 T8 PN16 DN25",
+      "sku": "102936",
+      "how": "name",
+      "wh": "Фланец плосък 304 T8 PN16 DN25",
+      "whSku": null
+    },
+    {
+      "excel": "Фланец плосък с резба 304L PN10/16/40 DN40x1 1/2''",
+      "sku": "951038",
+      "how": "fuzzy",
+      "wh": "Фланец плосък с резба 304L PN10/16/40 DN40x1 1/2",
+      "whSku": null
+    },
+    {
+      "excel": "ПП тръба за т. вода Ф20/PN20",
+      "sku": "697",
+      "how": "name",
+      "wh": "ПП тръба за т. вода Ф20/PN20",
+      "whSku": null
+    },
+    {
+      "excel": "Муфа PP 1\"",
+      "sku": null,
+      "how": "name",
+      "wh": "Муфа PP 1\"",
+      "whSku": null
+    },
+    {
+      "excel": "ПП тръба за т. вода Ф110",
+      "sku": null,
+      "how": "name",
+      "wh": "ПП тръба за т. вода Ф110",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x100",
+      "sku": "00933 8801 12 100",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x40",
+      "sku": "00933 8801 12 40",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12x60",
+      "sku": "00933 8801 12 60",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M12",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M16x45",
+      "sku": "00933 8801 16 45",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M16",
+      "whSku": null
+    },
+    {
+      "excel": "Гайка шестостенна, DIN 934, 8, vZn, M12",
+      "sku": "00934 8001 12",
+      "how": "name",
+      "wh": "Гайка шестостенна, DIN 934, 8, vZn, M12",
+      "whSku": null
+    },
+    {
+      "excel": "Гайка шестостенна, DIN 934, 8, vZn, M16",
+      "sku": "00934 8001 16",
+      "how": "name",
+      "wh": "Гайка шестостенна, DIN 934, 8, vZn, M16",
+      "whSku": null
+    },
+    {
+      "excel": "Тампон MGP 50x50mm M10x28",
+      "sku": "68531750",
+      "how": "name",
+      "wh": "Тампон MGP 50x50mm M10x28",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M8x25",
+      "sku": "00933 8801 8 25",
+      "how": "fuzzy",
+      "wh": "Болт с шестостенна глава, DIN 933, 8.8, vZn, M8x",
+      "whSku": null
+    },
+    {
+      "excel": "Гайка шестостенна, DIN 934, 8, vZn, M8",
+      "sku": "00934 8001 8",
+      "how": "name",
+      "wh": "Гайка шестостенна, DIN 934, 8, vZn, M8",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба подложна, DIN 125, vZn, M8",
+      "sku": "00125 0001 8",
+      "how": "name",
+      "wh": "Шайба подложна, DIN 125, vZn, M8",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба подложна, DIN 125, vZn, M12",
+      "sku": "00125 0001 12",
+      "how": "name",
+      "wh": "Шайба подложна, DIN 125, vZn, M12",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба подложна, DIN 125, vZn, M16",
+      "sku": "00125 0001 16",
+      "how": "name",
+      "wh": "Шайба подложна, DIN 125, vZn, M16",
+      "whSku": null
+    },
+    {
+      "excel": "Шайба пружинна, DIN 127B, vZn, M16",
+      "sku": "00127002116",
+      "how": "name",
+      "wh": "Шайба пружинна, DIN 127B, vZn, M16",
+      "whSku": null
+    },
+    {
+      "excel": "Права връзка 1510 15/12,5-1/2",
+      "sku": "1510 15/12,5-1/2",
+      "how": "name",
+      "wh": "Права връзка 1510 15/12,5-1/2",
+      "whSku": null
+    },
+    {
+      "excel": "Вътрешно редуциращ нипел 3/4-1/4",
+      "sku": "102108",
+      "how": "name",
+      "wh": "Вътрешно редуциращ нипел 3/4-1/4",
+      "whSku": null
+    },
+    {
+      "excel": "Крепежи - сини",
+      "sku": null,
+      "how": "name",
+      "wh": "Крепежи - сини",
+      "whSku": null
+    },
+    {
+      "excel": "Муфа 316L резбa 150LBS L33 1/2\"",
+      "sku": "101804",
+      "how": "name",
+      "wh": "Муфа 316L резбa 150LBS L33 1/2\"",
+      "whSku": null
+    },
+    {
+      "excel": "Нипел 316L шестостен 150LBS EU 1\"",
+      "sku": "100826",
+      "how": "name",
+      "wh": "Нипел 316L шестостен 150LBS EU 1\"",
+      "whSku": null
+    },
+    {
+      "excel": "Нипел 316L шестостен 1/4\"",
+      "sku": "100802",
+      "how": "name",
+      "wh": "Нипел 316L шестостен 1/4\"",
+      "whSku": null
+    },
+    {
+      "excel": "Права връзка неръждаема X1510 8/6-1/4",
+      "sku": "X1510 8/6-1/4",
+      "how": "name",
+      "wh": "Права връзка неръждаема X1510 8/6-1/4",
+      "whSku": null
+    },
+    {
+      "excel": "Температурен сензор",
+      "sku": "TA3105",
+      "how": "name",
+      "wh": "Температурен сензор",
+      "whSku": null
+    },
+    {
+      "excel": "Центробежна помпа с магнитно задвижна AISI316 1,5kW",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Центробежна помпа с магнитно задвижна AISI316 1,",
+      "whSku": null
+    },
+    {
+      "excel": "Sliding Gate Motor Valve 8038 H2",
+      "sku": "4029081",
+      "how": "name",
+      "wh": "Sliding Gate Motor Valve 8038 H2",
+      "whSku": null
+    },
+    {
+      "excel": "Sliding Gate Motor Valve 8038 О2",
+      "sku": "4029075",
+      "how": "name",
+      "wh": "Sliding Gate Motor Valve 8038 О2",
+      "whSku": null
+    },
+    {
+      "excel": "Захранване 275 kW",
+      "sku": "GA-2500A/110V-SCR6",
+      "how": "name",
+      "wh": "Захранване 275 kW",
+      "whSku": null
+    },
+    {
+      "excel": "Магнетвентил 1\"",
+      "sku": "21IH6K1V250",
+      "how": "name",
+      "wh": "Магнетвентил 1\"",
+      "whSku": null
+    },
+    {
+      "excel": "Поплавъчен нивомер тип 8181",
+      "sku": "W KSR 118332",
+      "how": "name",
+      "wh": "Поплавъчен нивомер тип 8181",
+      "whSku": null
+    },
+    {
+      "excel": "Сензор за газ H2 GS-220",
+      "sku": "GS-220.B.V.02-06/H2",
+      "how": "name",
+      "wh": "Сензор за газ H2 GS-220",
+      "whSku": null
+    },
+    {
+      "excel": "Сензор за поток (flowmeter)",
+      "sku": "SM2100",
+      "how": "name",
+      "wh": "Сензор за поток (flowmeter)",
+      "whSku": null
+    },
+    {
+      "excel": "Монтажен комплект (flowmeter)",
+      "sku": "E40240",
+      "how": "name",
+      "wh": "Монтажен комплект (flowmeter)",
+      "whSku": null
+    },
+    {
+      "excel": "Трансмитер за налягане, взривозащитен",
+      "sku": "IPS-G-403-05-I-04-D",
+      "how": "name",
+      "wh": "Трансмитер за налягане, взривозащитен",
+      "whSku": null
+    },
+    {
+      "excel": "Винкел ГВ 40х40х3",
+      "sku": null,
+      "how": "name",
+      "wh": "Винкел ГВ 40х40х3",
+      "whSku": null
+    },
+    {
+      "excel": "Ламарина S235 ГВ 1000х1000х3",
+      "sku": null,
+      "how": "name",
+      "wh": "Ламарина S235 ГВ 1000х1000х3",
+      "whSku": null
+    },
+    {
+      "excel": "DIN-релса за модулна апаратура перфорирана 2m",
+      "sku": "BK14005--A",
+      "how": "name",
+      "wh": "DIN-релса за модулна апаратура перфорирана 2m",
+      "whSku": null
+    },
+    {
+      "excel": "Бутон - stop reset",
+      "sku": null,
+      "how": "name",
+      "wh": "Бутон - stop reset",
+      "whSku": null
+    },
+    {
+      "excel": "Винтова клема 6mm сива",
+      "sku": "IK600006--",
+      "how": "name",
+      "wh": "Винтова клема 6mm сива",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен канал 40x25mm",
+      "sku": "RH229246--",
+      "how": "name",
+      "wh": "Кабелен канал 40x25mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен канал 40x40mm",
+      "sku": "RH229206--",
+      "how": "name",
+      "wh": "Кабелен канал 40x40mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен канал 60x60mm",
+      "sku": "RH229213--",
+      "how": "name",
+      "wh": "Кабелен канал 60х60mm",
+      "whSku": null
+    },
+    {
+      "excel": "Контактор 7,5kW/15A, 1NO, 230VAC",
+      "sku": "LTD01513--",
+      "how": "fuzzy",
+      "wh": "Контактор 7,5kW",
+      "whSku": null
+    },
+    {
+      "excel": "Потенциометър",
+      "sku": null,
+      "how": "name",
+      "wh": "Потенциометър",
+      "whSku": null
+    },
+    {
+      "excel": "Реле с 14 пина, 6А",
+      "sku": "PT570730--",
+      "how": "name",
+      "wh": "Реле с 14 пина, 6А",
+      "whSku": null
+    },
+    {
+      "excel": "Станция за сензор за газ GA-220",
+      "sku": "GA-220.EI.01",
+      "how": "name",
+      "wh": "Станция за сензор за газ GA-220",
+      "whSku": null
+    },
+    {
+      "excel": "Трансмитер с галванично разделяне PISO-U",
+      "sku": null,
+      "how": "name",
+      "wh": "Трансмитер с галванично разделяне PISO-U",
+      "whSku": null
+    },
+    {
+      "excel": "Цокъл за реле с 14 пина, 10А",
+      "sku": "YRS50004--",
+      "how": "name",
+      "wh": "Цокъл за реле с 14 пина, 10А",
+      "whSku": null
+    },
+    {
+      "excel": "Electrochemical Oxygen analyser: 0-5% vol. H2",
+      "sku": "OxyTrend-G-A",
+      "how": "name",
+      "wh": "Electrochemical Oxygen analyser: 0-5% vol. H2",
+      "whSku": null
+    },
+    {
+      "excel": "8866 - Thermal Comductivity Analyser 0-5% vol. H2",
+      "sku": "8866-03-16-2G-S-GF",
+      "how": "fuzzy",
+      "wh": "8866 - Thermal Comductivity Analyser 0-5% vol. H",
+      "whSku": null
+    },
+    {
+      "excel": "Control Unit with display for 8866 Thermal Conductivity Analyser",
+      "sku": "Sirius-G-LIN-000-N-N-N-EN",
+      "how": "fuzzy",
+      "wh": "Control Unit with display for 8866 Thermal Condu",
+      "whSku": null
+    },
+    {
+      "excel": "Dew Point Analyser with integral touchscreen LCD display",
+      "sku": "DP324B[A59047]",
+      "how": "fuzzy",
+      "wh": "Dew Point Analyser with integral touchscreen LCD",
+      "whSku": null
+    },
+    {
+      "excel": "Flow meter in Plexiglass for hydrogen, Scale 0,02-0,5 NL/min",
+      "sku": "A43309",
+      "how": "fuzzy",
+      "wh": "Flow meter in Plexiglass for hydrogen, Scale 0,0",
+      "whSku": null
+    },
+    {
+      "excel": "Flow meter in Plexiglass for oxygen, Scale 0,2-3 NL/min",
+      "sku": "A43311",
+      "how": "fuzzy",
+      "wh": "Flow meter in Plexiglass for oxygen, Scale 0,2-3",
+      "whSku": null
+    },
+    {
+      "excel": "Flowmeter and needle valve bracket",
+      "sku": "A26040",
+      "how": "name",
+      "wh": "Flowmeter and needle valve bracket",
+      "whSku": null
+    },
+    {
+      "excel": "Male connector 6MM SWA-1/8\" NPT",
+      "sku": "SS-6M0-1-2",
+      "how": "name",
+      "wh": "Male connector 6MM SWA-1/8\" NPT",
+      "whSku": null
+    },
+    {
+      "excel": "Bulkhead union 6mm SWA",
+      "sku": "SS-6M0-61",
+      "how": "name",
+      "wh": "Bulkhead union 6mm SWA",
+      "whSku": null
+    },
+    {
+      "excel": "Male connector 6MM SWA-1/4\" GAS-CONICO",
+      "sku": "SS-6M0-1-4RT",
+      "how": "name",
+      "wh": "Male connector 6MM SWA-1/4\" GAS-CONICO",
+      "whSku": null
+    },
+    {
+      "excel": "Male elbow 6MM SWA-1/8\" GAS-CONICO",
+      "sku": "SS-6M0-2-2RT",
+      "how": "name",
+      "wh": "Male elbow 6MM SWA-1/8\" GAS-CONICO",
+      "whSku": null
+    },
+    {
+      "excel": "Needle valve integral bonnet",
+      "sku": "0",
+      "how": "fuzzy",
+      "wh": "Needle valve",
+      "whSku": null
+    },
+    {
+      "excel": "Ball valve 3-way 40G",
+      "sku": "SS-42GXS 6mm",
+      "how": "name",
+      "wh": "Ball valve 3-way 40G",
+      "whSku": null
+    },
+    {
+      "excel": "Support kit Twin Bolted Plastic Clamp Tube 6mm",
+      "sku": "304-S1T-PP-6TM",
+      "how": "name",
+      "wh": "Support kit Twin Bolted Plastic Clamp Tube 6mm",
+      "whSku": null
+    },
+    {
+      "excel": "HO7V-K 70.00 червен",
+      "sku": "05.01.02.00100",
+      "how": "name",
+      "wh": "HO7V-K 70.00 червен",
+      "whSku": null
+    },
+    {
+      "excel": "HO7V-K 70.00 черен",
+      "sku": "05.01.02.00099",
+      "how": "name",
+      "wh": "HO7V-K 70.00 черен",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел 3х1",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабел 3х1",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел ШВПС 5х1 бял",
+      "sku": "1521",
+      "how": "name",
+      "wh": "Кабел ШВПС 5х1 бял",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел 5х2,5",
+      "sku": "0",
+      "how": "name",
+      "wh": "Кабел 5х2,5",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел ШВПС 5х6 бял",
+      "sku": "9988",
+      "how": "name",
+      "wh": "Кабел ШВПС 5х6 бял",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел 8х0,22",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабел 8х0,22",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел за температурен сензор",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабел за температурен сензор",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел сигнален (за датчик за налягане)",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабел сигнален (за датчик за налягане)",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелна обувка за силови кабели",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабелна обувка за силови кабели",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен накрайник 8mm бял 0,5mm",
+      "sku": "BGH270800-",
+      "how": "name",
+      "wh": "Кабелен накрайник 8mm бял 0,5mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен накрайник 8mm сив 0,75mm",
+      "sku": "BGH270803-",
+      "how": "name",
+      "wh": "Кабелен накрайник 8mm сив 0,75mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен накрайник 8mm червен 1,0mm",
+      "sku": "BGH270804-",
+      "how": "name",
+      "wh": "Кабелен накрайник 8mm червен 1,0mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен накрайник 8mm черен 1,5mm",
+      "sku": "BGH270808-",
+      "how": "name",
+      "wh": "Кабелен накрайник 8mm черен 1,5mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелен накрайник 8mm син 2,5mm",
+      "sku": "BGH270810-",
+      "how": "name",
+      "wh": "Кабелен накрайник 8mm син 2,5mm",
+      "whSku": null
+    },
+    {
+      "excel": "Кабел S/FTP",
+      "sku": "HSKP423HB5",
+      "how": "name",
+      "wh": "Кабел S/FTP",
+      "whSku": null
+    },
+    {
+      "excel": "Стенна конзола 90x610mm 2,5kN",
+      "sku": "KTA 600",
+      "how": "name",
+      "wh": "Стенна конзола 90x610mm 2,5kN",
+      "whSku": null
+    },
+    {
+      "excel": "Окачвач, широчина 100mm 0,2kN",
+      "sku": "REBI 60.100 DV",
+      "how": "name",
+      "wh": "Окачвач, широчина 100mm 0,2kN",
+      "whSku": null
+    },
+    {
+      "excel": "Окачвач, широчина 200mm 0,2kN",
+      "sku": "REBI 60.200 DV",
+      "how": "fuzzy",
+      "wh": "Окачвач, широчина 200mm",
+      "whSku": null
+    },
+    {
+      "excel": "Капак за кабелна скара/стълба с лайстна 102х3000mm t=0,75mm със заключване",
+      "sku": "RDV 100",
+      "how": "fuzzy",
+      "wh": "Капак за кабелна скара/стълба с лайстна 102х3000",
+      "whSku": null
+    },
+    {
+      "excel": "Капак за кабелна скара/стълба с лайстна 202х3000mm t=0,75mm със заключване",
+      "sku": "RDV 200",
+      "how": "fuzzy",
+      "wh": "Капак за кабелна скара/стълба с лайстна 202х3000",
+      "whSku": null
+    },
+    {
+      "excel": "Капак за ъгъл 90° за кабелна скара широчина 105,5mm CITO",
+      "sku": "RESCD 100 S",
+      "how": "fuzzy",
+      "wh": "Капак за ъгъл 90° за кабелна скара",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелна скара перфорирана с интегриран съединител 60х100х3000mm CITO",
+      "sku": "RLVC 60.100",
+      "how": "fuzzy",
+      "wh": "Кабелна скара перфорирана с интегриран съедините",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелна скара перфорирана с интегриран съединител, 60х200х3000mm CITO",
+      "sku": "RLVC 60.200",
+      "how": "fuzzy",
+      "wh": "Кабелна скара перфорирана с интегриран съедините",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелна стълба на 100мм с капак",
+      "sku": null,
+      "how": "name",
+      "wh": "Кабелна стълба на 100мм с капак",
+      "whSku": null
+    },
+    {
+      "excel": "Кабелна стълба 60x200x3000mm t=1,5mm",
+      "sku": "KL 60.203/3",
+      "how": "name",
+      "wh": "Кабелна стълба 60x200x3000mm t=1,5mm",
+      "whSku": null
+    },
+    {
+      "excel": "T-образно разклонение за кабелна скар, 60х152mm с неперфорирани бордове CITO",
+      "sku": "RTAC 60.150 S",
+      "how": "fuzzy",
+      "wh": "T-образно разклонение за кабелна скар, 60х152mm",
+      "whSku": null
+    },
+    {
+      "excel": "T-образно разклонение за кабелна скара 60х202mm с неперфорирани бордове CITO",
+      "sku": "RTAC 60.200 S",
+      "how": "fuzzy",
+      "wh": "T-образно разклонение за кабелна скара 60х202mm",
+      "whSku": null
+    },
+    {
+      "excel": "T-разклонение за кабелна скара 60х202mm с неперфорирани бордове CITO",
+      "sku": "RTSC 60.200 S",
+      "how": "fuzzy",
+      "wh": "T-разклонение за кабелна скара 60х202mm с неперф",
+      "whSku": null
+    },
+    {
+      "excel": "Фуния за кабелна скара напречна 60х150mm",
+      "sku": "RTQ 60.150",
+      "how": "name",
+      "wh": "Фуния за кабелна скара напречна 60х150mm",
+      "whSku": null
+    },
+    {
+      "excel": "Фуния за кабелна скара напречна 60х200mm",
+      "sku": "RTQ 60.200",
+      "how": "name",
+      "wh": "Фуния за кабелна скара напречна 60х200mm",
+      "whSku": null
+    },
+    {
+      "excel": "Вертканел ъгъл понижаващ 60х152mm с неперфориран борд",
+      "sku": "RFD 60.150",
+      "how": "fuzzy",
+      "wh": "Вертканел ъгъл понижаващ 60х152mm с неперфориран",
+      "whSku": null
+    },
+    {
+      "excel": "Вертканел ъгъл понижаващ 60х202mm с неперфориран борд",
+      "sku": "RFD 60.200",
+      "how": "fuzzy",
+      "wh": "Вертканел ъгъл понижаващ 60х202mm с неперфориран",
+      "whSku": null
+    },
+    {
+      "excel": "Ъгъл 90° за кабелна скара 60х202mm с неперфорирани бордове CITO",
+      "sku": "RESC 60.200 S",
+      "how": "fuzzy",
+      "wh": "Ъгъл 90° за кабелна скара 60х202mm с неперфорира",
+      "whSku": null
+    },
+    {
+      "excel": "С-профил, шлиц 16 mm, 30x15x3000mm, перфорирана",
+      "sku": "2970/3 SL",
+      "how": "name",
+      "wh": "С-профил, шлиц 16 mm, 30x15x3000mm, перфорирана",
+      "whSku": null
+    },
+    {
+      "excel": "Болт с гладка глава в комплект с широкопола гайка M6х12mm",
+      "sku": "FLM 6X12",
+      "how": "fuzzy",
+      "wh": "Болт с гладка глава в комплект с широкопола гайк",
+      "whSku": null
+    },
+    {
+      "excel": "Осветително тяло овално 100W 1XE27 G FILO 1V EEx",
+      "sku": "831172Ex",
+      "how": "name",
+      "wh": "Осветително тяло овално 100W 1XE27 G FILO 1V EEx",
+      "whSku": null
+    },
+    {
+      "excel": "Топлообменник HEXONIC H2 K FF.PRO.SS",
+      "sku": "01100003",
+      "how": "name",
+      "wh": "Топлообменник Hexonic H2 K FF.PRO.SS",
+      "whSku": null
+    },
+    {
+      "excel": "Калиева основа *2",
+      "sku": null,
+      "how": "fuzzy",
+      "wh": "Калиева основа",
+      "whSku": null
+    },
+    {
+      "excel": "Рязане на метал (НИРСТРОЙ)",
+      "sku": null,
+      "how": "name",
+      "wh": "Рязане на метал (НИРСТРОЙ)",
+      "whSku": null
+    },
+    {
+      "excel": "Транспорт на метал (НИРСТРОЙ)",
+      "sku": null,
+      "how": "name",
+      "wh": "Транспорт на метал (НИРСТРОЙ)",
+      "whSku": null
+    },
+    {
+      "excel": "Транспорт контейнер (Шапкаров)",
+      "sku": null,
+      "how": "name",
+      "wh": "Транспорт контейнер (Шапкаров)",
+      "whSku": null
+    }
+  ],
+  "unmatched": [
+    {
+      "name": "Черна ламарина 2010х1500х70 S355 (+ газово прерязване)",
+      "sku": null,
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Лист неръждаема стомана 316L 2500х1250х2",
+      "sku": "193311",
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 46
+    },
+    {
+      "name": "Уплътнение от експандиран тефлон ф1060хф900х0,5",
+      "sku": null,
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 282
+    },
+    {
+      "name": "Мембрани (Composite Membrane, 1*1m) (+транспорт) (+мито 6,5%)",
+      "sku": null,
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 90
+    },
+    {
+      "name": "Перфорирана ламарина LB 1000x2000x0,5; RV 2-3: 1.4404",
+      "sku": "00721431",
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 90
+    },
+    {
+      "name": "Плетена мрежа INOX AISI 316L H 1000 mm (+ транспорт)",
+      "sku": "02112004",
+      "module": "Електролизьор (500kW)",
+      "group": "Основни части",
+      "qty": 92.24
+    },
+    {
+      "name": "Гайка M56x4, 8.8",
+      "sku": null,
+      "module": "Електролизьор (500kW)",
+      "group": "КРЕПЕЖИ",
+      "qty": 20
+    },
+    {
+      "name": "Шайба подложна, DIN 125A, vZn, M56",
+      "sku": "00125 0001 56",
+      "module": "Електролизьор (500kW)",
+      "group": "КРЕПЕЖИ",
+      "qty": 0.1
+    },
+    {
+      "name": "Болт за дърво, Din 571, vZn, ф8 х 100",
+      "sku": "00571 0001 8 100",
+      "module": "Електролизьор (500kW)",
+      "group": "ПОДПОРА ПОЛИАМИД + СТОПЕР",
+      "qty": 0.12
+    },
+    {
+      "name": "Лазерно рязане (Патлиджански 500kW)",
+      "sku": null,
+      "module": "Електролизьор (500kW)",
+      "group": "УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Буферен съд 500л",
+      "sku": "450",
+      "module": "Съдове",
+      "group": "БУФЕРНИ СЪДОВЕ",
+      "qty": 2
+    },
+    {
+      "name": "Тръба шевна 316L (609,6х3) 24\"",
+      "sku": null,
+      "module": "Съдове",
+      "group": "БУФЕРНИ СЪДОВЕ",
+      "qty": 0
+    },
+    {
+      "name": "Тръба шевна 304L (88,9х2) 3\"",
+      "sku": "072702",
+      "module": "Съдове",
+      "group": "БУФЕРНИ СЪДОВЕ",
+      "qty": 0
+    },
+    {
+      "name": "Капа 304L заварка (88,9х2) 3\"",
+      "sku": "103242",
+      "module": "Съдове",
+      "group": "БУФЕРНИ СЪДОВЕ",
+      "qty": 0
+    },
+    {
+      "name": "Тръба шевна 316L (323,8х2) 12\"",
+      "sku": null,
+      "module": "Съдове",
+      "group": "ВОДНИ БАНИ",
+      "qty": 3
+    },
+    {
+      "name": "Капа 304L заварка (323.9x3) 12\"",
+      "sku": "103253",
+      "module": "Съдове",
+      "group": "ВОДНИ БАНИ",
+      "qty": 4
+    },
+    {
+      "name": "Домакинска неръждаема тел",
+      "sku": null,
+      "module": "Съдове",
+      "group": "ВОДНИ БАНИ",
+      "qty": 10
+    },
+    {
+      "name": "Гайка шестостенна, DIN 934, А2, M6",
+      "sku": "00934 9200 6",
+      "module": "Съдове",
+      "group": "ВОДНИ БАНИ",
+      "qty": 0.16
+    },
+    {
+      "name": "Капа 316L заварка (168.3x2.0) 6\"",
+      "sku": "102664",
+      "module": "Съдове",
+      "group": "ДЕМИСТРИ",
+      "qty": 10
+    },
+    {
+      "name": "Капа 316L заварка (114,3х2) 4\"",
+      "sku": "102662",
+      "module": "Съдове",
+      "group": "ОБЩИ",
+      "qty": 12
+    },
+    {
+      "name": "OxiGone 113, 0,125% Pd on AI203, 2-4 mm Beads",
+      "sku": null,
+      "module": "Съдове",
+      "group": "Каталитична колона",
+      "qty": 20
+    },
+    {
+      "name": "Тръба шевна 316L (139,7х2) 5\"",
+      "sku": "093409",
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 3.2
+    },
+    {
+      "name": "Фланец глух 316L T15 PN10 DN125",
+      "sku": "101913",
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 2
+    },
+    {
+      "name": "Капа 316L заварка (139,7х2) 5\"",
+      "sku": "102663",
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 2
+    },
+    {
+      "name": "Тръба шевна 316L (26.9x2.0) 3/4\"",
+      "sku": "091023",
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 9
+    },
+    {
+      "name": "Капа 316L заварка (26,9х2) 3/4\"",
+      "sku": "102655",
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 6
+    },
+    {
+      "name": "Патронен нагревател ф22х1510mm, 230V, 1500W, с ТД тип К 0-400C",
+      "sku": null,
+      "module": "Съдове",
+      "group": "Изсушител",
+      "qty": 6
+    },
+    {
+      "name": "Компенсатор DN40",
+      "sku": "2834 08",
+      "module": "Съдове",
+      "group": "Охладител (серпентина)",
+      "qty": 0
+    },
+    {
+      "name": "Винт самонарезен, DIN 6928 C, vZn, ф4,8х19",
+      "sku": "0692800014819",
+      "module": "Съдове",
+      "group": "Охладител (серпентина)",
+      "qty": 0
+    },
+    {
+      "name": "Zaplus axial fan with sickle blades",
+      "sku": "182429",
+      "module": "Съдове",
+      "group": "Охладител (серпентина)",
+      "qty": 0
+    },
+    {
+      "name": "Тръба шевна 304L (21.3x2) 1/2\"",
+      "sku": "070709",
+      "module": "Тръбни връзки",
+      "group": "ТРЪБИ",
+      "qty": 1.01
+    },
+    {
+      "name": "Тръба безшевна 316L 6x1.0",
+      "sku": "098050",
+      "module": "Тръбни връзки",
+      "group": "ТРЪБИ",
+      "qty": 14
+    },
+    {
+      "name": "Тръба шевна 304L (33.7x2.0) 1\"",
+      "sku": "071323",
+      "module": "Тръбни връзки",
+      "group": "ТРЪБИ",
+      "qty": 64
+    },
+    {
+      "name": "Коляно 90o 304L заварка (33,7х2) 1\"",
+      "sku": "106306",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 111
+    },
+    {
+      "name": "Коляно 90o 304L заварка (48,3х2) 1 1/2\"",
+      "sku": "106308",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 89
+    },
+    {
+      "name": "Концентричен намалител 316L SCH10 (33,7х21,3х2) 1\"-1/2\"",
+      "sku": "102702",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 2
+    },
+    {
+      "name": "Концентричен намалител 316L SCH10 (48,3х33,7х2) 1 1/2\"-1\"",
+      "sku": "102709",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 2
+    },
+    {
+      "name": "Концентричен намалител (60,3х33,7х2) 2\"-1\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 2
+    },
+    {
+      "name": "Преход 304L 1 1/2\" x 1/2\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 4
+    },
+    {
+      "name": "Тройник 316L заварка SCH40 (33,4x3,38) 1\"",
+      "sku": "103606",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 17
+    },
+    {
+      "name": "Кръст DIN11850 SERIE2 W/W 316L DN32",
+      "sku": "AB1345",
+      "module": "Тръбни връзки",
+      "group": "ФИТИНГИ ЗА ЗАВАРЯВАНЕ",
+      "qty": 2
+    },
+    {
+      "name": "Фланец плосък с резба 304L PN10/16 DN50x2''",
+      "sku": "951039",
+      "module": "Тръбни връзки",
+      "group": "ФЛАНЦИ",
+      "qty": 2
+    },
+    {
+      "name": "Фланец плосък с резба 304L PN10/16/40 DN25x1''",
+      "sku": "951036",
+      "module": "Тръбни връзки",
+      "group": "ФЛАНЦИ",
+      "qty": 6
+    },
+    {
+      "name": "Връзка PP - резба 1\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 6
+    },
+    {
+      "name": "Коляно PP 1\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 17
+    },
+    {
+      "name": "Кран сферичен ПП Ф20",
+      "sku": "815",
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 3
+    },
+    {
+      "name": "ПП скоба Ф20",
+      "sku": "950",
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 9
+    },
+    {
+      "name": "ПП тройник Ф20",
+      "sku": "738",
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 6
+    },
+    {
+      "name": "Холендър PP 1\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "ПП ЧАСТИ",
+      "qty": 5
+    },
+    {
+      "name": "Шайба пружинна, DIN 127B, vZn, M12",
+      "sku": "00127002112",
+      "module": "Тръбни връзки",
+      "group": "Крепежи",
+      "qty": 2.4400000000000004
+    },
+    {
+      "name": "Valve 2PC FULL BORE BALL VALVE 1\" PN40",
+      "sku": "2528 06",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 0
+    },
+    {
+      "name": "Valve 2PC full bore ball PN40 1 1/2''",
+      "sku": "2528 08",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 9
+    },
+    {
+      "name": "Valve 2 pieces full bore ball valve - flanged ends 1 1/2\" with GE-0 24/240V",
+      "sku": "5628 08 47",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 4
+    },
+    {
+      "name": "Valve 2 pieces full bore ball valve - flanges ends 1\"  with GE-0 24/240V",
+      "sku": "5628 06 51",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 6
+    },
+    {
+      "name": "Valve 3PC full bore ball (welded ends) 1''",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 2
+    },
+    {
+      "name": "Valve 3PC full bore ball (welded ends) 1'' with GE-0 24/240V",
+      "sku": "5637 06 51",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 4
+    },
+    {
+      "name": "Кран сферичен, G1/2'', PN64",
+      "sku": "VP 704000 1/2",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 8
+    },
+    {
+      "name": "Седлови кран (НЕРЖ. ВЕНТИЛ 316 PN40 DN40  )",
+      "sku": "957208",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 2
+    },
+    {
+      "name": "Valve 2PC full bore ball (flanges ends) 2'' with GE-1 24/240V",
+      "sku": "5628 09 52",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 2
+    },
+    {
+      "name": "Valve T3 ways ball ACT. Electric 1 1/2\"",
+      "sku": "5643E 08 52",
+      "module": "Тръбни връзки",
+      "group": "Кранове",
+      "qty": 2
+    },
+    {
+      "name": "Муфа 304L резбa 150LBS L42 1\"",
+      "sku": "101806",
+      "module": "Тръбни връзки",
+      "group": "Фитинги",
+      "qty": 2
+    },
+    {
+      "name": "Холендър 316L вътрешнa резбa 150LBS 1 1/2\"",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Фитинги",
+      "qty": 4
+    },
+    {
+      "name": "Холендър 316 PTFE М/Ж BSP 1\"",
+      "sku": "9594941",
+      "module": "Тръбни връзки",
+      "group": "Фитинги",
+      "qty": 4
+    },
+    {
+      "name": "Холендър 316L вътрешнa резбa 150LBS 1\"",
+      "sku": "101366",
+      "module": "Тръбни връзки",
+      "group": "Фитинги",
+      "qty": 2
+    },
+    {
+      "name": "Магнетвентил 1/4''",
+      "sku": "21L2K1V25",
+      "module": "Тръбни връзки",
+      "group": "Устройства",
+      "qty": 4
+    },
+    {
+      "name": "Филтър INOX 316 Фл. PN16 DN50",
+      "sku": "TH7309",
+      "module": "Тръбни връзки",
+      "group": "Устройства",
+      "qty": 2
+    },
+    {
+      "name": "Винкел 304L 25x25x2",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 0
+    },
+    {
+      "name": "Лист неръждаема стомана 316L 1000х2000х3",
+      "sku": "193211",
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 1.4
+    },
+    {
+      "name": "Профилна тръба ГВ 60х60х1,5",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 6
+    },
+    {
+      "name": "Профилна тръба ГВ 30х30х1,5",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 0
+    },
+    {
+      "name": "Профилна тръба ГВ 40х20х1,5",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 4.5
+    },
+    {
+      "name": "Профилна тръба ГВ 40х40х2",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 37
+    },
+    {
+      "name": "Шина 50х3",
+      "sku": null,
+      "module": "Тръбни връзки",
+      "group": "Метални елементи",
+      "qty": 2
+    },
+    {
+      "name": "Табло с 2 врати 1200х1200х300",
+      "sku": "WSA1212309",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "MАП AMPARO 6kA C32/1",
+      "sku": "AM617132--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "MАП AMPARO 6kA C32/3",
+      "sku": "AM617332--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "MАП AMPARO 6kA C6",
+      "sku": "AM617106--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 3
+    },
+    {
+      "name": "Виличен гребен, 3P, 1m, 10mm",
+      "sku": "BSA90113--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Винтова PЕ клема 2,5-4mm",
+      "sku": "IK622002--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Винтова клема 2,5mm синя",
+      "sku": "IK601002--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 3
+    },
+    {
+      "name": "Захранващо устройство SDR-240-24",
+      "sku": "2079",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Кабелна превръзка бяла 2,5x96mm",
+      "sku": "BGH262500-",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Клеми маркировки хор. 101-150",
+      "sku": "IK697042--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Клеми маркировки хор. 1-50",
+      "sku": "IK697040--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 3
+    },
+    {
+      "name": "Клеми маркировки хор. 151-200",
+      "sku": "IK697043--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Клеми маркировки хор. 51-100",
+      "sku": "IK697041--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Компютър LENOVO",
+      "sku": null,
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Контактор 15kW/32A, 1NO, 230VAC",
+      "sku": "LTD13213--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Контактор за DIN релса 16А",
+      "sku": "BZ325004--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Крайна секция 2,5-10mm сива",
+      "sku": "IK600210--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 7
+    },
+    {
+      "name": "Крайна секция за дву/три редова клема",
+      "sku": "IK690202--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 9
+    },
+    {
+      "name": "Крайна скоба за DIN релса, винтова",
+      "sku": "IK623001--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 30
+    },
+    {
+      "name": "Миниатюрен автоматичен прексвач MCB 10kA D10/3",
+      "sku": "AM019310--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Миниатюрен автоматичен прексвач MCB 10kA D16/3",
+      "sku": "AM019316--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Миниатюрен автоматичен прексвач MCB 10kA D25/3",
+      "sku": "AM019325--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Нулева / земна шина, 1m, 10mm",
+      "sku": "IK0200420--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Пач кабел RJ45 екраниран, Cat. 6, сив, 0,5m",
+      "sku": "H6GLG00K5G",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 3
+    },
+    {
+      "name": "Пач кабел RJ45 екраниран, Cat. 6, сив, 1m",
+      "sku": "H6GLG01K0G",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Платки (Ангел Касабов)",
+      "sku": null,
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Пружинна клема 2,5mm сива",
+      "sku": "IK660002--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 75
+    },
+    {
+      "name": "Пружинна клема триред 2,5mm",
+      "sku": "IK690001--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 20
+    },
+    {
+      "name": "Термично реле 12-16A",
+      "sku": "LTD01600--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Термично реле 24-32A",
+      "sku": "LTT13200--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Термично реле 4-6A",
+      "sku": "LTD00600--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Шина нулева/земна 1m, 25mm",
+      "sku": "IK020013--",
+      "module": "Ел. табло",
+      "group": "Основни части",
+      "qty": 2
+    },
+    {
+      "name": "Electrochemical Oxygen analyser: 0-100ppm vol. O2",
+      "sku": "OxyTrend-G-A",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "PRV-Pressure reducing valve (Wittgas)",
+      "sku": null,
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 3
+    },
+    {
+      "name": "SS 316 measuring chamber for Dew Point Analyser 1/8\" FNPT",
+      "sku": "A42339",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Нит-гайка с накат фрез. намал. гл. vZn M4/ф6х10",
+      "sku": "88418 0011 4 10",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Нит-гайка с накат фрез. намал. гл. vZn M5/ф7х12",
+      "sku": "88418 0011 5 12",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Нит-гайка с накат фрез. намал. гл. vZn M6/ф9х15",
+      "sku": "88418 0011 6 15",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.5
+    },
+    {
+      "name": "Нит-гайка с накат фрез. намал. гл. vZn M8/ф11х16",
+      "sku": "88418 0011 8 16",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.1
+    },
+    {
+      "name": "Винт с вътрешен шестостен, DIN912, А2, М6х30",
+      "sku": "00912 9200 6 30",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.5
+    },
+    {
+      "name": "Винт с вътрешен шестостен, DIN912, А2, М5х20",
+      "sku": "00912 9200 5 20",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Винт с вътрешен шестостен, DIN912, А2, М4х10",
+      "sku": "00912 9200 4 10",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Винт с вътрешен шестостен, DIN912, А2, М4х5",
+      "sku": "00912 9200 4 5",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Винт с конусна глава, DIN963, A2, M4х8",
+      "sku": "00963 9200 4 8",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Шайба с широка периферия, DIN 9021, А2, M8",
+      "sku": "09021 9200 8",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.1
+    },
+    {
+      "name": "Шайба с широка периферия, DIN 9021, А2, M5",
+      "sku": "09021 9200 5",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.3
+    },
+    {
+      "name": "Шайба с широка периферия, DIN 9021, А2, M4",
+      "sku": "09021 9200 4",
+      "module": "Газ анализ табло",
+      "group": "Основни части",
+      "qty": 0.2
+    },
+    {
+      "name": "Кабел сигнален 2х1",
+      "sku": null,
+      "module": "Кабели",
+      "group": "КАБЕЛНИ ВРЪЗКИ",
+      "qty": 100
+    },
+    {
+      "name": "Кабел ШВПС 2х0,75 бял",
+      "sku": "644",
+      "module": "Кабели",
+      "group": "КАБЕЛНИ ВРЪЗКИ",
+      "qty": 206
+    },
+    {
+      "name": "Кабел ШВПС-Б 2х0,5 бял",
+      "sku": "642",
+      "module": "Кабели",
+      "group": "КАБЕЛНИ ВРЪЗКИ",
+      "qty": 200
+    },
+    {
+      "name": "Кабел ШВПС 5х1,5 бял",
+      "sku": null,
+      "module": "Кабели",
+      "group": "КАБЕЛНИ ВРЪЗКИ",
+      "qty": 25
+    },
+    {
+      "name": "Гофрирана тръба за ел. проводник Ф19",
+      "sku": "20116",
+      "module": "Кабели",
+      "group": "КАБЕЛНИ НАКРАЙНИЦИ И ГОФРИ",
+      "qty": 50
+    },
+    {
+      "name": "Тръба инсталационна гъвкава M25 320N 50m",
+      "sku": "GTPTXL25--",
+      "module": "Кабели",
+      "group": "КАБЕЛНИ НАКРАЙНИЦИ И ГОФРИ",
+      "qty": 1
+    },
+    {
+      "name": "Кабелен накрайник 12mm жълт 6mm",
+      "sku": "BGH270818-",
+      "module": "Кабели",
+      "group": "КАБЕЛНИ НАКРАЙНИЦИ И ГОФРИ",
+      "qty": 1
+    },
+    {
+      "name": "Проводник 500V 0,5mm бял",
+      "sku": "XC01040107",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.045
+    },
+    {
+      "name": "Проводник 500V 0,5mm син",
+      "sku": "XC01040112",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.13
+    },
+    {
+      "name": "Проводник 500V 0,5mm червен",
+      "sku": "XC01040111",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.23
+    },
+    {
+      "name": "Проводник 500V 0,5mm кафяв",
+      "sku": "XC01040103",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.145
+    },
+    {
+      "name": "Проводник 500V 0,5mm жълт",
+      "sku": "XC01040110",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.2
+    },
+    {
+      "name": "Проводник 500V 0,5mm зелен",
+      "sku": "XC01040109",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.08
+    },
+    {
+      "name": "Проводник 500V 0,5mm виолетов",
+      "sku": "XC01040106",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.08
+    },
+    {
+      "name": "Проводник 500V 0,75mm бял",
+      "sku": "XC01040207",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0
+    },
+    {
+      "name": "Проводник 500V 0,75mm черен",
+      "sku": "XC01040201",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.16
+    },
+    {
+      "name": "Проводник 500V 0,75mm син",
+      "sku": "XC01040212",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.14
+    },
+    {
+      "name": "Проводник 500V 0,75mm червен",
+      "sku": "XC01040211",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.14
+    },
+    {
+      "name": "Проводник 500V 0,75mm кафяв",
+      "sku": "XC01040203",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0
+    },
+    {
+      "name": "Проводник 500V 0,75mm жълт",
+      "sku": "XC01040210",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0.16
+    },
+    {
+      "name": "Проводник 500V 0,75mm зелен",
+      "sku": "XC01040209",
+      "module": "Кабели",
+      "group": "КАБЕЛИ ЗА ЕЛ. ТАБЛО",
+      "qty": 0
+    },
+    {
+      "name": "Редуцираща/затваряща/ъглова планка за кабелни скари 60х100mm",
+      "sku": "RAW 60.100",
+      "module": "Кабели",
+      "group": "Кабелни канали",
+      "qty": 1
+    },
+    {
+      "name": "Water treatment system APRO-MCR-500-DI cabinet",
+      "sku": "218177",
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Допълнителна колона",
+      "sku": null,
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 0
+    },
+    {
+      "name": "Delivery - Water treatment system",
+      "sku": "512864",
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Conductivity UPW HYG G1/2",
+      "sku": "LDL101",
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "ADAPT G1/2-WELDING FOR PIPE",
+      "sku": "E43301",
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "Shipping ifm",
+      "sku": "7835454",
+      "module": "Пречистване на вода",
+      "group": "Основни части",
+      "qty": 1
+    },
+    {
+      "name": "20' Контейнер MCDU3039129",
+      "sku": "1324",
+      "module": "Други",
+      "group": "КОМПОНЕНТИ",
+      "qty": 1
+    },
+    {
+      "name": "Liquid drainer SA-61 DN25 10 BAR",
+      "sku": "703280105014",
+      "module": "Други",
+      "group": "КОМПОНЕНТИ",
+      "qty": 2
+    },
+    {
+      "name": "EAS.HK 191 Chiller.V1.EC.MBO",
+      "sku": "0",
+      "module": "Други",
+      "group": "КОМПОНЕНТИ",
+      "qty": 1
+    },
+    {
+      "name": "Охладител - TD80W/HS-114/GL11/2.0/8/DN25/S/B",
+      "sku": "0",
+      "module": "Други",
+      "group": "КОМПОНЕНТИ",
+      "qty": 1
+    },
+    {
+      "name": "Питейна вода",
+      "sku": null,
+      "module": "Други",
+      "group": "КОНСУМАТИВИ",
+      "qty": 25
+    },
+    {
+      "name": "Транспорт 20' контейнер (ФРИЛАЙН)",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Транспорт Green Power + митнически услуги",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Митнически услуги (Suzhou)",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Авиейшън Сървисиз България (Suzhou)",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Авиейшън Сървисиз България (Green Power)",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Доставка Schubert & Salzer",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    },
+    {
+      "name": "Доставка ADEV SRL",
+      "sku": null,
+      "module": "Други",
+      "group": "ДРУГИ УСЛУГИ",
+      "qty": 1
+    }
+  ]
+}
