@@ -1,0 +1,102 @@
+{
+  "sourceFile": "OC EGZ26-01867-1.pdf",
+  "sourceKey": "oc-egz26-01867-1",
+  "orderNumber": "EGZ26-01867-1",
+  "orderDate": "2026-08-18",
+  "supplier": "Rév Gas Industries Ltd.",
+  "buyer": "Green Innovation Jsc",
+  "projectName": "EDIBON - MH Study Lab",
+  "site": "MH",
+  "notes": "Order confirmation EGZ26-01867-1. Valve GCE H2 DIN01 17E qty forced to 4 (PDF had 2). RAL 3000 neck / RAL 9010 body.",
+  "qtyOverrides": {
+    "776060": 4
+  },
+  "lines": [
+    {
+      "sku": "A6181Q",
+      "name": "cyl LXF 1L L6X 200bar 17E/mill finish all over + EAC stamping",
+      "tvCode": "TV.874",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 73,
+      "unitCostIncVat": 73,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "776060",
+      "name": "Valve GCE H2 DIN01 17E-W21,8x1/14\" LH 200bar / H2 DIN01 25E-W21,8x1/14\" LH 200bar",
+      "tvCode": "TV.6336",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 23,
+      "unitCostIncVat": 23,
+      "vatPercent": 0,
+      "includeInWarehouse": true,
+      "qtyNote": "PDF listed 2; forced to 4 per request"
+    },
+    {
+      "sku": "P3044Z",
+      "name": "cyl LXF 3L L6X 200bar 25E/mill finish all over",
+      "tvCode": "TV.5130",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 104.83,
+      "unitCostIncVat": 104.83,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "1777015",
+      "name": "Valve GCE H2 DIN01 25E-W21,8x1/14\" LH 200bar / H2 DIN01 25E-W21,8x1/14\" LH 200bar",
+      "tvCode": "TV.2872",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 19.6,
+      "unitCostIncVat": 19.6,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "REV-KARIMA",
+      "name": "Plastic Cage W80",
+      "tvCode": "TV.3814",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 7.5,
+      "unitCostIncVat": 7.5,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "X347-CSOM_DOBOZ_NAGY",
+      "name": "Packing in box /over160mm dia/",
+      "tvCode": "TV.4857",
+      "qty": 1,
+      "unit": "pcs",
+      "unitCostExVat": 30,
+      "unitCostIncVat": 30,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "X350-SZALLITAS",
+      "name": "Transport cost (OC EGZ26-01867-1)",
+      "tvCode": "TV.5278",
+      "qty": 1,
+      "unit": "pcs",
+      "unitCostExVat": 75,
+      "unitCostIncVat": 75,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    }
+  ],
+  "skippedZeroCostLines": [
+    {
+      "sku": "X950-FEST_CSOMAG_2SZ",
+      "name": "Painting Package: 2 colors 0-10 lit",
+      "qty": 4,
+      "reason": "zero cost service package (listed twice on OC)"
+    }
+  ]
+}

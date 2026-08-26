@@ -99,6 +99,31 @@ function parseNum(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Most recent purchase lot for a catalog item (by receivedAt, then createdAt). */
+function latestLotForItem<
+  T extends {
+    itemId: string;
+    receivedAt: string;
+    createdAt: string;
+    unitCostIncVat: number;
+    unitCostExVat: number;
+    supplier?: string;
+  },
+>(lots: T[], itemId: string): T | null {
+  let best: T | null = null;
+  for (const lot of lots) {
+    if (lot.itemId !== itemId) continue;
+    if (
+      !best ||
+      lot.receivedAt > best.receivedAt ||
+      (lot.receivedAt === best.receivedAt && lot.createdAt > best.createdAt)
+    ) {
+      best = lot;
+    }
+  }
+  return best;
+}
+
 type StockRow = {
   balanceId: string;
   lotId: string;
@@ -249,6 +274,7 @@ export default function WarehousePage() {
   const [editPurchaseProjectId, setEditPurchaseProjectId] = useState("");
   const [editExpenseId, setEditExpenseId] = useState("");
   const [editQty, setEditQty] = useState("");
+  const [editQtyReceived, setEditQtyReceived] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [analysisProjectId, setAnalysisProjectId] = useState("");
   const [analysisBomId, setAnalysisBomId] = useState("");
@@ -944,6 +970,7 @@ export default function WarehousePage() {
     setEditNotes(lot.notes ?? "");
     setEditPurchaseProjectId(lot.purchaseProjectId);
     setEditExpenseId(lot.expenseId ?? "");
+    setEditQtyReceived(String(lot.qtyReceived));
     setEditQty(bal ? String(bal.qty) : "");
     if (bal) {
       setEditSite(bal.location.site);
@@ -991,6 +1018,18 @@ export default function WarehousePage() {
       return;
     }
 
+    const qtyReceived = parseNum(editQtyReceived);
+    if (qtyReceived == null || qtyReceived < 0) {
+      setEditError("Enter a valid bought (received) quantity");
+      return;
+    }
+
+    const qty = parseNum(editQty);
+    if (qty != null && qty > qtyReceived + 1e-9) {
+      setEditError("On-hand qty cannot exceed bought qty");
+      return;
+    }
+
     const bal = editBalanceId
       ? warehouse.balances.find((b) => b.id === editBalanceId)
       : undefined;
@@ -1013,13 +1052,12 @@ export default function WarehousePage() {
       }
     }
 
-    const qty = parseNum(editQty);
     if (qty != null && qty >= 0) {
       const adjusted = adjustStock({
         lotId: selectedLotId,
         location: toLoc,
         newQty: qty,
-        note: "Lot edit — qty change",
+        note: "Lot edit — on-hand qty change",
       });
       if (!adjusted.ok) {
         setEditError(adjusted.error);
@@ -1043,6 +1081,7 @@ export default function WarehousePage() {
       lotId: selectedLotId,
       itemId: editItemId,
       receivedAt: editDate,
+      qtyReceived,
       unitCostIncVat: unitInc,
       unitCostExVat: unitEx,
       label: editLabel.trim() || null,
@@ -1587,11 +1626,25 @@ export default function WarehousePage() {
                   onChange={(id) => {
                     setRecvItemId(id);
                     const it = warehouse.items.find((i) => i.id === id);
-                    if (it) {
-                      setRecvKind(it.defaultMaterialKind);
-                      setRecvGroupId(it.groupId ?? "");
-                    } else {
+                    if (!it) {
                       setRecvGroupId("");
+                      return;
+                    }
+                    setRecvKind(it.defaultMaterialKind);
+                    setRecvGroupId(it.groupId ?? "");
+                    const last = latestLotForItem(warehouse.lots, id);
+                    if (last) {
+                      setRecvInc(String(last.unitCostIncVat));
+                      setRecvEx(String(last.unitCostExVat));
+                      if (last.supplier?.trim()) {
+                        setRecvSupplier(last.supplier.trim());
+                      } else if (it.preferredSupplier?.trim()) {
+                        setRecvSupplier(it.preferredSupplier.trim());
+                      }
+                    } else {
+                      if (it.preferredSupplier?.trim()) {
+                        setRecvSupplier(it.preferredSupplier.trim());
+                      }
                     }
                   }}
                 />
@@ -2280,13 +2333,61 @@ export default function WarehousePage() {
                     />
                   </div>
                   <div>
+                    <label className={labelCls}>Bought qty (received)</label>
+                    <input
+                      className={inputCls}
+                      value={editQtyReceived}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setEditQtyReceived(raw);
+                        if (!selectedLot) return;
+                        const nextBought = parseNum(raw);
+                        const curOnHand = parseNum(editQty);
+                        if (nextBought == null || curOnHand == null) return;
+                        const prevBought = selectedLot.qtyReceived;
+                        const totalOnHand = lotQtyOnHand(
+                          warehouse.balances,
+                          selectedLot.id,
+                        );
+                        // Fully still in stock → keep all stocked
+                        if (
+                          Math.abs(totalOnHand - prevBought) < 1e-6 &&
+                          Math.abs(curOnHand - totalOnHand) < 1e-6
+                        ) {
+                          setEditQty(String(nextBought));
+                          return;
+                        }
+                        // Fully used → leave on-hand at 0 (used rises with bought)
+                        if (totalOnHand < 1e-6 && curOnHand < 1e-6) return;
+                        // Partial use → shift this line by the bought delta
+                        const delta = nextBought - prevBought;
+                        setEditQty(String(Math.max(0, curOnHand + delta)));
+                      }}
+                      placeholder="Bought"
+                    />
+                  </div>
+                  <div>
                     <label className={labelCls}>On-hand qty (this line)</label>
                     <input
                       className={inputCls}
                       value={editQty}
                       onChange={(e) => setEditQty(e.target.value)}
-                      placeholder="Qty"
+                      placeholder="On hand"
                     />
+                    {(() => {
+                      const bought = parseNum(editQtyReceived);
+                      const onHand = parseNum(editQty);
+                      if (bought == null || onHand == null) return null;
+                      const used = Math.max(0, roundMoneyDisplay(bought - onHand));
+                      return (
+                        <p className="mt-0.5 text-[9px] text-muted">
+                          Implied used on this line: {formatQty(used)} · line €{" "}
+                          {formatMoney(
+                            bought * (parseNum(editInc) ?? 0),
+                          )}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label className={labelCls}>Received date</label>

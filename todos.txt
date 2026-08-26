@@ -5,6 +5,8 @@ Update the database schema if required, ensruing the update is only additive/reo
 - Mechanism of tracking all project related expenses in the company, so they can be entered in the app.
   - debit card purchases and cash payments
 
+- add opex to all projects
+- make todo list in the app
 - analyse the daily sales report and auto add them to the projects
 - flag project (like for no actions flag, but do not pull it to the top of the proejct, just flag it) when there isnt any of the gantt chart, income, expenses, contract value, opex value or system size added for it (but only do it for projects that are hot lead or after that like comissioned). the flag label should say what is missing
 - [~] add opex value (like the contract value) for each project which is directly linked to yearly income at the date of installation complete + expense at which is 80% of the opex income (which should also be configurable for each project) for the opex works by us. These incomes and expenses should as usual be linked directly to the monthly financials section

@@ -530,6 +530,8 @@ export interface WarehouseAdjustInput {
 export interface WarehouseLotUpdateInput {
   lotId: string;
   receivedAt?: string;
+  /** Correct purchased quantity; rescales 1:1 WH expenses and envelope draws. */
+  qtyReceived?: number;
   unitCostIncVat?: number;
   unitCostExVat?: number | null;
   label?: string | null;
@@ -6659,10 +6661,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           : input.unitCostIncVat != null
             ? unitCostExFromInc(nextInc, null)
             : lot.unitCostExVat;
+      const nextQtyReceived =
+        input.qtyReceived != null && Number.isFinite(input.qtyReceived)
+          ? input.qtyReceived
+          : lot.qtyReceived;
+      if (nextQtyReceived < 0) {
+        return { ok: false, error: "Bought quantity cannot be negative" };
+      }
       const receivedAt = input.receivedAt?.trim() || lot.receivedAt;
       const costScale =
         lot.unitCostIncVat > 0 ? nextInc / lot.unitCostIncVat : 1;
       const costChanged = Math.abs(costScale - 1) > 1e-9;
+      const qtyChanged = Math.abs(nextQtyReceived - lot.qtyReceived) > 1e-9;
+      const receiptChanged = costChanged || qtyChanged;
       const cat =
         input.materialKind != null
           ? materialKindToExpense(input.materialKind)
@@ -6696,6 +6707,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         const nextLot = {
           ...l,
           itemId: nextItemId,
+          qtyReceived: nextQtyReceived,
           unitCostIncVat: roundMoney(nextInc),
           unitCostExVat: roundMoney(nextEx),
           receivedAt,
@@ -6728,6 +6740,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         lots: prev.lots.map(patchLot),
       }));
 
+      const nextLineInc = roundMoney(nextQtyReceived * nextInc);
+      const nextLineEx = roundMoney(nextQtyReceived * nextEx);
+      const oldLineInc = roundMoney(lot.qtyReceived * lot.unitCostIncVat);
+
       setProjects((prev) =>
         prev.map((p) => {
           const schedule = (p.financials.expenseSchedule ?? []).map((e) => {
@@ -6743,11 +6759,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (input.label !== undefined) {
               if (input.label?.trim()) nextExp.label = input.label.trim();
             }
-            if (costChanged) {
-              nextExp.amount = roundMoney(e.amount * costScale);
-              if (e.amountExVat != null) {
-                nextExp.amountExVat = roundMoney(e.amountExVat * costScale);
-              }
+            if (receiptChanged) {
+              nextExp.amount = nextLineInc;
+              nextExp.amountExVat = nextLineEx;
             }
             return nextExp;
           });
@@ -6766,6 +6780,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         summary: `Updated warehouse lot ${input.lotId.slice(0, 8)}`,
         payloadJson: {
           ...(costChanged ? { unitCostUpdated: true } : {}),
+          ...(qtyChanged
+            ? {
+                qtyReceived: nextQtyReceived,
+                qtyReceivedBefore: lot.qtyReceived,
+              }
+            : {}),
           ...(input.receivedAt ? { receivedAt } : {}),
           ...(input.expenseId !== undefined
             ? { expenseId: nextExpenseId ?? null }
@@ -6775,7 +6795,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             : {}),
         },
       });
-      if (costChanged) {
+      if (receiptChanged) {
         recordChangeEvent(
           {
             id: createEventId(),
@@ -6785,16 +6805,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             action: "update",
             field: "amount",
             summary: `Rescaled expenses for warehouse lot ${input.lotId.slice(0, 8)}`,
-            payloadJson: { lotId: input.lotId },
+            payloadJson: {
+              lotId: input.lotId,
+              qtyReceived: nextQtyReceived,
+              unitCostIncVat: nextInc,
+            },
           },
           {
             entityType: "expense",
             entityId: input.lotId,
             action: "update",
             field: "amount",
-            oldValue: formatValue(lot.unitCostIncVat),
-            newValue: formatValue(nextInc),
-            summary: `Lot unit cost ${formatValue(lot.unitCostIncVat)} → ${formatValue(nextInc)}`,
+            oldValue: formatValue(oldLineInc),
+            newValue: formatValue(nextLineInc),
+            summary: `Lot receipt ${lot.qtyReceived}×${formatValue(lot.unitCostIncVat)} → ${nextQtyReceived}×${formatValue(nextInc)}`,
           },
         );
       }

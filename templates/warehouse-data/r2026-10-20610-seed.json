@@ -1,0 +1,49 @@
+{
+  "sourceFile": "R2026.10.20610.pdf",
+  "sourceKey": "r2026-10-20610",
+  "documentNumber": "R2026.10.20610",
+  "documentType": "proforma-invoice",
+  "orderDate": "2026-07-31",
+  "supplier": "Schubert & Salzer Control Systems GmbH",
+  "buyer": "Green Innovation AD",
+  "projectName": "N1 - LE Power Clean H2 Production",
+  "projectId": "565a7c30-5d0d-4744-b069-a6a1ea0e4ce2",
+  "linkExpense": {
+    "id": "86e56eeb-2323-4a92-9ee8-beaed85718cc",
+    "label": "Component costs 3/10"
+  },
+  "site": "ELX",
+  "notes": "Proforma invoice R2026.10.20610 (payment in advance). Linked to planned Component costs 3/10 budget envelope.",
+  "lines": [
+    {
+      "sku": "4017727",
+      "name": "Disc DN25 equal percentage 40%, SV100, KV = 2.2 degreased",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 367.02,
+      "unitCostIncVat": 367.02,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "4107654",
+      "name": "GS2/3-sealing for body DN25 free from oil and grease",
+      "qty": 4,
+      "unit": "pcs",
+      "unitCostExVat": 16.45,
+      "unitCostIncVat": 16.45,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    },
+    {
+      "sku": "FREIGHT-UPS-R2026",
+      "name": "Freight UPS Standard (R2026.10.20610)",
+      "qty": 1,
+      "unit": "pcs",
+      "unitCostExVat": 33,
+      "unitCostIncVat": 33,
+      "vatPercent": 0,
+      "includeInWarehouse": true
+    }
+  ]
+}
