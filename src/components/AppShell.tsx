@@ -8,8 +8,8 @@ import OutstandingSidebar from "@/components/OutstandingSidebar";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // Board must stay viewport-locked; other pages scroll inside main.
-  const lockBoard = pathname === "/";
+  // Board and personal to-dos stay viewport-locked; other pages scroll inside main.
+  const lockBoard = pathname === "/" || pathname === "/todos";
   const outerScrollRef = useRef<HTMLDivElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
 

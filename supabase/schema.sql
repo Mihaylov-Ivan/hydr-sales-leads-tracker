@@ -82,6 +82,28 @@ create table if not exists public.project_todos (
   done_at timestamptz
 );
 
+create table if not exists public.personal_todos (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  status text not null default 'todo'
+    check (status in ('cancelled', 'todo', 'doing', 'done')),
+  due_date date,
+  start_date date,
+  end_date date,
+  owner_user_id text,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz,
+  cancelled_at timestamptz
+);
+
+create table if not exists public.personal_todo_comments (
+  id uuid primary key default gen_random_uuid(),
+  todo_id uuid not null references public.personal_todos (id) on delete cascade,
+  text text not null,
+  author_user_id text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.project_contacts (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
@@ -110,6 +132,12 @@ create index if not exists project_comments_project_created_idx
 
 create index if not exists project_todos_project_created_idx
   on public.project_todos (project_id, created_at);
+
+create index if not exists personal_todos_status_created_idx
+  on public.personal_todos (status, created_at);
+
+create index if not exists personal_todo_comments_todo_created_idx
+  on public.personal_todo_comments (todo_id, created_at);
 
 create index if not exists project_contacts_project_created_idx
   on public.project_contacts (project_id, created_at);
@@ -143,6 +171,8 @@ alter table public.team_members enable row level security;
 alter table public.projects enable row level security;
 alter table public.project_comments enable row level security;
 alter table public.project_todos enable row level security;
+alter table public.personal_todos enable row level security;
+alter table public.personal_todo_comments enable row level security;
 alter table public.project_contacts enable row level security;
 alter table public.project_files enable row level security;
 
@@ -173,6 +203,22 @@ create policy "anon full access"
 drop policy if exists "anon full access" on public.project_todos;
 create policy "anon full access"
   on public.project_todos
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.personal_todos;
+create policy "anon full access"
+  on public.personal_todos
+  for all
+  to anon, authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "anon full access" on public.personal_todo_comments;
+create policy "anon full access"
+  on public.personal_todo_comments
   for all
   to anon, authenticated
   using (true)

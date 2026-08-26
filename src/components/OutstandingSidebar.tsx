@@ -4,22 +4,30 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
 import {
+  PersonalTodo,
   Project,
   ProjectTodo,
   TodoKind,
   TODO_KIND_LABELS,
   addDays,
+  comparePersonalTodosByDeadline,
   compareTodosByDeadline,
   emailReminderDeltaDays,
   isEmailReminderDue,
+  isPersonalTodoOpen,
   nextEmailReminderDate,
+  personalTodoSortDate,
   todayDate,
 } from "@/lib/types";
 
 const EXPANDED_KEY = "hydr-outstanding-expanded";
 const SORT_KEY = "hydr-outstanding-sort";
+const PERSONAL_SORT_KEY = "hydr-outstanding-personal-sort";
+const SCOPE_KEY = "hydr-outstanding-scope";
 
 type SortMode = "by-project" | "by-deadline";
+type ScopeMode = "project" | "personal";
+type PersonalSortMode = "by-owner" | "by-deadline";
 
 const KIND_SHORT: Record<TodoKind, string> = {
   question: "Q",
@@ -89,6 +97,25 @@ function readSortMode(): SortMode {
     return v === "by-deadline" ? "by-deadline" : "by-project";
   } catch {
     return "by-project";
+  }
+}
+
+function readScopeMode(): ScopeMode {
+  try {
+    return window.localStorage.getItem(SCOPE_KEY) === "personal"
+      ? "personal"
+      : "project";
+  } catch {
+    return "project";
+  }
+}
+
+function readPersonalSortMode(): PersonalSortMode {
+  try {
+    const v = window.localStorage.getItem(PERSONAL_SORT_KEY);
+    return v === "by-deadline" ? "by-deadline" : "by-owner";
+  } catch {
+    return "by-owner";
   }
 }
 
@@ -257,6 +284,82 @@ function OutstandingItem({
   );
 }
 
+function PersonalOutstandingItem({
+  todo,
+  ownerName,
+  expanded,
+  onNavigate,
+}: {
+  todo: PersonalTodo;
+  ownerName: string;
+  expanded: boolean;
+  onNavigate?: () => void;
+}) {
+  const { updatePersonalTodo } = useProjects();
+  const sortDate = personalTodoSortDate(todo);
+  const hasDate = sortDate !== "9999-12-31";
+
+  return (
+    <li className="rounded-lg border border-line/80 bg-surface/80 p-2.5">
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          onClick={() => updatePersonalTodo(todo.id, { status: "done" })}
+          aria-label="Mark as done"
+          title="Mark as done"
+          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 border-line transition hover:border-teal-accent"
+        />
+        <div className="min-w-0 flex-1">
+          <Link
+            href="/todos"
+            onClick={onNavigate}
+            className="mb-1 block truncate text-[11px] font-semibold text-teal-accent hover:underline"
+          >
+            Personal
+          </Link>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-olive/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-olive-ink">
+              {todo.status === "doing" ? "Doing" : "To-Do"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs leading-snug text-ink">{todo.title}</p>
+          {hasDate && <DeadlineBadge date={sortDate} />}
+          {expanded && hasDate && todo.dueDate && (
+            <button
+              type="button"
+              onClick={() =>
+                updatePersonalTodo(todo.id, {
+                  dueDate: addDays(todo.dueDate!, 1),
+                })
+              }
+              className="mt-1 inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+              title="Move deadline by 1 day"
+            >
+              +1 day
+            </button>
+          )}
+          {(todo.startDate || todo.endDate) && (
+            <p className="mt-1 text-[10px] text-muted">
+              Window:{" "}
+              {todo.startDate ? formatDue(todo.startDate) : "…"} →{" "}
+              {todo.endDate ? formatDue(todo.endDate) : "…"}
+            </p>
+          )}
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Owner: {ownerName}
+          </p>
+          {todo.comments.length > 0 && (
+            <p className="mt-1 text-[10px] text-muted">
+              {todo.comments.length} comment
+              {todo.comments.length === 1 ? "" : "s"}
+            </p>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 function ContactItem({
   project,
   dueDate,
@@ -376,15 +479,26 @@ function CloseIcon() {
 }
 
 export default function OutstandingSidebar() {
-  const { projects, ready, markClientContacted, teamMembers } = useProjects();
+  const {
+    projects,
+    personalTodos,
+    ready,
+    markClientContacted,
+    teamMembers,
+  } = useProjects();
   const [wider, setWider] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("by-project");
+  const [personalSortMode, setPersonalSortMode] =
+    useState<PersonalSortMode>("by-owner");
+  const [scope, setScope] = useState<ScopeMode>("project");
   const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
     setWider(readExpanded());
     setSortMode(readSortMode());
+    setPersonalSortMode(readPersonalSortMode());
+    setScope(readScopeMode());
     setPrefsReady(true);
   }, []);
 
@@ -405,6 +519,24 @@ export default function OutstandingSidebar() {
       /* ignore */
     }
   }, [sortMode, prefsReady]);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    try {
+      window.localStorage.setItem(SCOPE_KEY, scope);
+    } catch {
+      /* ignore */
+    }
+  }, [scope, prefsReady]);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    try {
+      window.localStorage.setItem(PERSONAL_SORT_KEY, personalSortMode);
+    } catch {
+      /* ignore */
+    }
+  }, [personalSortMode, prefsReady]);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -483,7 +615,66 @@ export default function OutstandingSidebar() {
     return buckets;
   }, [groups]);
 
-  const totalOpen = groups.reduce((n, g) => n + g.entries.length, 0);
+  const openPersonal = useMemo(
+    () =>
+      personalTodos
+        .filter(isPersonalTodoOpen)
+        .slice()
+        .sort(comparePersonalTodosByDeadline),
+    [personalTodos],
+  );
+
+  type PersonalOwnerGroup = {
+    key: string;
+    label: string;
+    todos: PersonalTodo[];
+    earliestDue: string;
+  };
+
+  const personalOwnerGroups = useMemo(() => {
+    const map = new Map<string, PersonalOwnerGroup>();
+    for (const todo of openPersonal) {
+      const key = todo.ownerUserId ?? "";
+      const label =
+        teamMembers.find((m) => m.id === key)?.name ?? "Unassigned";
+      const existing = map.get(key);
+      const sortDate = personalTodoSortDate(todo);
+      if (existing) {
+        existing.todos.push(todo);
+        if (sortDate < existing.earliestDue) existing.earliestDue = sortDate;
+      } else {
+        map.set(key, {
+          key,
+          label,
+          todos: [todo],
+          earliestDue: sortDate,
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.earliestDue !== b.earliestDue) {
+        return a.earliestDue < b.earliestDue ? -1 : 1;
+      }
+      return a.label.localeCompare(b.label);
+    });
+  }, [openPersonal, teamMembers]);
+
+  const personalFlatByBucket = useMemo(() => {
+    const buckets: Record<UrgencyBucket, PersonalTodo[]> = {
+      overdue: [],
+      today: [],
+      upcoming: [],
+      nodate: [],
+    };
+    for (const todo of openPersonal) {
+      buckets[urgencyBucket(personalTodoSortDate(todo))].push(todo);
+    }
+    return buckets;
+  }, [openPersonal]);
+
+  const projectTotalOpen = groups.reduce((n, g) => n + g.entries.length, 0);
+  const totalOpen =
+    scope === "personal" ? openPersonal.length : projectTotalOpen;
 
   function ownerName(ownerUserId?: string): string {
     return (
@@ -521,7 +712,100 @@ export default function OutstandingSidebar() {
     );
   }
 
+  function renderPersonalList(layout: "rail" | "fullscreen") {
+    if (openPersonal.length === 0) {
+      return (
+        <p className="rounded-lg border border-dashed border-line px-3 py-8 text-center text-xs text-muted">
+          No personal outstanding tasks.
+        </p>
+      );
+    }
+
+    const useOwnerSort =
+      layout === "rail" || personalSortMode === "by-owner";
+
+    if (useOwnerSort) {
+      return (
+        <div
+          className={
+            layout === "fullscreen"
+              ? "grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              : "flex flex-col gap-4"
+          }
+        >
+          {personalOwnerGroups.map((group) => (
+            <section
+              key={group.key || "unassigned"}
+              className={
+                layout === "fullscreen"
+                  ? "rounded-xl border border-line/80 bg-surface/40 p-3"
+                  : undefined
+              }
+            >
+              <Link
+                href="/todos"
+                onClick={exitFullscreen}
+                className="mb-2 block truncate text-sm font-semibold text-deep transition hover:text-teal-accent hover:underline"
+              >
+                {group.label}
+              </Link>
+              <ul className="flex flex-col gap-2">
+                {group.todos.map((todo) => (
+                  <PersonalOutstandingItem
+                    key={todo.id}
+                    todo={todo}
+                    ownerName={ownerName(todo.ownerUserId)}
+                    expanded={richChrome}
+                    onNavigate={exitFullscreen}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-5">
+        {BUCKET_ORDER.map((bucket) => {
+          const items = personalFlatByBucket[bucket];
+          if (items.length === 0) return null;
+          return (
+            <section key={bucket}>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+                {BUCKET_LABELS[bucket]}
+                <span className="ml-1.5 font-semibold text-muted/70">
+                  {items.length}
+                </span>
+              </h3>
+              <ul
+                className={
+                  layout === "fullscreen"
+                    ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                    : "flex flex-col gap-2"
+                }
+              >
+                {items.map((todo) => (
+                  <PersonalOutstandingItem
+                    key={todo.id}
+                    todo={todo}
+                    ownerName={ownerName(todo.ownerUserId)}
+                    expanded={richChrome}
+                    onNavigate={exitFullscreen}
+                  />
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderList(layout: "rail" | "fullscreen") {
+    if (scope === "personal") return renderPersonalList(layout);
+
     if (totalOpen === 0) {
       return (
         <p className="rounded-lg border border-dashed border-line px-3 py-8 text-center text-xs text-muted">
@@ -612,7 +896,77 @@ export default function OutstandingSidebar() {
     );
   }
 
+  function renderScopeToggle() {
+    return (
+      <div
+        className="flex rounded-lg border border-line bg-surface p-0.5"
+        role="group"
+        aria-label="Outstanding scope"
+      >
+        <button
+          type="button"
+          onClick={() => setScope("project")}
+          aria-pressed={scope === "project"}
+          className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
+            scope === "project"
+              ? "bg-teal-accent text-white"
+              : "text-muted hover:text-deep"
+          }`}
+        >
+          Project
+        </button>
+        <button
+          type="button"
+          onClick={() => setScope("personal")}
+          aria-pressed={scope === "personal"}
+          className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
+            scope === "personal"
+              ? "bg-teal-accent text-white"
+              : "text-muted hover:text-deep"
+          }`}
+        >
+          Personal
+        </button>
+      </div>
+    );
+  }
+
   function renderSortToggle() {
+    if (scope === "personal") {
+      return (
+        <div
+          className="flex rounded-lg border border-line bg-surface p-0.5"
+          role="group"
+          aria-label="Sort personal outstanding items"
+        >
+          <button
+            type="button"
+            onClick={() => setPersonalSortMode("by-owner")}
+            aria-pressed={personalSortMode === "by-owner"}
+            className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
+              personalSortMode === "by-owner"
+                ? "bg-teal-accent text-white"
+                : "text-muted hover:text-deep"
+            }`}
+          >
+            By owner
+          </button>
+          <button
+            type="button"
+            onClick={() => setPersonalSortMode("by-deadline")}
+            aria-pressed={personalSortMode === "by-deadline"}
+            className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
+              personalSortMode === "by-deadline"
+                ? "bg-teal-accent text-white"
+                : "text-muted hover:text-deep"
+            }`}
+          >
+            By deadline
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div
         className="flex rounded-lg border border-line bg-surface p-0.5"
@@ -689,6 +1043,7 @@ export default function OutstandingSidebar() {
                 </button>
               </div>
             </div>
+            <div className="mt-2">{renderScopeToggle()}</div>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
@@ -706,13 +1061,14 @@ export default function OutstandingSidebar() {
         >
           <header className="shrink-0 border-b border-line bg-panel px-4 py-3 sm:px-6">
             <div className="mx-auto flex w-full max-w-[1800px] flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
                   Outstanding
                 </h2>
                 <span className="rounded-full bg-teal-soft px-2.5 py-0.5 text-xs font-semibold text-teal-accent">
                   {totalOpen}
                 </span>
+                <div className="w-44 sm:w-52">{renderScopeToggle()}</div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="w-56 sm:w-64">{renderSortToggle()}</div>

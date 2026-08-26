@@ -25,6 +25,9 @@ import {
   ProjectMilestone,
   ProjectPayment,
   ProjectSchedule,
+  PersonalTodo,
+  PersonalTodoComment,
+  PersonalTodoStatus,
   ProjectTodo,
   Stage,
   TeamMember,
@@ -58,6 +61,7 @@ import {
   formatMarketTags,
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
+  normalizePersonalTodoStatus,
   normalizeStage,
   parseSeriesTags,
   parseMarketTags,
@@ -97,6 +101,8 @@ import {
   teamMemberFromRow,
   teamMemberToRow,
   todoFromRow,
+  personalTodoFromRow,
+  personalTodoCommentFromRow,
 } from "./supabase";
 import type {
   CommentRow,
@@ -109,6 +115,8 @@ import type {
   ProjectRow,
   TeamMemberRow,
   TodoRow,
+  PersonalTodoRow,
+  PersonalTodoCommentRow,
 } from "./supabase";
 import {
   FinanceImportData,
@@ -201,6 +209,7 @@ const CHANGE_EVENTS_STORAGE_KEY = "hydrogenera-change-events-v1";
 const FINANCIAL_HISTORY_STORAGE_KEY = "hydrogenera-financial-history-v1";
 const MEANINGFUL_CHANGE_STORAGE_KEY = "hydrogenera-meaningful-change-v1";
 const STAGE_HISTORY_BACKFILL_KEY = "hydrogenera-stage-history-backfill-v1";
+const PERSONAL_TODOS_STORAGE_KEY = "hydrogenera-personal-todos-v1";
 const FILE_STORAGE_BUCKET = "project-files";
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
@@ -432,6 +441,24 @@ export interface TodoPatch {
   ownerUserId?: string | null;
 }
 
+export interface PersonalTodoInput {
+  title: string;
+  status?: PersonalTodoStatus;
+  dueDate?: string;
+  startDate?: string;
+  endDate?: string;
+  ownerUserId?: string;
+}
+
+export interface PersonalTodoPatch {
+  title?: string;
+  status?: PersonalTodoStatus;
+  dueDate?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  ownerUserId?: string | null;
+}
+
 /** All fields optional; empty strings are treated as "not provided". */
 export interface ContactInput {
   name?: string;
@@ -659,6 +686,17 @@ interface ProjectsApi {
   toggleTodo: (projectId: string, todoId: string) => void;
   updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
   deleteTodo: (projectId: string, todoId: string) => void;
+  personalTodos: PersonalTodo[];
+  addPersonalTodo: (input: PersonalTodoInput) => string;
+  updatePersonalTodo: (todoId: string, patch: PersonalTodoPatch) => void;
+  deletePersonalTodo: (todoId: string) => void;
+  addPersonalTodoComment: (todoId: string, text: string) => void;
+  updatePersonalTodoComment: (
+    todoId: string,
+    commentId: string,
+    text: string,
+  ) => void;
+  deletePersonalTodoComment: (todoId: string, commentId: string) => void;
   addContact: (projectId: string, input: ContactInput) => void;
   updateContact: (projectId: string, contactId: string, patch: ContactInput) => void;
   deleteContact: (projectId: string, contactId: string) => void;
@@ -898,6 +936,75 @@ function loadLocal(): Project[] {
     // corrupted storage: fall back to seed data
   }
   return SEED_PROJECTS;
+}
+
+function sanitizePersonalTodo(raw: PersonalTodo): PersonalTodo {
+  return {
+    id: raw.id,
+    title: raw.title ?? "",
+    status: normalizePersonalTodoStatus(raw.status),
+    ...(raw.dueDate ? { dueDate: raw.dueDate } : {}),
+    ...(raw.startDate ? { startDate: raw.startDate } : {}),
+    ...(raw.endDate ? { endDate: raw.endDate } : {}),
+    ...(raw.ownerUserId ? { ownerUserId: raw.ownerUserId } : {}),
+    comments: Array.isArray(raw.comments)
+      ? raw.comments.map((c) => ({
+          id: c.id,
+          text: c.text,
+          ...(c.authorUserId ? { authorUserId: c.authorUserId } : {}),
+          createdAt: c.createdAt,
+        }))
+      : [],
+    createdAt: raw.createdAt,
+    ...(raw.completedAt ? { completedAt: raw.completedAt } : {}),
+    ...(raw.cancelledAt ? { cancelledAt: raw.cancelledAt } : {}),
+  };
+}
+
+function loadLocalPersonalTodos(): PersonalTodo[] {
+  try {
+    const raw = window.localStorage.getItem(PERSONAL_TODOS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PersonalTodo[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((t) => t?.id && t.title).map(sanitizePersonalTodo);
+  } catch {
+    return [];
+  }
+}
+
+async function loadRemotePersonalTodos(): Promise<PersonalTodo[] | null> {
+  if (!supabase) return null;
+  const [todosRes, commentsRes] = await Promise.all([
+    supabase.from("personal_todos").select("*").order("created_at", {
+      ascending: true,
+    }),
+    supabase.from("personal_todo_comments").select("*").order("created_at", {
+      ascending: true,
+    }),
+  ]);
+  if (todosRes.error) {
+    console.warn(
+      "Personal todos table unavailable:",
+      todosRes.error.message,
+    );
+    return null;
+  }
+  if (commentsRes.error) {
+    console.error(
+      "Failed to load personal todo comments:",
+      commentsRes.error.message,
+    );
+  }
+  const commentsByTodo = new Map<string, PersonalTodoComment[]>();
+  for (const row of (commentsRes.data ?? []) as PersonalTodoCommentRow[]) {
+    const list = commentsByTodo.get(row.todo_id) ?? [];
+    list.push(personalTodoCommentFromRow(row));
+    commentsByTodo.set(row.todo_id, list);
+  }
+  return ((todosRes.data ?? []) as PersonalTodoRow[]).map((row) =>
+    personalTodoFromRow(row, commentsByTodo.get(row.id) ?? []),
+  );
 }
 
 function loadLocalTeamMembers(): TeamMember[] {
@@ -1208,6 +1315,7 @@ function logDbError(action: string) {
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
   const [meaningfulChangeMode, setMeaningfulChangeModeState] = useState(false);
@@ -1236,9 +1344,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     useState(false);
   const [supportsGanttTables, setSupportsGanttTables] = useState(false);
   const [supportsWarehouseHolding, setSupportsWarehouseHolding] = useState(false);
+  const [supportsPersonalTodos, setSupportsPersonalTodos] = useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
   projectsRef.current = projects;
+  const personalTodosRef = useRef<PersonalTodo[]>([]);
+  personalTodosRef.current = personalTodos;
   const teamMembersRef = useRef<TeamMember[]>(teamMembers);
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
@@ -1352,6 +1463,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
         setChangeEvents(remoteEvents);
 
+        const remotePersonal = await loadRemotePersonalTodos().catch(() => null);
+        if (remotePersonal) {
+          setPersonalTodos(remotePersonal);
+          setSupportsPersonalTodos(true);
+        } else {
+          setPersonalTodos(loadLocalPersonalTodos());
+          setSupportsPersonalTodos(false);
+        }
+
         const remoteWh = await loadRemoteWarehouseState(
           wh.holdingProjectId,
         ).catch(() => null);
@@ -1387,6 +1507,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
         setFinancialHistory(loadLocalFinancialHistory());
         setChangeEvents(loadLocalChangeEvents());
+        setPersonalTodos(loadLocalPersonalTodos());
+        setSupportsPersonalTodos(false);
         setReady(true);
       }
     }
@@ -1444,6 +1566,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
     }
   }, [projects, ready]);
+
+  useEffect(() => {
+    if (ready && (!supabase || !supportsPersonalTodos)) {
+      window.localStorage.setItem(
+        PERSONAL_TODOS_STORAGE_KEY,
+        JSON.stringify(personalTodos),
+      );
+    }
+  }, [personalTodos, ready, supportsPersonalTodos]);
 
   useEffect(() => {
     if (ready && !supabase) {
@@ -2709,6 +2840,240 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [mutateTodos, recordChangeEvent],
+  );
+
+  const addPersonalTodo = useCallback(
+    (input: PersonalTodoInput) => {
+      const title = input.title.trim();
+      if (!title) return "";
+      const status = normalizePersonalTodoStatus(input.status ?? "todo");
+      const now = new Date().toISOString();
+      const todo: PersonalTodo = {
+        id: crypto.randomUUID(),
+        title,
+        status,
+        ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+        ...(input.startDate ? { startDate: input.startDate } : {}),
+        ...(input.endDate ? { endDate: input.endDate } : {}),
+        ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
+        comments: [],
+        createdAt: now,
+        ...(status === "done" ? { completedAt: now } : {}),
+        ...(status === "cancelled" ? { cancelledAt: now } : {}),
+      };
+      setPersonalTodos((prev) => [...prev, todo]);
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "personal_todo",
+        entityId: todo.id,
+        action: "create",
+        summary: `Personal todo: added — ${title.slice(0, 80)}`,
+        payloadJson: { status },
+      });
+      if (supabase && supportsPersonalTodos) {
+        void supabase
+          .from("personal_todos")
+          .insert({
+            id: todo.id,
+            title: todo.title,
+            status: todo.status,
+            due_date: todo.dueDate ?? null,
+            start_date: todo.startDate ?? null,
+            end_date: todo.endDate ?? null,
+            owner_user_id: todo.ownerUserId ?? null,
+            created_at: todo.createdAt,
+            completed_at: todo.completedAt ?? null,
+            cancelled_at: todo.cancelledAt ?? null,
+          })
+          .then(logDbError("personal todo insert"));
+      }
+      return todo.id;
+    },
+    [recordChangeEvent, supportsPersonalTodos],
+  );
+
+  const updatePersonalTodo = useCallback(
+    (todoId: string, patch: PersonalTodoPatch) => {
+      const current = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!current) return;
+      const now = new Date().toISOString();
+      let next: PersonalTodo = { ...current };
+      if (patch.title !== undefined) {
+        const title = patch.title.trim();
+        if (title) next.title = title;
+      }
+      if (patch.dueDate !== undefined) {
+        if (patch.dueDate === null) delete next.dueDate;
+        else next.dueDate = patch.dueDate;
+      }
+      if (patch.startDate !== undefined) {
+        if (patch.startDate === null) delete next.startDate;
+        else next.startDate = patch.startDate;
+      }
+      if (patch.endDate !== undefined) {
+        if (patch.endDate === null) delete next.endDate;
+        else next.endDate = patch.endDate;
+      }
+      if (patch.ownerUserId !== undefined) {
+        if (patch.ownerUserId === null) delete next.ownerUserId;
+        else next.ownerUserId = patch.ownerUserId;
+      }
+      if (patch.status !== undefined && patch.status !== current.status) {
+        next.status = patch.status;
+        if (patch.status === "done") {
+          next.completedAt = now;
+          delete next.cancelledAt;
+        } else if (patch.status === "cancelled") {
+          next.cancelledAt = now;
+          delete next.completedAt;
+        } else {
+          delete next.completedAt;
+          delete next.cancelledAt;
+        }
+      }
+      setPersonalTodos((prev) =>
+        prev.map((t) => (t.id === todoId ? next : t)),
+      );
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "personal_todo",
+        entityId: todoId,
+        action: "update",
+        summary: `Personal todo: updated — ${next.title.slice(0, 80)}`,
+        payloadJson: {
+          status: patch.status ?? null,
+          dueDate: patch.dueDate ?? null,
+        },
+      });
+      if (supabase && supportsPersonalTodos) {
+        const row: Record<string, string | null> = {};
+        if (patch.title !== undefined) row.title = next.title;
+        if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
+        if (patch.startDate !== undefined) row.start_date = patch.startDate;
+        if (patch.endDate !== undefined) row.end_date = patch.endDate;
+        if (patch.ownerUserId !== undefined) {
+          row.owner_user_id = patch.ownerUserId;
+        }
+        if (patch.status !== undefined) {
+          row.status = next.status;
+          row.completed_at = next.completedAt ?? null;
+          row.cancelled_at = next.cancelledAt ?? null;
+        }
+        void supabase
+          .from("personal_todos")
+          .update(row)
+          .eq("id", todoId)
+          .then(logDbError("personal todo update"));
+      }
+    },
+    [recordChangeEvent, supportsPersonalTodos],
+  );
+
+  const deletePersonalTodo = useCallback(
+    (todoId: string) => {
+      const todo = personalTodosRef.current.find((t) => t.id === todoId);
+      setPersonalTodos((prev) => prev.filter((t) => t.id !== todoId));
+      recordChangeEvent({
+        domain: "crm",
+        entityType: "personal_todo",
+        entityId: todoId,
+        action: "delete",
+        summary: `Personal todo: deleted${todo ? ` — ${todo.title.slice(0, 80)}` : ""}`,
+      });
+      if (supabase && supportsPersonalTodos) {
+        void supabase
+          .from("personal_todos")
+          .delete()
+          .eq("id", todoId)
+          .then(logDbError("personal todo delete"));
+      }
+    },
+    [recordChangeEvent, supportsPersonalTodos],
+  );
+
+  const addPersonalTodoComment = useCallback(
+    (todoId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const comment: PersonalTodoComment = {
+        id: crypto.randomUUID(),
+        text: trimmed,
+        ...(currentUserIdRef.current
+          ? { authorUserId: currentUserIdRef.current }
+          : {}),
+        createdAt: new Date().toISOString(),
+      };
+      setPersonalTodos((prev) =>
+        prev.map((t) =>
+          t.id === todoId
+            ? { ...t, comments: [...t.comments, comment] }
+            : t,
+        ),
+      );
+      if (supabase && supportsPersonalTodos) {
+        void supabase
+          .from("personal_todo_comments")
+          .insert({
+            id: comment.id,
+            todo_id: todoId,
+            text: comment.text,
+            author_user_id: comment.authorUserId ?? null,
+            created_at: comment.createdAt,
+          })
+          .then(logDbError("personal todo comment insert"));
+      }
+    },
+    [supportsPersonalTodos],
+  );
+
+  const updatePersonalTodoComment = useCallback(
+    (todoId: string, commentId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setPersonalTodos((prev) =>
+        prev.map((t) =>
+          t.id === todoId
+            ? {
+                ...t,
+                comments: t.comments.map((c) =>
+                  c.id === commentId ? { ...c, text: trimmed } : c,
+                ),
+              }
+            : t,
+        ),
+      );
+      if (supabase && supportsPersonalTodos) {
+        void supabase
+          .from("personal_todo_comments")
+          .update({ text: trimmed })
+          .eq("id", commentId)
+          .then(logDbError("personal todo comment update"));
+      }
+    },
+    [supportsPersonalTodos],
+  );
+
+  const deletePersonalTodoComment = useCallback(
+    (todoId: string, commentId: string) => {
+      setPersonalTodos((prev) =>
+        prev.map((t) =>
+          t.id === todoId
+            ? {
+                ...t,
+                comments: t.comments.filter((c) => c.id !== commentId),
+              }
+            : t,
+        ),
+      );
+      if (supabase && supportsPersonalTodos) {
+        void supabase
+          .from("personal_todo_comments")
+          .delete()
+          .eq("id", commentId)
+          .then(logDbError("personal todo comment delete"));
+      }
+    },
+    [supportsPersonalTodos],
   );
 
   const mutateContacts = useCallback(
@@ -6964,6 +7329,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         toggleTodo,
         updateTodo,
         deleteTodo,
+        personalTodos,
+        addPersonalTodo,
+        updatePersonalTodo,
+        deletePersonalTodo,
+        addPersonalTodoComment,
+        updatePersonalTodoComment,
+        deletePersonalTodoComment,
         addContact,
         updateContact,
         deleteContact,

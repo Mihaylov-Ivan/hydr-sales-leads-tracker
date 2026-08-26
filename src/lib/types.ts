@@ -1192,6 +1192,86 @@ export interface ProjectTodo {
   doneAt?: string; // ISO
 }
 
+export type PersonalTodoStatus = "cancelled" | "todo" | "doing" | "done";
+
+/** Always-visible personal kanban columns. Cancelled and Done stay collapsed by default. */
+export const PERSONAL_TODO_BOARD_STATUSES: PersonalTodoStatus[] = [
+  "todo",
+  "doing",
+];
+
+export const PERSONAL_TODO_STATUSES: PersonalTodoStatus[] = [
+  "cancelled",
+  "todo",
+  "doing",
+  "done",
+];
+
+export const PERSONAL_TODO_STATUS_LABELS: Record<PersonalTodoStatus, string> = {
+  cancelled: "Cancelled",
+  todo: "To-Do",
+  doing: "Doing",
+  done: "Done",
+};
+
+export function normalizePersonalTodoStatus(
+  value: string | null | undefined,
+): PersonalTodoStatus {
+  if (
+    value === "cancelled" ||
+    value === "todo" ||
+    value === "doing" ||
+    value === "done"
+  ) {
+    return value;
+  }
+  return "todo";
+}
+
+export interface PersonalTodoComment {
+  id: string;
+  text: string;
+  authorUserId?: string;
+  createdAt: string;
+}
+
+/** Standalone persona tasks — not linked to a sales project. */
+export interface PersonalTodo {
+  id: string;
+  title: string;
+  status: PersonalTodoStatus;
+  /** Date (yyyy-mm-dd) the item should be completed by */
+  dueDate?: string;
+  /** Inclusive time window start (yyyy-mm-dd) */
+  startDate?: string;
+  /** Inclusive time window end (yyyy-mm-dd) */
+  endDate?: string;
+  ownerUserId?: string;
+  comments: PersonalTodoComment[];
+  createdAt: string;
+  completedAt?: string;
+  cancelledAt?: string;
+}
+
+export function isPersonalTodoOpen(todo: PersonalTodo): boolean {
+  return todo.status === "todo" || todo.status === "doing";
+}
+
+/** Deadline first, then window end; undated last. */
+export function personalTodoSortDate(todo: PersonalTodo): string {
+  return todo.dueDate ?? todo.endDate ?? "9999-12-31";
+}
+
+export function comparePersonalTodosByDeadline(
+  a: PersonalTodo,
+  b: PersonalTodo,
+): number {
+  const aDate = personalTodoSortDate(a);
+  const bDate = personalTodoSortDate(b);
+  if (aDate !== bDate) return aDate < bDate ? -1 : 1;
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
 /** A named span on the project Gantt schedule */
 export interface ProjectGanttPhase {
   id: string;

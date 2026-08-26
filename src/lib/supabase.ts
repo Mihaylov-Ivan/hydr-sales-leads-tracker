@@ -11,6 +11,9 @@ import {
   ProjectGanttActivity,
   ProjectGanttDeadline,
   ProjectGanttPhase,
+  PersonalTodo,
+  PersonalTodoComment,
+  PersonalTodoStatus,
   ProjectTodo,
   Series,
   Stage,
@@ -22,6 +25,7 @@ import {
   emptySchedule,
   formatSeriesTags,
   formatMarketTags,
+  normalizePersonalTodoStatus,
   normalizeStage,
   parseSeriesTags,
   parseMarketTags,
@@ -117,6 +121,58 @@ export function todoFromRow(row: TodoRow): ProjectTodo {
     ...(row.owner_user_id ? { ownerUserId: row.owner_user_id } : {}),
     createdAt: row.created_at,
     ...(row.done_at ? { doneAt: row.done_at } : {}),
+  };
+}
+
+/** Shape of a row in public.personal_todos */
+export interface PersonalTodoRow {
+  id: string;
+  title: string;
+  status: PersonalTodoStatus;
+  due_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  owner_user_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+  cancelled_at: string | null;
+}
+
+export interface PersonalTodoCommentRow {
+  id: string;
+  todo_id: string;
+  text: string;
+  author_user_id: string | null;
+  created_at: string;
+}
+
+export function personalTodoCommentFromRow(
+  row: PersonalTodoCommentRow,
+): PersonalTodoComment {
+  return {
+    id: row.id,
+    text: row.text,
+    ...(row.author_user_id ? { authorUserId: row.author_user_id } : {}),
+    createdAt: row.created_at,
+  };
+}
+
+export function personalTodoFromRow(
+  row: PersonalTodoRow,
+  comments: PersonalTodoComment[] = [],
+): PersonalTodo {
+  return {
+    id: row.id,
+    title: row.title,
+    status: normalizePersonalTodoStatus(row.status),
+    ...(row.due_date ? { dueDate: row.due_date } : {}),
+    ...(row.start_date ? { startDate: row.start_date } : {}),
+    ...(row.end_date ? { endDate: row.end_date } : {}),
+    ...(row.owner_user_id ? { ownerUserId: row.owner_user_id } : {}),
+    comments,
+    createdAt: row.created_at,
+    ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+    ...(row.cancelled_at ? { cancelledAt: row.cancelled_at } : {}),
   };
 }
 
