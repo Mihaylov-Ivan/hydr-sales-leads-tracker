@@ -1239,6 +1239,8 @@ export interface PersonalTodoComment {
 export interface PersonalTodo {
   id: string;
   title: string;
+  /** Optional longer notes / body text */
+  description?: string;
   status: PersonalTodoStatus;
   /** Date (yyyy-mm-dd) the item should be completed by */
   dueDate?: string;

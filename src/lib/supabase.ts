@@ -128,6 +128,7 @@ export function todoFromRow(row: TodoRow): ProjectTodo {
 export interface PersonalTodoRow {
   id: string;
   title: string;
+  description: string | null;
   status: PersonalTodoStatus;
   due_date: string | null;
   start_date: string | null;
@@ -164,6 +165,7 @@ export function personalTodoFromRow(
   return {
     id: row.id,
     title: row.title,
+    ...(row.description?.trim() ? { description: row.description } : {}),
     status: normalizePersonalTodoStatus(row.status),
     ...(row.due_date ? { dueDate: row.due_date } : {}),
     ...(row.start_date ? { startDate: row.start_date } : {}),

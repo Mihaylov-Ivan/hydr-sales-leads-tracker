@@ -14,6 +14,7 @@ export default function NewPersonalTodoDialog({
 }) {
   const { addPersonalTodo, teamMembers } = useProjects();
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [status, setStatus] = useState<PersonalTodoStatus>("todo");
   const [dueDate, setDueDate] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -34,6 +35,7 @@ export default function NewPersonalTodoDialog({
     if (!t) return;
     addPersonalTodo({
       title: t,
+      ...(description.trim() ? { description: description.trim() } : {}),
       status,
       ...(dueDate ? { dueDate } : {}),
       ...(startDate ? { startDate } : {}),
@@ -71,6 +73,18 @@ export default function NewPersonalTodoDialog({
               placeholder="e.g. Book flights for Expo"
               className={inputCls}
               required
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Description
+            </span>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional details…"
+              rows={3}
+              className={`${inputCls} resize-y`}
             />
           </label>
           <label className="block">

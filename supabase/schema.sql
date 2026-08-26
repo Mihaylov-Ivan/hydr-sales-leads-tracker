@@ -85,6 +85,7 @@ create table if not exists public.project_todos (
 create table if not exists public.personal_todos (
   id uuid primary key default gen_random_uuid(),
   title text not null,
+  description text,
   status text not null default 'todo'
     check (status in ('cancelled', 'todo', 'doing', 'done')),
   due_date date,

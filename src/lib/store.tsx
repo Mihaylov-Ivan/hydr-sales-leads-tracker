@@ -443,6 +443,7 @@ export interface TodoPatch {
 
 export interface PersonalTodoInput {
   title: string;
+  description?: string;
   status?: PersonalTodoStatus;
   dueDate?: string;
   startDate?: string;
@@ -452,6 +453,7 @@ export interface PersonalTodoInput {
 
 export interface PersonalTodoPatch {
   title?: string;
+  description?: string | null;
   status?: PersonalTodoStatus;
   dueDate?: string | null;
   startDate?: string | null;
@@ -942,6 +944,7 @@ function sanitizePersonalTodo(raw: PersonalTodo): PersonalTodo {
   return {
     id: raw.id,
     title: raw.title ?? "",
+    ...(raw.description?.trim() ? { description: raw.description.trim() } : {}),
     status: normalizePersonalTodoStatus(raw.status),
     ...(raw.dueDate ? { dueDate: raw.dueDate } : {}),
     ...(raw.startDate ? { startDate: raw.startDate } : {}),
@@ -2851,6 +2854,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const todo: PersonalTodo = {
         id: crypto.randomUUID(),
         title,
+        ...(input.description?.trim()
+          ? { description: input.description.trim() }
+          : {}),
         status,
         ...(input.dueDate ? { dueDate: input.dueDate } : {}),
         ...(input.startDate ? { startDate: input.startDate } : {}),
@@ -2876,6 +2882,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .insert({
             id: todo.id,
             title: todo.title,
+            description: todo.description ?? null,
             status: todo.status,
             due_date: todo.dueDate ?? null,
             start_date: todo.startDate ?? null,
@@ -2901,6 +2908,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (patch.title !== undefined) {
         const title = patch.title.trim();
         if (title) next.title = title;
+      }
+      if (patch.description !== undefined) {
+        if (patch.description === null || !patch.description.trim()) {
+          delete next.description;
+        } else {
+          next.description = patch.description.trim();
+        }
       }
       if (patch.dueDate !== undefined) {
         if (patch.dueDate === null) delete next.dueDate;
@@ -2948,6 +2962,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (supabase && supportsPersonalTodos) {
         const row: Record<string, string | null> = {};
         if (patch.title !== undefined) row.title = next.title;
+        if (patch.description !== undefined) {
+          row.description = next.description ?? null;
+        }
         if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
         if (patch.startDate !== undefined) row.start_date = patch.startDate;
         if (patch.endDate !== undefined) row.end_date = patch.endDate;

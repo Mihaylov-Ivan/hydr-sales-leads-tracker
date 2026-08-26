@@ -243,7 +243,7 @@ export default function PersonalTodosPage() {
     const q = search.trim().toLowerCase();
     if (!q) return personalTodos;
     return personalTodos.filter((t) =>
-      [t.title, ...(t.comments.map((c) => c.text) ?? [])]
+      [t.title, t.description ?? "", ...(t.comments.map((c) => c.text) ?? [])]
         .join(" ")
         .toLowerCase()
         .includes(q),
@@ -326,7 +326,7 @@ export default function PersonalTodosPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search tasks and comments…"
+          placeholder="Search tasks, descriptions, comments…"
           className="min-w-56 flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm placeholder:text-muted/60 outline-none focus:border-teal-accent"
         />
       </div>
