@@ -134,20 +134,24 @@ function Answer({
 
   if (editing) {
     return (
-      <input
+      <textarea
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
           if (e.key === "Escape") {
             setDraft(todo.answer ?? "");
             setEditing(false);
           }
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            commit();
+          }
         }}
+        rows={2}
         placeholder="Write the answer…"
-        className="w-full rounded border border-teal-accent bg-surface px-1.5 py-0.5 text-sm text-ink outline-none"
+        className="w-full resize-y rounded border border-teal-accent bg-surface px-1.5 py-1 text-sm leading-relaxed text-ink outline-none"
       />
     );
   }
@@ -160,7 +164,7 @@ function Answer({
           setEditing(true);
         }}
         title="Click to edit the answer"
-        className="w-full cursor-text rounded px-0.5 text-left text-sm text-ink transition hover:bg-teal-soft/60"
+        className="w-full cursor-text whitespace-pre-wrap rounded px-0.5 text-left text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
       >
         <span className="font-semibold text-teal-accent">A: </span>
         {todo.answer}
@@ -213,37 +217,41 @@ function TodoItem({
 
   return (
     <li className="group/item rounded-lg px-2 py-1.5 transition hover:bg-teal-soft/50">
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={onToggle}
           aria-label={todo.done ? "Mark as not done" : "Mark as done"}
-          className="cursor-pointer"
+          className="mt-0.5 cursor-pointer"
         >
           <Checkbox done={todo.done} />
         </button>
 
         {editing ? (
-          <input
+          <textarea
             autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === "Enter") commit();
               if (e.key === "Escape") {
                 setDraft(todo.text);
                 setEditing(false);
               }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                commit();
+              }
             }}
-            className="w-full rounded border border-teal-accent bg-surface px-1.5 py-0.5 text-sm text-ink outline-none"
+            rows={3}
+            className="min-w-0 flex-1 resize-y rounded border border-teal-accent bg-surface px-1.5 py-1 text-sm leading-relaxed text-ink outline-none"
           />
         ) : (
           <button
             type="button"
             onClick={() => setEditing(true)}
             title="Click to edit"
-            className={`flex-1 cursor-text rounded px-0.5 text-left text-sm transition ${
+            className={`min-w-0 flex-1 cursor-text whitespace-pre-wrap rounded px-0.5 text-left text-sm leading-relaxed transition ${
               todo.done ? "text-muted line-through decoration-muted/60" : "text-ink"
             }`}
           >
@@ -257,7 +265,7 @@ function TodoItem({
           onChange={(e) => onPatch({ ownerUserId: e.target.value || null })}
           title="Responsible person"
           aria-label="Responsible person"
-          className="shrink-0 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-teal-accent"
+          className="mt-0.5 shrink-0 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-teal-accent"
         >
           <option value="">Unassigned</option>
           {teamMembers.map((member) => (
@@ -272,7 +280,7 @@ function TodoItem({
           onClick={onDelete}
           aria-label="Delete item"
           title="Delete"
-          className="rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
+          className="mt-0.5 rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
         >
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
             <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
@@ -346,11 +354,18 @@ export default function TodoList({
       </div>
 
       <form onSubmit={submit} className="mb-2 flex flex-wrap gap-2">
-        <input
+        <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+            }
+          }}
+          rows={2}
           placeholder={PLACEHOLDERS[kind]}
-          className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
+          className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
         />
         <input
           type="date"

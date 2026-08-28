@@ -338,25 +338,6 @@ export default function PersonalTodoCard({ todo }: { todo: PersonalTodo }) {
             />
           </div>
 
-          <select
-            value={todo.ownerUserId ?? ""}
-            onChange={(e) =>
-              updatePersonalTodo(todo.id, {
-                ownerUserId: e.target.value || null,
-              })
-            }
-            title="Responsible person"
-            aria-label="Responsible person"
-            className="w-full min-w-0 rounded-lg border border-line bg-surface px-2.5 py-2 text-xs text-ink outline-none focus:border-teal-accent"
-          >
-            <option value="">Unassigned</option>
-            {teamMembers.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name}
-              </option>
-            ))}
-          </select>
-
           <button
             type="button"
             onClick={() => setShowComments((v) => !v)}

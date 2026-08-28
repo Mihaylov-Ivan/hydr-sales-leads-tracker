@@ -12,14 +12,13 @@ export default function NewPersonalTodoDialog({
 }: {
   onClose: () => void;
 }) {
-  const { addPersonalTodo, teamMembers } = useProjects();
+  const { addPersonalTodo } = useProjects();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<PersonalTodoStatus>("todo");
   const [dueDate, setDueDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [ownerUserId, setOwnerUserId] = useState("");
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -40,7 +39,6 @@ export default function NewPersonalTodoDialog({
       ...(dueDate ? { dueDate } : {}),
       ...(startDate ? { startDate } : {}),
       ...(endDate ? { endDate } : {}),
-      ...(ownerUserId ? { ownerUserId } : {}),
     });
     onClose();
   }
@@ -108,7 +106,7 @@ export default function NewPersonalTodoDialog({
             </select>
           </label>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="block">
+            <label className="block sm:col-span-2">
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
                 Deadline
               </span>
@@ -118,23 +116,6 @@ export default function NewPersonalTodoDialog({
                 onChange={(e) => setDueDate(e.target.value)}
                 className={inputCls}
               />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Responsible
-              </span>
-              <select
-                value={ownerUserId}
-                onChange={(e) => setOwnerUserId(e.target.value)}
-                className={inputCls}
-              >
-                <option value="">Unassigned</option>
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
