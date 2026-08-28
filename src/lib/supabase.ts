@@ -104,6 +104,8 @@ export interface TodoRow {
   answer: string | null;
   done: boolean;
   due_date: string | null;
+  start_date: string | null;
+  end_date: string | null;
   owner_user_id: string | null;
   created_at: string;
   done_at: string | null;
@@ -118,6 +120,8 @@ export function todoFromRow(row: TodoRow): ProjectTodo {
     ...(row.answer ? { answer: row.answer } : {}),
     done: row.done,
     ...(row.due_date ? { dueDate: row.due_date } : {}),
+    ...(row.start_date ? { startDate: row.start_date } : {}),
+    ...(row.end_date ? { endDate: row.end_date } : {}),
     ...(row.owner_user_id ? { ownerUserId: row.owner_user_id } : {}),
     createdAt: row.created_at,
     ...(row.done_at ? { doneAt: row.done_at } : {}),
@@ -134,6 +138,7 @@ export interface PersonalTodoRow {
   start_date: string | null;
   end_date: string | null;
   owner_user_id: string | null;
+  sort_order: number;
   created_at: string;
   completed_at: string | null;
   cancelled_at: string | null;
@@ -171,6 +176,7 @@ export function personalTodoFromRow(
     ...(row.start_date ? { startDate: row.start_date } : {}),
     ...(row.end_date ? { endDate: row.end_date } : {}),
     ...(row.owner_user_id ? { ownerUserId: row.owner_user_id } : {}),
+    sortOrder: row.sort_order ?? 0,
     comments,
     createdAt: row.created_at,
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),

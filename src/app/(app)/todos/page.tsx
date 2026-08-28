@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
 import {
   PersonalTodoStatus,
   PERSONAL_TODO_BOARD_STATUSES,
   PERSONAL_TODO_STATUS_LABELS,
   PERSONAL_TODO_STATUSES,
-  comparePersonalTodosByDeadline,
+  comparePersonalTodos,
 } from "@/lib/types";
 import PersonalTodoCard, {
   PERSONAL_TODO_DRAG_TYPE,
@@ -25,6 +25,29 @@ const CANCELLED_STORAGE_KEY = "hydrogenera-show-personal-cancelled-v1";
 const DONE_STORAGE_KEY = "hydrogenera-show-personal-done-v1";
 const COLUMN_MIN_PX = 270;
 
+function readDraggedTodoId(e: React.DragEvent): string {
+  return (
+    e.dataTransfer.getData(PERSONAL_TODO_DRAG_TYPE) ||
+    e.dataTransfer.getData("text/plain")
+  );
+}
+
+function resolveDropIndex(
+  root: HTMLElement,
+  clientY: number,
+  todoIds: string[],
+): number {
+  for (let i = 0; i < todoIds.length; i++) {
+    const el = root.querySelector<HTMLElement>(
+      `[data-todo-item="${todoIds[i]}"]`,
+    );
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) return i;
+  }
+  return todoIds.length;
+}
+
 type ColumnDragHandlers = {
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
@@ -36,13 +59,15 @@ function CollapsedStatusRail({
   count,
   isOver,
   onExpand,
+  onDropTodo,
   dragHandlers,
 }: {
   status: "cancelled" | "done";
   count: number;
   isOver: boolean;
   onExpand: () => void;
-  dragHandlers: ColumnDragHandlers;
+  onDropTodo: (todoId: string) => void;
+  dragHandlers: Omit<ColumnDragHandlers, "onDrop">;
 }) {
   const label = PERSONAL_TODO_STATUS_LABELS[status];
   const muted = status === "cancelled" || status === "done";
@@ -52,7 +77,13 @@ function CollapsedStatusRail({
       aria-expanded={false}
       aria-controls={`${status}-column`}
       onClick={onExpand}
-      {...dragHandlers}
+      onDragOver={dragHandlers.onDragOver}
+      onDragLeave={dragHandlers.onDragLeave}
+      onDrop={(e) => {
+        e.preventDefault();
+        const id = readDraggedTodoId(e);
+        if (id) onDropTodo(id);
+      }}
       className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 py-3 transition ${
         muted
           ? "border-t-muted border-line bg-muted/5 hover:border-muted hover:bg-muted/10"
@@ -81,29 +112,74 @@ function CollapsedStatusRail({
   );
 }
 
+function DropIndicator() {
+  return (
+    <div
+      aria-hidden
+      className="my-0.5 h-1 shrink-0 rounded-full bg-teal-accent shadow-[0_0_0_2px_rgba(45,125,125,0.15)]"
+    />
+  );
+}
+
 function StatusColumn({
-  status,
   todos,
   isOver,
+  draggingId,
+  onDragStart,
+  onDragEnd,
   onDragOver,
   onDragLeave,
-  onDrop,
+  onReorder,
+  onMove,
   accentClass,
   headerExtra,
+  status,
   onExpand,
   expanded,
 }: {
   status: PersonalTodoStatus;
   todos: ReturnType<typeof useProjects>["personalTodos"];
   isOver: boolean;
+  draggingId: string | null;
+  onDragStart: (todoId: string) => void;
+  onDragEnd: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
+  onReorder: (todoId: string, direction: "up" | "down") => void;
+  onMove: (draggedId: string, targetIndex: number) => void;
   accentClass: string;
   headerExtra?: React.ReactNode;
   onExpand?: () => void;
   expanded?: boolean;
 }) {
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const isDragging = draggingId !== null;
+  const todoIds = todos.map((t) => t.id);
+
+  function clearDropState() {
+    setDropIndex(null);
+  }
+
+  function handleListDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!isDragging) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    onDragOver(e);
+    setDropIndex(resolveDropIndex(e.currentTarget, e.clientY, todoIds));
+  }
+
+  function handleListDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    const draggedId = readDraggedTodoId(e);
+    const index = resolveDropIndex(e.currentTarget, e.clientY, todoIds);
+    clearDropState();
+    onDragEnd();
+    if (!draggedId) return;
+    onMove(draggedId, index);
+  }
+
   const headerBg = isOver
     ? "bg-teal-soft/40"
     : status === "cancelled" || status === "done"
@@ -112,9 +188,12 @@ function StatusColumn({
 
   return (
     <section
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDragLeave={(e) => {
+        onDragLeave(e);
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          clearDropState();
+        }
+      }}
       className={`flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border border-t-4 transition ${accentClass} ${
         isOver
           ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
@@ -157,24 +236,48 @@ function StatusColumn({
         </div>
       </header>
       <div
-        className={`min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-3 py-3 ${
+        onDragOver={handleListDragOver}
+        onDrop={handleListDrop}
+        className={`min-h-0 flex-1 gap-2 overflow-y-auto overscroll-contain px-3 py-3 ${
           expanded
             ? "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
             : "flex flex-col"
         }`}
       >
         {todos.length === 0 ? (
-          <p
-            className={`shrink-0 rounded-lg border border-dashed py-8 text-center text-xs ${
-              isOver
-                ? "border-teal-accent text-teal-accent"
-                : "border-line text-muted"
-            } ${expanded ? "col-span-full" : ""}`}
-          >
-            {isOver ? "Drop to move here" : "No tasks here."}
-          </p>
+          <>
+            {isDragging && dropIndex === 0 && <DropIndicator />}
+            <p
+              className={`shrink-0 rounded-lg border border-dashed py-8 text-center text-xs ${
+                isOver
+                  ? "border-teal-accent text-teal-accent"
+                  : "border-line text-muted"
+              } ${expanded ? "col-span-full" : ""}`}
+            >
+              {isOver ? "Drop to move here" : "No tasks here."}
+            </p>
+          </>
         ) : (
-          todos.map((t) => <PersonalTodoCard key={t.id} todo={t} />)
+          todos.map((t, index) => (
+            <Fragment key={t.id}>
+              {isDragging && dropIndex === index && <DropIndicator />}
+              <div data-todo-item={t.id} className="shrink-0">
+                <PersonalTodoCard
+                  todo={t}
+                  isDragging={draggingId === t.id}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < todos.length - 1}
+                  onMoveUp={() => onReorder(t.id, "up")}
+                  onMoveDown={() => onReorder(t.id, "down")}
+                  onDragStartExtra={() => onDragStart(t.id)}
+                  onDragEndExtra={onDragEnd}
+                />
+              </div>
+            </Fragment>
+          ))
+        )}
+        {isDragging && dropIndex === todos.length && todos.length > 0 && (
+          <DropIndicator />
         )}
       </div>
     </section>
@@ -182,7 +285,12 @@ function StatusColumn({
 }
 
 export default function PersonalTodosPage() {
-  const { personalTodos, ready, updatePersonalTodo } = useProjects();
+  const {
+    personalTodos,
+    ready,
+    movePersonalTodo,
+    reorderPersonalTodo,
+  } = useProjects();
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [dragOverStatus, setDragOverStatus] =
@@ -193,6 +301,7 @@ export default function PersonalTodosPage() {
   const [donePrefReady, setDonePrefReady] = useState(false);
   const [expandedStatus, setExpandedStatus] =
     useState<PersonalTodoStatus | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -259,7 +368,7 @@ export default function PersonalTodosPage() {
     };
     for (const t of filtered) map[t.status].push(t);
     for (const status of PERSONAL_TODO_STATUSES) {
-      map[status].sort(comparePersonalTodosByDeadline);
+      map[status].sort(comparePersonalTodos);
     }
     return map;
   }, [filtered]);
@@ -267,12 +376,26 @@ export default function PersonalTodosPage() {
   function moveTodoToStatus(todoId: string, status: PersonalTodoStatus) {
     const todo = personalTodos.find((t) => t.id === todoId);
     if (!todo || todo.status === status) return;
-    updatePersonalTodo(todoId, { status });
+    const targetIndex = byStatus[status].filter((t) => t.id !== todoId).length;
+    movePersonalTodo(todoId, status, targetIndex);
     if (status === "cancelled") setShowCancelled(true);
     if (status === "done") setShowDone(true);
   }
 
-  function columnDragHandlers(status: PersonalTodoStatus): ColumnDragHandlers {
+  function moveTodoInColumn(
+    status: PersonalTodoStatus,
+    draggedId: string,
+    targetIndex: number,
+  ) {
+    setDragOverStatus(null);
+    movePersonalTodo(draggedId, status, targetIndex);
+    if (status === "cancelled") setShowCancelled(true);
+    if (status === "done") setShowDone(true);
+  }
+
+  function columnDragHandlers(
+    status: PersonalTodoStatus,
+  ): Omit<ColumnDragHandlers, "onDrop"> {
     return {
       onDragOver: (e) => {
         e.preventDefault();
@@ -282,14 +405,6 @@ export default function PersonalTodosPage() {
       onDragLeave: (e) => {
         if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
         setDragOverStatus((cur) => (cur === status ? null : cur));
-      },
-      onDrop: (e) => {
-        e.preventDefault();
-        setDragOverStatus(null);
-        const id =
-          e.dataTransfer.getData(PERSONAL_TODO_DRAG_TYPE) ||
-          e.dataTransfer.getData("text/plain");
-        if (id) moveTodoToStatus(id, status);
       },
     };
   }
@@ -309,8 +424,7 @@ export default function PersonalTodosPage() {
         <div>
           <h1 className="text-2xl font-bold text-deep">Personal to-dos</h1>
           <p className="mt-1 text-sm text-muted">
-            Tasks outside sales projects — deadline, time window, owner, and
-            comments.
+            Drag tasks to reorder within a column or move between columns.
           </p>
         </div>
         <button
@@ -338,6 +452,7 @@ export default function PersonalTodosPage() {
             count={cancelledCount}
             isOver={cancelledOver}
             onExpand={() => setShowCancelled(true)}
+            onDropTodo={(id) => moveTodoToStatus(id, "cancelled")}
             dragHandlers={columnDragHandlers("cancelled")}
           />
         )}
@@ -361,7 +476,14 @@ export default function PersonalTodosPage() {
               status="cancelled"
               todos={byStatus.cancelled}
               isOver={cancelledOver}
+              draggingId={draggingId}
+              onDragStart={setDraggingId}
+              onDragEnd={() => setDraggingId(null)}
               accentClass={COLUMN_ACCENT.cancelled}
+              onReorder={reorderPersonalTodo}
+              onMove={(draggedId, targetIndex) =>
+                moveTodoInColumn("cancelled", draggedId, targetIndex)
+              }
               {...columnDragHandlers("cancelled")}
               onExpand={() => setExpandedStatus("cancelled")}
               headerExtra={
@@ -388,7 +510,14 @@ export default function PersonalTodosPage() {
                 status={status}
                 todos={byStatus[status]}
                 isOver={dragOverStatus === status}
+                draggingId={draggingId}
+                onDragStart={setDraggingId}
+                onDragEnd={() => setDraggingId(null)}
                 accentClass={COLUMN_ACCENT[status]}
+                onReorder={reorderPersonalTodo}
+                onMove={(draggedId, targetIndex) =>
+                  moveTodoInColumn(status, draggedId, targetIndex)
+                }
                 {...columnDragHandlers(status)}
                 onExpand={() => setExpandedStatus(status)}
               />
@@ -402,6 +531,7 @@ export default function PersonalTodosPage() {
             count={doneCount}
             isOver={doneOver}
             onExpand={() => setShowDone(true)}
+            onDropTodo={(id) => moveTodoToStatus(id, "done")}
             dragHandlers={columnDragHandlers("done")}
           />
         )}
@@ -425,7 +555,14 @@ export default function PersonalTodosPage() {
               status="done"
               todos={byStatus.done}
               isOver={doneOver}
+              draggingId={draggingId}
+              onDragStart={setDraggingId}
+              onDragEnd={() => setDraggingId(null)}
               accentClass={COLUMN_ACCENT.done}
+              onReorder={reorderPersonalTodo}
+              onMove={(draggedId, targetIndex) =>
+                moveTodoInColumn("done", draggedId, targetIndex)
+              }
               {...columnDragHandlers("done")}
               onExpand={() => setExpandedStatus("done")}
               headerExtra={
@@ -456,7 +593,14 @@ export default function PersonalTodosPage() {
               status={expandedStatus}
               todos={byStatus[expandedStatus]}
               isOver={dragOverStatus === expandedStatus}
+              draggingId={draggingId}
+              onDragStart={setDraggingId}
+              onDragEnd={() => setDraggingId(null)}
               accentClass={COLUMN_ACCENT[expandedStatus]}
+              onReorder={reorderPersonalTodo}
+              onMove={(draggedId, targetIndex) =>
+                moveTodoInColumn(expandedStatus, draggedId, targetIndex)
+              }
               {...columnDragHandlers(expandedStatus)}
               expanded
               onExpand={() => setExpandedStatus(null)}

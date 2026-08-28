@@ -46,7 +46,25 @@ function DeadlineBadge({ date }: { date: string }) {
   );
 }
 
-export default function PersonalTodoCard({ todo }: { todo: PersonalTodo }) {
+export default function PersonalTodoCard({
+  todo,
+  isDragging = false,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp,
+  onMoveDown,
+  onDragStartExtra,
+  onDragEndExtra,
+}: {
+  todo: PersonalTodo;
+  isDragging?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDragStartExtra?: () => void;
+  onDragEndExtra?: () => void;
+}) {
   const {
     teamMembers,
     updatePersonalTodo,
@@ -133,21 +151,17 @@ export default function PersonalTodoCard({ todo }: { todo: PersonalTodo }) {
         e.dataTransfer.setData(PERSONAL_TODO_DRAG_TYPE, todo.id);
         e.dataTransfer.setData("text/plain", todo.id);
         e.dataTransfer.effectAllowed = "move";
-        if (e.currentTarget instanceof HTMLElement) {
-          e.currentTarget.style.opacity = "0.45";
-        }
+        onDragStartExtra?.();
       }}
-      onDragEnd={(e) => {
-        if (e.currentTarget instanceof HTMLElement) {
-          e.currentTarget.style.opacity = "";
-        }
+      onDragEnd={() => {
+        onDragEndExtra?.();
         window.setTimeout(() => {
           suppressClick.current = false;
         }, 0);
       }}
       className={`group flex shrink-0 cursor-grab flex-col rounded-xl border border-line bg-panel shadow-sm transition hover:-translate-y-0.5 hover:border-teal-accent/50 hover:shadow-md active:cursor-grabbing ${
-        expanded ? "gap-3 px-4 pb-5 pt-4" : "gap-0 px-4 py-3"
-      }`}
+        isDragging ? "opacity-40" : ""
+      } ${expanded ? "gap-3 px-4 pb-5 pt-4" : "gap-0 px-4 py-3"}`}
     >
       <div className="flex items-start gap-2">
         <button
@@ -201,6 +215,41 @@ export default function PersonalTodoCard({ todo }: { todo: PersonalTodo }) {
           >
             {todo.title}
           </button>
+        )}
+
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex shrink-0 flex-col opacity-0 transition group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveUp?.();
+              }}
+              disabled={!canMoveUp}
+              aria-label="Move up"
+              title="Move up"
+              className="rounded-md p-0.5 text-muted/70 transition hover:bg-teal-soft hover:text-teal-accent disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <svg viewBox="0 0 12 12" className="h-3 w-3 fill-current" aria-hidden>
+                <path d="M6 2.5 10 7H2L6 2.5Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveDown?.();
+              }}
+              disabled={!canMoveDown}
+              aria-label="Move down"
+              title="Move down"
+              className="rounded-md p-0.5 text-muted/70 transition hover:bg-teal-soft hover:text-teal-accent disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <svg viewBox="0 0 12 12" className="h-3 w-3 fill-current" aria-hidden>
+                <path d="M6 9.5 2 5h8L6 9.5Z" />
+              </svg>
+            </button>
+          </div>
         )}
 
         {expanded && (

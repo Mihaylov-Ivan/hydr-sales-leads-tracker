@@ -92,6 +92,7 @@ create table if not exists public.personal_todos (
   start_date date,
   end_date date,
   owner_user_id text,
+  sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   completed_at timestamptz,
   cancelled_at timestamptz
@@ -136,6 +137,9 @@ create index if not exists project_todos_project_created_idx
 
 create index if not exists personal_todos_status_created_idx
   on public.personal_todos (status, created_at);
+
+create index if not exists personal_todos_status_sort_idx
+  on public.personal_todos (status, sort_order, created_at);
 
 create index if not exists personal_todo_comments_todo_created_idx
   on public.personal_todo_comments (todo_id, created_at);

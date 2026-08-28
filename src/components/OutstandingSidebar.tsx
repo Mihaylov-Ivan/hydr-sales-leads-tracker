@@ -10,13 +10,18 @@ import {
   TodoKind,
   TODO_KIND_LABELS,
   addDays,
-  comparePersonalTodosByDeadline,
+  comparePersonalTodos,
+  comparePersonalTodosByWorkWindowStart,
   compareTodosByDeadline,
+  compareTodosByWorkWindowStart,
   emailReminderDeltaDays,
   isEmailReminderDue,
   isPersonalTodoOpen,
+  isTodoInWorkWindow,
+  isTodoWorkWindowUpcoming,
   nextEmailReminderDate,
   personalTodoSortDate,
+  projectTodoSortDate,
   todayDate,
 } from "@/lib/types";
 
@@ -205,6 +210,7 @@ function OutstandingItem({
   todo,
   ownerName,
   expanded,
+  highlight = false,
   projectLink,
   onProjectNavigate,
 }: {
@@ -212,13 +218,20 @@ function OutstandingItem({
   todo: ProjectTodo;
   ownerName: string;
   expanded: boolean;
+  highlight?: boolean;
   projectLink?: { id: string; name: string };
   onProjectNavigate?: () => void;
 }) {
   const { toggleTodo, updateTodo } = useProjects();
 
   return (
-    <li className="rounded-lg border border-line/80 bg-surface/80 p-2.5">
+    <li
+      className={`rounded-lg border p-2.5 ${
+        highlight
+          ? "border-teal-accent/35 bg-teal-soft/35"
+          : "border-line/80 bg-surface/80"
+      }`}
+    >
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -250,6 +263,13 @@ function OutstandingItem({
             {todo.text}
           </p>
           {todo.dueDate && <DeadlineBadge date={todo.dueDate} />}
+          {(todo.startDate || todo.endDate) && (
+            <p className="mt-1 text-[10px] text-muted">
+              Window:{" "}
+              {todo.startDate ? formatDue(todo.startDate) : "…"} →{" "}
+              {todo.endDate ? formatDue(todo.endDate) : "…"}
+            </p>
+          )}
           {expanded && todo.dueDate && (
             <button
               type="button"
@@ -282,10 +302,12 @@ function OutstandingItem({
 function PersonalOutstandingItem({
   todo,
   expanded,
+  highlight = false,
   onNavigate,
 }: {
   todo: PersonalTodo;
   expanded: boolean;
+  highlight?: boolean;
   onNavigate?: () => void;
 }) {
   const { updatePersonalTodo } = useProjects();
@@ -293,7 +315,13 @@ function PersonalOutstandingItem({
   const hasDate = sortDate !== "9999-12-31";
 
   return (
-    <li className="rounded-lg border border-line/80 bg-surface/80 p-2.5">
+    <li
+      className={`rounded-lg border p-2.5 ${
+        highlight
+          ? "border-teal-accent/35 bg-teal-soft/35"
+          : "border-line/80 bg-surface/80"
+      }`}
+    >
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -525,17 +553,55 @@ export default function OutstandingSidebar() {
     };
   }, [fullscreen]);
 
+  const projectWorkWindow = useMemo(() => {
+    const active: FlatEntry[] = [];
+    const upcoming: FlatEntry[] = [];
+    const excludedIds = new Set<string>();
+
+    for (const project of projects) {
+      for (const todo of project.todos) {
+        if (todo.done) continue;
+        const entry: FlatEntry = {
+          type: "todo",
+          todo,
+          sortDate: projectTodoSortDate(todo),
+          project,
+        };
+        if (isTodoInWorkWindow(todo)) {
+          active.push(entry);
+          excludedIds.add(todo.id);
+        } else if (isTodoWorkWindowUpcoming(todo)) {
+          upcoming.push(entry);
+          excludedIds.add(todo.id);
+        }
+      }
+    }
+
+    active.sort((a, b) => {
+      if (a.type !== "todo" || b.type !== "todo") return 0;
+      return compareTodosByDeadline(a.todo, b.todo);
+    });
+    upcoming.sort((a, b) => {
+      if (a.type !== "todo" || b.type !== "todo") return 0;
+      return compareTodosByWorkWindowStart(a.todo, b.todo);
+    });
+
+    return { active, upcoming, excludedIds };
+  }, [projects]);
+
   const groups = useMemo(() => {
     const list: Group[] = [];
     for (const project of projects) {
-      const todos = project.todos.filter((t) => !t.done);
+      const todos = project.todos.filter(
+        (t) => !t.done && !projectWorkWindow.excludedIds.has(t.id),
+      );
       const emailDue = isEmailReminderDue(project);
       if (todos.length === 0 && !emailDue) continue;
 
       const entries: SidebarEntry[] = todos.map((todo) => ({
         type: "todo" as const,
         todo,
-        sortDate: todo.dueDate ?? "9999-12-31",
+        sortDate: projectTodoSortDate(todo),
       }));
 
       if (emailDue) {
@@ -561,7 +627,7 @@ export default function OutstandingSidebar() {
       return a.project.name.localeCompare(b.project.name);
     });
     return list;
-  }, [projects]);
+  }, [projects, projectWorkWindow.excludedIds]);
 
   const flatByBucket = useMemo(() => {
     const flat: FlatEntry[] = [];
@@ -593,9 +659,29 @@ export default function OutstandingSidebar() {
       personalTodos
         .filter(isPersonalTodoOpen)
         .slice()
-        .sort(comparePersonalTodosByDeadline),
+        .sort(comparePersonalTodos),
     [personalTodos],
   );
+
+  const personalWorkWindow = useMemo(() => {
+    const active: PersonalTodo[] = [];
+    const upcoming: PersonalTodo[] = [];
+    const excludedIds = new Set<string>();
+
+    for (const todo of openPersonal) {
+      if (isTodoInWorkWindow(todo)) {
+        active.push(todo);
+        excludedIds.add(todo.id);
+      } else if (isTodoWorkWindowUpcoming(todo)) {
+        upcoming.push(todo);
+        excludedIds.add(todo.id);
+      }
+    }
+
+    active.sort(comparePersonalTodos);
+    upcoming.sort(comparePersonalTodosByWorkWindowStart);
+    return { active, upcoming, excludedIds };
+  }, [openPersonal]);
 
   const personalFlatByBucket = useMemo(() => {
     const buckets: Record<UrgencyBucket, PersonalTodo[]> = {
@@ -605,12 +691,20 @@ export default function OutstandingSidebar() {
       nodate: [],
     };
     for (const todo of openPersonal) {
+      if (personalWorkWindow.excludedIds.has(todo.id)) continue;
       buckets[urgencyBucket(personalTodoSortDate(todo))].push(todo);
     }
     return buckets;
-  }, [openPersonal]);
+  }, [openPersonal, personalWorkWindow.excludedIds]);
 
-  const projectTotalOpen = groups.reduce((n, g) => n + g.entries.length, 0);
+  const projectTotalOpen = useMemo(
+    () =>
+      projects.reduce(
+        (n, p) => n + p.todos.filter((t) => !t.done).length,
+        0,
+      ),
+    [projects],
+  );
   const totalOpen =
     scope === "personal" ? openPersonal.length : projectTotalOpen;
 
@@ -623,6 +717,130 @@ export default function OutstandingSidebar() {
   const richChrome = wider || fullscreen;
 
   const exitFullscreen = () => setFullscreen(false);
+
+  function renderProjectWorkWindowSections(layout: "rail" | "fullscreen") {
+    const { active, upcoming } = projectWorkWindow;
+    if (active.length === 0 && upcoming.length === 0) return null;
+
+    const listClass =
+      layout === "fullscreen"
+        ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+        : "flex flex-col gap-2";
+
+    return (
+      <div className="mb-4 flex flex-col gap-4">
+        {active.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+              Working on now
+              <span className="ml-1.5 font-semibold text-teal-accent/70">
+                {active.length}
+              </span>
+            </h3>
+            <ul className={listClass}>
+              {active.map((entry) => (
+                <OutstandingItem
+                  key={entry.todo.id}
+                  projectId={entry.project.id}
+                  todo={entry.todo}
+                  ownerName={ownerName(entry.todo.ownerUserId)}
+                  expanded={richChrome}
+                  highlight
+                  projectLink={{
+                    id: entry.project.id,
+                    name: entry.project.name,
+                  }}
+                  onProjectNavigate={exitFullscreen}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+        {upcoming.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+              Coming up next
+              <span className="ml-1.5 font-semibold text-muted/70">
+                {upcoming.length}
+              </span>
+            </h3>
+            <ul className={listClass}>
+              {upcoming.map((entry) => (
+                <OutstandingItem
+                  key={entry.todo.id}
+                  projectId={entry.project.id}
+                  todo={entry.todo}
+                  ownerName={ownerName(entry.todo.ownerUserId)}
+                  expanded={richChrome}
+                  projectLink={{
+                    id: entry.project.id,
+                    name: entry.project.name,
+                  }}
+                  onProjectNavigate={exitFullscreen}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  function renderPersonalWorkWindowSections(layout: "rail" | "fullscreen") {
+    const { active, upcoming } = personalWorkWindow;
+    if (active.length === 0 && upcoming.length === 0) return null;
+
+    const listClass =
+      layout === "fullscreen"
+        ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+        : "flex flex-col gap-2";
+
+    return (
+      <div className="mb-4 flex flex-col gap-4">
+        {active.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+              Working on now
+              <span className="ml-1.5 font-semibold text-teal-accent/70">
+                {active.length}
+              </span>
+            </h3>
+            <ul className={listClass}>
+              {active.map((todo) => (
+                <PersonalOutstandingItem
+                  key={todo.id}
+                  todo={todo}
+                  expanded={richChrome}
+                  highlight
+                  onNavigate={exitFullscreen}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+        {upcoming.length > 0 && (
+          <section>
+            <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+              Coming up next
+              <span className="ml-1.5 font-semibold text-muted/70">
+                {upcoming.length}
+              </span>
+            </h3>
+            <ul className={listClass}>
+              {upcoming.map((todo) => (
+                <PersonalOutstandingItem
+                  key={todo.id}
+                  todo={todo}
+                  expanded={richChrome}
+                  onNavigate={exitFullscreen}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    );
+  }
 
   function renderFlatEntry(entry: FlatEntry) {
     if (entry.type === "contact") {
@@ -661,21 +879,27 @@ export default function OutstandingSidebar() {
 
     if (layout === "rail") {
       return (
-        <ul className="flex flex-col gap-2">
-          {openPersonal.map((todo) => (
-            <PersonalOutstandingItem
-              key={todo.id}
-              todo={todo}
-              expanded={richChrome}
-              onNavigate={exitFullscreen}
-            />
-          ))}
-        </ul>
+        <>
+          {renderPersonalWorkWindowSections(layout)}
+          <ul className="flex flex-col gap-2">
+            {openPersonal
+              .filter((todo) => !personalWorkWindow.excludedIds.has(todo.id))
+              .map((todo) => (
+                <PersonalOutstandingItem
+                  key={todo.id}
+                  todo={todo}
+                  expanded={richChrome}
+                  onNavigate={exitFullscreen}
+                />
+              ))}
+          </ul>
+        </>
       );
     }
 
     return (
       <div className="flex flex-col gap-5">
+        {renderPersonalWorkWindowSections(layout)}
         {BUCKET_ORDER.map((bucket) => {
           const items = personalFlatByBucket[bucket];
           if (items.length === 0) return null;
@@ -719,14 +943,16 @@ export default function OutstandingSidebar() {
 
     if (useProjectSort) {
       return (
-        <div
-          className={
-            layout === "fullscreen"
-              ? "grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-              : "flex flex-col gap-4"
-          }
-        >
-          {groups.map(({ project, entries }) => (
+        <>
+          {renderProjectWorkWindowSections(layout)}
+          <div
+            className={
+              layout === "fullscreen"
+                ? "grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+                : "flex flex-col gap-4"
+            }
+          >
+            {groups.map(({ project, entries }) => (
             <section
               key={project.id}
               className={
@@ -764,12 +990,14 @@ export default function OutstandingSidebar() {
               </ul>
             </section>
           ))}
-        </div>
+          </div>
+        </>
       );
     }
 
     return (
       <div className="flex flex-col gap-5">
+        {renderProjectWorkWindowSections(layout)}
         {BUCKET_ORDER.map((bucket) => {
           const items = flatByBucket[bucket];
           if (items.length === 0) return null;

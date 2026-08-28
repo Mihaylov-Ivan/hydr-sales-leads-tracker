@@ -1185,6 +1185,10 @@ export interface ProjectTodo {
   done: boolean;
   /** Date (yyyy-mm-dd) the item should be completed by */
   dueDate?: string;
+  /** Inclusive time window start (yyyy-mm-dd) */
+  startDate?: string;
+  /** Inclusive time window end (yyyy-mm-dd) — aim to finish by */
+  endDate?: string;
   /** Team member responsible for this item */
   ownerUserId?: string;
   createdAt: string; // ISO
@@ -1249,6 +1253,8 @@ export interface PersonalTodo {
   /** Inclusive time window end (yyyy-mm-dd) */
   endDate?: string;
   ownerUserId?: string;
+  /** Manual priority within a status column — lower values appear first */
+  sortOrder: number;
   comments: PersonalTodoComment[];
   createdAt: string;
   completedAt?: string;
@@ -1264,6 +1270,17 @@ export function personalTodoSortDate(todo: PersonalTodo): string {
   return todo.dueDate ?? todo.endDate ?? "9999-12-31";
 }
 
+/** Manual priority first, then deadline / window end, then created time. */
+export function comparePersonalTodos(
+  a: PersonalTodo,
+  b: PersonalTodo,
+): number {
+  const aOrder = a.sortOrder ?? 0;
+  const bOrder = b.sortOrder ?? 0;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+  return comparePersonalTodosByDeadline(a, b);
+}
+
 export function comparePersonalTodosByDeadline(
   a: PersonalTodo,
   b: PersonalTodo,
@@ -1272,6 +1289,17 @@ export function comparePersonalTodosByDeadline(
   const bDate = personalTodoSortDate(b);
   if (aDate !== bDate) return aDate < bDate ? -1 : 1;
   return a.createdAt.localeCompare(b.createdAt);
+}
+
+/** Earliest work-window start first; deadline as tie-breaker. */
+export function comparePersonalTodosByWorkWindowStart(
+  a: PersonalTodo,
+  b: PersonalTodo,
+): number {
+  const aStart = a.startDate ?? "9999-12-31";
+  const bStart = b.startDate ?? "9999-12-31";
+  if (aStart !== bStart) return aStart < bStart ? -1 : 1;
+  return comparePersonalTodosByDeadline(a, b);
 }
 
 /** A named span on the project Gantt schedule */
@@ -1364,14 +1392,66 @@ const TODO_KIND_ORDER: Record<TodoKind, number> = {
   "client-action": 2,
 };
 
+/** Deadline first, then window end; undated last. */
+export function projectTodoSortDate(todo: ProjectTodo): string {
+  return todo.dueDate ?? todo.endDate ?? "9999-12-31";
+}
+
+/** True when today falls within the task work window (at least one bound required). */
+export function isTodoInWorkWindow(
+  todo: { startDate?: string; endDate?: string },
+  today = todayDate(),
+): boolean {
+  if (!todo.startDate && !todo.endDate) return false;
+  const start = todo.startDate ?? "0000-01-01";
+  const end = todo.endDate ?? "9999-12-31";
+  return start <= today && today <= end;
+}
+
+/** True when the work window has not started yet. */
+export function isTodoWorkWindowUpcoming(
+  todo: { startDate?: string },
+  today = todayDate(),
+): boolean {
+  return Boolean(todo.startDate && todo.startDate > today);
+}
+
 /** Closest deadline first; undated last; kind as secondary priority */
 export function compareTodosByDeadline(a: ProjectTodo, b: ProjectTodo): number {
-  const aDate = a.dueDate ?? "9999-12-31";
-  const bDate = b.dueDate ?? "9999-12-31";
+  const aDate = projectTodoSortDate(a);
+  const bDate = projectTodoSortDate(b);
   if (aDate !== bDate) return aDate < bDate ? -1 : 1;
   const byKind = TODO_KIND_ORDER[a.kind] - TODO_KIND_ORDER[b.kind];
   if (byKind !== 0) return byKind;
   return a.createdAt.localeCompare(b.createdAt);
+}
+
+/** Earliest work-window start first; deadline as tie-breaker. */
+export function compareTodosByWorkWindowStart(
+  a: ProjectTodo,
+  b: ProjectTodo,
+): number {
+  const aStart = a.startDate ?? "9999-12-31";
+  const bStart = b.startDate ?? "9999-12-31";
+  if (aStart !== bStart) return aStart < bStart ? -1 : 1;
+  return compareTodosByDeadline(a, b);
+}
+
+export function partitionOpenProjectTodos(todos: ProjectTodo[]) {
+  const open = todos.filter((t) => !t.done);
+  const active = open
+    .filter((t) => isTodoInWorkWindow(t))
+    .sort(compareTodosByDeadline);
+  const upcoming = open
+    .filter((t) => !isTodoInWorkWindow(t) && isTodoWorkWindowUpcoming(t))
+    .sort(compareTodosByWorkWindowStart);
+  const rest = open
+    .filter(
+      (t) => !isTodoInWorkWindow(t) && !isTodoWorkWindowUpcoming(t),
+    )
+    .sort(compareTodosByDeadline);
+  const done = todos.filter((t) => t.done).sort(compareTodosByDeadline);
+  return { active, upcoming, rest, done };
 }
 
 export interface Project {

@@ -62,6 +62,7 @@ import {
   normalizeCompanyMonthlyExpense,
   normalizeProjectExpense,
   normalizePersonalTodoStatus,
+  comparePersonalTodos,
   normalizeStage,
   parseSeriesTags,
   parseMarketTags,
@@ -438,6 +439,8 @@ export interface TodoPatch {
   text?: string;
   answer?: string | null;
   dueDate?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
   ownerUserId?: string | null;
 }
 
@@ -684,6 +687,8 @@ interface ProjectsApi {
     text: string,
     dueDate?: string,
     ownerUserId?: string,
+    startDate?: string,
+    endDate?: string,
   ) => void;
   toggleTodo: (projectId: string, todoId: string) => void;
   updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
@@ -699,6 +704,12 @@ interface ProjectsApi {
     text: string,
   ) => void;
   deletePersonalTodoComment: (todoId: string, commentId: string) => void;
+  reorderPersonalTodo: (todoId: string, direction: "up" | "down") => void;
+  movePersonalTodo: (
+    todoId: string,
+    targetStatus: PersonalTodoStatus,
+    targetIndex: number,
+  ) => void;
   addContact: (projectId: string, input: ContactInput) => void;
   updateContact: (projectId: string, contactId: string, patch: ContactInput) => void;
   deleteContact: (projectId: string, contactId: string) => void;
@@ -940,6 +951,41 @@ function loadLocal(): Project[] {
   return SEED_PROJECTS;
 }
 
+function normalizePersonalTodoSortOrders(todos: PersonalTodo[]): PersonalTodo[] {
+  const needsFix = todos.some((t) => t.sortOrder === undefined);
+  if (!needsFix) return todos;
+
+  const byStatus = new Map<PersonalTodoStatus, PersonalTodo[]>();
+  for (const todo of todos) {
+    const list = byStatus.get(todo.status) ?? [];
+    list.push(todo);
+    byStatus.set(todo.status, list);
+  }
+
+  const orderById = new Map<string, number>();
+  for (const list of byStatus.values()) {
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    list.forEach((todo, index) => {
+      orderById.set(todo.id, index * 10);
+    });
+  }
+
+  return todos.map((todo) => ({
+    ...todo,
+    sortOrder: todo.sortOrder ?? orderById.get(todo.id) ?? 0,
+  }));
+}
+
+function nextPersonalTodoSortOrder(
+  todos: PersonalTodo[],
+  status: PersonalTodoStatus,
+): number {
+  const max = todos
+    .filter((t) => t.status === status)
+    .reduce((highest, t) => Math.max(highest, t.sortOrder ?? 0), -10);
+  return max + 10;
+}
+
 function sanitizePersonalTodo(raw: PersonalTodo): PersonalTodo {
   return {
     id: raw.id,
@@ -950,6 +996,7 @@ function sanitizePersonalTodo(raw: PersonalTodo): PersonalTodo {
     ...(raw.startDate ? { startDate: raw.startDate } : {}),
     ...(raw.endDate ? { endDate: raw.endDate } : {}),
     ...(raw.ownerUserId ? { ownerUserId: raw.ownerUserId } : {}),
+    sortOrder: raw.sortOrder ?? 0,
     comments: Array.isArray(raw.comments)
       ? raw.comments.map((c) => ({
           id: c.id,
@@ -970,16 +1017,22 @@ function loadLocalPersonalTodos(): PersonalTodo[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PersonalTodo[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((t) => t?.id && t.title).map(sanitizePersonalTodo);
+    return finalizePersonalTodos(parsed);
   } catch {
     return [];
   }
 }
 
+function finalizePersonalTodos(todos: PersonalTodo[]): PersonalTodo[] {
+  return normalizePersonalTodoSortOrders(todos.map(sanitizePersonalTodo));
+}
+
 async function loadRemotePersonalTodos(): Promise<PersonalTodo[] | null> {
   if (!supabase) return null;
   const [todosRes, commentsRes] = await Promise.all([
-    supabase.from("personal_todos").select("*").order("created_at", {
+    supabase.from("personal_todos").select("*").order("sort_order", {
+      ascending: true,
+    }).order("created_at", {
       ascending: true,
     }),
     supabase.from("personal_todo_comments").select("*").order("created_at", {
@@ -1005,8 +1058,10 @@ async function loadRemotePersonalTodos(): Promise<PersonalTodo[] | null> {
     list.push(personalTodoCommentFromRow(row));
     commentsByTodo.set(row.todo_id, list);
   }
-  return ((todosRes.data ?? []) as PersonalTodoRow[]).map((row) =>
-    personalTodoFromRow(row, commentsByTodo.get(row.id) ?? []),
+  return finalizePersonalTodos(
+    ((todosRes.data ?? []) as PersonalTodoRow[]).map((row) =>
+      personalTodoFromRow(row, commentsByTodo.get(row.id) ?? []),
+    ),
   );
 }
 
@@ -2696,6 +2751,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       text: string,
       dueDate?: string,
       ownerUserId?: string,
+      startDate?: string,
+      endDate?: string,
     ) => {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo: ProjectTodo = {
@@ -2704,6 +2761,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         text,
         done: false,
         ...(dueDate ? { dueDate } : {}),
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
         ...(ownerUserId ? { ownerUserId } : {}),
         createdAt: new Date().toISOString(),
       };
@@ -2715,7 +2774,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         projectId,
         action: "create",
         summary: `${project?.name ?? projectId}: added ${kind} — ${text.slice(0, 80)}`,
-        payloadJson: { kind, dueDate: dueDate ?? null },
+        payloadJson: {
+          kind,
+          dueDate: dueDate ?? null,
+          startDate: startDate ?? null,
+          endDate: endDate ?? null,
+        },
       });
       if (supabase) {
         void supabase
@@ -2727,6 +2791,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             text: todo.text,
             done: false,
             due_date: dueDate ?? null,
+            start_date: startDate ?? null,
+            end_date: endDate ?? null,
             ...(supportsOwnershipFields
               ? { owner_user_id: todo.ownerUserId ?? null }
               : {}),
@@ -2784,6 +2850,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             if (patch.dueDate === null) delete next.dueDate;
             else next.dueDate = patch.dueDate;
           }
+          if (patch.startDate !== undefined) {
+            if (patch.startDate === null) delete next.startDate;
+            else next.startDate = patch.startDate;
+          }
+          if (patch.endDate !== undefined) {
+            if (patch.endDate === null) delete next.endDate;
+            else next.endDate = patch.endDate;
+          }
           if (patch.ownerUserId !== undefined) {
             if (patch.ownerUserId === null) delete next.ownerUserId;
             else next.ownerUserId = patch.ownerUserId;
@@ -2801,6 +2875,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         payloadJson: {
           text: patch.text ?? null,
           dueDate: patch.dueDate ?? null,
+          startDate: patch.startDate ?? null,
+          endDate: patch.endDate ?? null,
         },
       });
       if (supabase) {
@@ -2808,6 +2884,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (patch.text !== undefined) row.text = patch.text;
         if (patch.answer !== undefined) row.answer = patch.answer;
         if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
+        if (patch.startDate !== undefined) row.start_date = patch.startDate;
+        if (patch.endDate !== undefined) row.end_date = patch.endDate;
         if (supportsOwnershipFields && patch.ownerUserId !== undefined) {
           row.owner_user_id = patch.ownerUserId;
         }
@@ -2851,6 +2929,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (!title) return "";
       const status = normalizePersonalTodoStatus(input.status ?? "todo");
       const now = new Date().toISOString();
+      const sortOrder = nextPersonalTodoSortOrder(
+        personalTodosRef.current,
+        status,
+      );
       const todo: PersonalTodo = {
         id: crypto.randomUUID(),
         title,
@@ -2858,6 +2940,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ? { description: input.description.trim() }
           : {}),
         status,
+        sortOrder,
         ...(input.dueDate ? { dueDate: input.dueDate } : {}),
         ...(input.startDate ? { startDate: input.startDate } : {}),
         ...(input.endDate ? { endDate: input.endDate } : {}),
@@ -2888,6 +2971,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             start_date: todo.startDate ?? null,
             end_date: todo.endDate ?? null,
             owner_user_id: todo.ownerUserId ?? null,
+            sort_order: todo.sortOrder,
             created_at: todo.createdAt,
             completed_at: todo.completedAt ?? null,
             cancelled_at: todo.cancelledAt ?? null,
@@ -2934,6 +3018,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       if (patch.status !== undefined && patch.status !== current.status) {
         next.status = patch.status;
+        next.sortOrder = nextPersonalTodoSortOrder(
+          personalTodosRef.current.filter((t) => t.id !== todoId),
+          patch.status,
+        );
         if (patch.status === "done") {
           next.completedAt = now;
           delete next.cancelledAt;
@@ -2960,7 +3048,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         },
       });
       if (supabase && supportsPersonalTodos) {
-        const row: Record<string, string | null> = {};
+        const row: Record<string, string | number | null> = {};
         if (patch.title !== undefined) row.title = next.title;
         if (patch.description !== undefined) {
           row.description = next.description ?? null;
@@ -2973,6 +3061,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
         if (patch.status !== undefined) {
           row.status = next.status;
+          row.sort_order = next.sortOrder;
           row.completed_at = next.completedAt ?? null;
           row.cancelled_at = next.cancelledAt ?? null;
         }
@@ -2984,6 +3073,119 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [recordChangeEvent, supportsPersonalTodos],
+  );
+
+  const movePersonalTodo = useCallback(
+    (
+      todoId: string,
+      targetStatus: PersonalTodoStatus,
+      targetIndex: number,
+    ) => {
+      const dragged = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!dragged) return;
+
+      const column = personalTodosRef.current
+        .filter((t) => t.status === targetStatus)
+        .sort(comparePersonalTodos);
+      const fromIndex = column.findIndex((t) => t.id === todoId);
+      const clampedIndex = Math.max(0, Math.min(targetIndex, column.length));
+
+      if (fromIndex >= 0 && dragged.status === targetStatus) {
+        if (fromIndex === clampedIndex) return;
+      }
+
+      const now = new Date().toISOString();
+      const statusChanged = dragged.status !== targetStatus;
+      const nextDragged: PersonalTodo = { ...dragged, status: targetStatus };
+      if (statusChanged) {
+        if (targetStatus === "done") {
+          nextDragged.completedAt = now;
+          delete nextDragged.cancelledAt;
+        } else if (targetStatus === "cancelled") {
+          nextDragged.cancelledAt = now;
+          delete nextDragged.completedAt;
+        } else {
+          delete nextDragged.completedAt;
+          delete nextDragged.cancelledAt;
+        }
+      }
+
+      let reordered: PersonalTodo[];
+      if (fromIndex >= 0) {
+        const list = [...column];
+        list.splice(fromIndex, 1);
+        list.splice(clampedIndex, 0, nextDragged);
+        reordered = list;
+      } else {
+        const list = [...column];
+        list.splice(clampedIndex, 0, nextDragged);
+        reordered = list;
+      }
+
+      const orderById = new Map(
+        reordered.map((todo, idx) => [todo.id, idx * 10]),
+      );
+
+      setPersonalTodos((prev) =>
+        prev.map((todo) => {
+          const sortOrder = orderById.get(todo.id);
+          if (sortOrder === undefined) return todo;
+          if (todo.id === todoId) {
+            return { ...nextDragged, sortOrder };
+          }
+          return { ...todo, sortOrder };
+        }),
+      );
+
+      if (statusChanged) {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "personal_todo",
+          entityId: todoId,
+          action: "update",
+          summary: `Personal todo: moved to ${targetStatus} — ${nextDragged.title.slice(0, 80)}`,
+          payloadJson: { status: targetStatus },
+        });
+      }
+
+      if (supabase && supportsPersonalTodos) {
+        for (const [id, sortOrder] of orderById) {
+          const row: Record<string, string | number | null> = {
+            sort_order: sortOrder,
+          };
+          if (id === todoId && statusChanged) {
+            row.status = nextDragged.status;
+            row.completed_at = nextDragged.completedAt ?? null;
+            row.cancelled_at = nextDragged.cancelledAt ?? null;
+          }
+          void supabase
+            .from("personal_todos")
+            .update(row)
+            .eq("id", id)
+            .then(logDbError("personal todo move"));
+        }
+      }
+    },
+    [recordChangeEvent, supportsPersonalTodos],
+  );
+
+  const reorderPersonalTodo = useCallback(
+    (todoId: string, direction: "up" | "down") => {
+      const current = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!current) return;
+
+      const column = personalTodosRef.current
+        .filter((t) => t.status === current.status)
+        .sort(comparePersonalTodos);
+      const index = column.findIndex((t) => t.id === todoId);
+      if (index < 0) return;
+
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= column.length) return;
+
+      movePersonalTodo(todoId, current.status, targetIndex);
+    },
+    [movePersonalTodo],
   );
 
   const deletePersonalTodo = useCallback(
@@ -7353,6 +7555,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         addPersonalTodoComment,
         updatePersonalTodoComment,
         deletePersonalTodoComment,
+        reorderPersonalTodo,
+        movePersonalTodo,
         addContact,
         updateContact,
         deleteContact,

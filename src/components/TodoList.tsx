@@ -8,7 +8,7 @@ import {
   TodoKind,
   TODO_KIND_LABELS,
   addDays,
-  compareTodosByDeadline,
+  partitionOpenProjectTodos,
   todayDate,
 } from "@/lib/types";
 
@@ -115,6 +115,52 @@ function DueDate({
   );
 }
 
+function WorkWindow({
+  todo,
+  onPatch,
+  className = "",
+}: {
+  todo: ProjectTodo;
+  onPatch: (patch: {
+    startDate?: string | null;
+    endDate?: string | null;
+  }) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 flex-wrap items-center gap-2 text-[10px] text-muted ${className}`}
+    >
+      <span className="shrink-0 font-semibold uppercase tracking-wide">
+        Window
+      </span>
+      <input
+        type="date"
+        value={todo.startDate ?? ""}
+        onChange={(e) =>
+          onPatch({ startDate: e.target.value || null })
+        }
+        title="Start working on"
+        aria-label="Start working on"
+        className="min-w-0 max-w-full flex-1 rounded-md border border-line bg-surface px-2 py-1 text-[10px] text-ink outline-none focus:border-teal-accent"
+      />
+      <span className="shrink-0" aria-hidden>
+        →
+      </span>
+      <input
+        type="date"
+        value={todo.endDate ?? ""}
+        onChange={(e) =>
+          onPatch({ endDate: e.target.value || null })
+        }
+        title="Aim to finish by"
+        aria-label="Aim to finish by"
+        className="min-w-0 max-w-full flex-1 rounded-md border border-line bg-surface px-2 py-1 text-[10px] text-ink outline-none focus:border-teal-accent"
+      />
+    </div>
+  );
+}
+
 function Answer({
   todo,
   onSave,
@@ -189,6 +235,7 @@ function TodoItem({
   todo,
   teamMembers,
   showAnswer,
+  highlight = false,
   onToggle,
   onPatch,
   onDelete,
@@ -196,11 +243,14 @@ function TodoItem({
   todo: ProjectTodo;
   teamMembers: TeamMember[];
   showAnswer: boolean;
+  highlight?: boolean;
   onToggle: () => void;
   onPatch: (patch: {
     text?: string;
     answer?: string | null;
     dueDate?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
     ownerUserId?: string | null;
   }) => void;
   onDelete: () => void;
@@ -216,7 +266,11 @@ function TodoItem({
   }
 
   return (
-    <li className="group/item rounded-lg px-2 py-1.5 transition hover:bg-teal-soft/50">
+    <li
+      className={`group/item rounded-lg px-2 py-1.5 transition hover:bg-teal-soft/50 ${
+        highlight ? "border border-teal-accent/35 bg-teal-soft/35" : ""
+      }`}
+    >
       <div className="flex items-start gap-3">
         <button
           type="button"
@@ -288,6 +342,12 @@ function TodoItem({
         </button>
       </div>
 
+      <WorkWindow
+        todo={todo}
+        onPatch={onPatch}
+        className="mt-1 pl-8 pr-8"
+      />
+
       {showAnswer && (
         <div className="mt-1 pl-8 pr-8">
           <Answer todo={todo} onSave={(answer) => onPatch({ answer })} />
@@ -315,20 +375,46 @@ export default function TodoList({
   const { addTodo, toggleTodo, updateTodo, deleteTodo, teamMembers } = useProjects();
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [ownerUserId, setOwnerUserId] = useState("");
 
-  const open = todos.filter((t) => !t.done).sort(compareTodosByDeadline);
-  const done = todos.filter((t) => t.done).sort(compareTodosByDeadline);
+  const { active, upcoming, rest, done } = partitionOpenProjectTodos(todos);
   const doneCount = done.length;
   const progress = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
+
+  function renderTodoItem(t: ProjectTodo, highlight = false) {
+    return (
+      <TodoItem
+        key={t.id}
+        todo={t}
+        teamMembers={teamMembers}
+        showAnswer={kind === "question"}
+        highlight={highlight}
+        onToggle={() => toggleTodo(projectId, t.id)}
+        onPatch={(patch) => updateTodo(projectId, t.id, patch)}
+        onDelete={() => deleteTodo(projectId, t.id)}
+      />
+    );
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const t = text.trim();
     if (!t) return;
-    addTodo(projectId, kind, t, dueDate || undefined, ownerUserId || undefined);
+    addTodo(
+      projectId,
+      kind,
+      t,
+      dueDate || undefined,
+      ownerUserId || undefined,
+      startDate || undefined,
+      endDate || undefined,
+    );
     setText("");
     setDueDate("");
+    setStartDate("");
+    setEndDate("");
     setOwnerUserId("");
   }
 
@@ -375,6 +461,22 @@ export default function TodoList({
           aria-label="Deadline (optional)"
           className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
         />
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          title="Start working on (optional)"
+          aria-label="Start working on (optional)"
+          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+        />
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          title="Aim to finish by (optional)"
+          aria-label="Aim to finish by (optional)"
+          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+        />
         <select
           value={ownerUserId}
           onChange={(e) => setOwnerUserId(e.target.value)}
@@ -406,31 +508,47 @@ export default function TodoList({
         </p>
       ) : (
         <ul className="flex flex-col">
-          {open.map((t) => (
-            <TodoItem
-              key={t.id}
-              todo={t}
-              teamMembers={teamMembers}
-              showAnswer={kind === "question"}
-              onToggle={() => toggleTodo(projectId, t.id)}
-              onPatch={(patch) => updateTodo(projectId, t.id, patch)}
-              onDelete={() => deleteTodo(projectId, t.id)}
-            />
-          ))}
-          {open.length > 0 && done.length > 0 && (
-            <li className="mx-2 my-1.5 border-t border-dashed border-line" aria-hidden />
+          {active.length > 0 && (
+            <>
+              <li
+                className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-teal-accent"
+                aria-hidden
+              >
+                Working on now · {active.length}
+              </li>
+              {active.map((t) => renderTodoItem(t, true))}
+            </>
           )}
-          {done.map((t) => (
-            <TodoItem
-              key={t.id}
-              todo={t}
-              teamMembers={teamMembers}
-              showAnswer={kind === "question"}
-              onToggle={() => toggleTodo(projectId, t.id)}
-              onPatch={(patch) => updateTodo(projectId, t.id, patch)}
-              onDelete={() => deleteTodo(projectId, t.id)}
-            />
-          ))}
+          {upcoming.length > 0 && (
+            <>
+              <li
+                className={`px-2 text-[10px] font-bold uppercase tracking-wide text-muted ${
+                  active.length > 0 ? "mt-3" : "pt-1"
+                }`}
+                aria-hidden
+              >
+                Coming up next · {upcoming.length}
+              </li>
+              {upcoming.map((t) => renderTodoItem(t))}
+            </>
+          )}
+          {rest.length > 0 && (active.length > 0 || upcoming.length > 0) && (
+            <li
+              className="mx-2 my-2 px-2 text-[10px] font-bold uppercase tracking-wide text-muted"
+              aria-hidden
+            >
+              Other open · {rest.length}
+            </li>
+          )}
+          {rest.map((t) => renderTodoItem(t))}
+          {(active.length > 0 || upcoming.length > 0 || rest.length > 0) &&
+            done.length > 0 && (
+              <li
+                className="mx-2 my-1.5 border-t border-dashed border-line"
+                aria-hidden
+              />
+            )}
+          {done.map((t) => renderTodoItem(t))}
         </ul>
       )}
     </section>
