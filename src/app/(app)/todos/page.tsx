@@ -21,9 +21,10 @@ const COLUMN_ACCENT: Record<PersonalTodoStatus, string> = {
   done: "border-t-green-accent",
 };
 
+const COLUMN_MIN_PX = 270;
+
 const CANCELLED_STORAGE_KEY = "hydrogenera-show-personal-cancelled-v1";
 const DONE_STORAGE_KEY = "hydrogenera-show-personal-done-v1";
-const COLUMN_MIN_PX = 270;
 
 function readDraggedTodoId(e: React.DragEvent): string {
   return (

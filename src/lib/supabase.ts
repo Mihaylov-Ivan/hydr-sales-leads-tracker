@@ -36,7 +36,7 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
  * Null when the env vars are missing, in which case the store falls back
- * to localStorage so local dev still works without a database.
+ * to localStorage for non-financial offline dev data.
  */
 export const supabase: SupabaseClient | null =
   url && anonKey ? createClient(url, anonKey) : null;

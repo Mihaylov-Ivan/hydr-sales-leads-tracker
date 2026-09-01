@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { downloadFinancialCsv, downloadFinancialHistoryCsv } from "@/lib/financial-csv";
+import { downloadFinancialCsv } from "@/lib/financial-csv";
 import { buildDefaultSkladMaps } from "@/lib/warehouse-sklad-map";
 
 export default function Header() {
@@ -15,9 +15,6 @@ export default function Header() {
     teamMembers,
     currentUserId,
     setCurrentUserId,
-    meaningfulChangeMode,
-    setMeaningfulChangeMode,
-    financialHistory,
     ready,
     projects,
     financeSettings,
@@ -70,14 +67,10 @@ export default function Header() {
       if (!result.ok) {
         setCsvMsg(result.error);
       } else {
-        const histNote =
-          result.historyRows > 0
-            ? ` Merged ${result.historyRows} history row${result.historyRows === 1 ? "" : "s"} by event_id.`
-            : "";
         setCsvMsg(
           result.matched > 0
-            ? `Imported financials for ${result.matched} project${result.matched === 1 ? "" : "s"}.${histNote}`
-            : `CSV loaded (no matching projects by id/name).${histNote}`,
+            ? `Imported financials for ${result.matched} project${result.matched === 1 ? "" : "s"}.`
+            : "CSV loaded (no matching projects by id/name).",
         );
       }
     } catch (e) {
@@ -133,7 +126,6 @@ export default function Header() {
             {navLink("/production", "Production")}
             {navLink("/finance", "Finance")}
             {navLink("/metrics", "Metrics")}
-            {navLink("/history", "History")}
           </nav>
         </div>
 
@@ -152,7 +144,6 @@ export default function Header() {
               const result = await downloadFinancialCsv(
                 projects,
                 financeSettings,
-                financialHistory,
                 warehouse,
                 undefined,
                 buildDefaultSkladMaps(projects),
@@ -173,7 +164,7 @@ export default function Header() {
             type="button"
             disabled={!ready}
             onClick={() => fileRef.current?.click()}
-            title="Import financial data CSV (history rows merge by event_id)"
+            title="Import financial data CSV"
             className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
           >
             <span className="sm:hidden">CSV ↑</span>
@@ -235,48 +226,7 @@ export default function Header() {
                   </select>
                 </div>
 
-                <div className="border-b border-line px-3 py-2.5">
-                  <label
-                    className={`flex cursor-pointer items-center gap-2 text-xs font-semibold ${
-                      meaningfulChangeMode ? "text-teal-accent" : "text-deep"
-                    }`}
-                    title={
-                      meaningfulChangeMode
-                        ? "On: edits are tagged as intentional process changes"
-                        : "Off: edits are tagged as corrections / typo fixes"
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={meaningfulChangeMode}
-                      disabled={!ready}
-                      onChange={(e) => setMeaningfulChangeMode(e.target.checked)}
-                      className="h-3.5 w-3.5 accent-teal-accent"
-                    />
-                    Real change
-                  </label>
-                </div>
-
                 <div className="flex flex-col gap-0.5 p-1.5">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!ready || financialHistory.length === 0}
-                    onClick={async () => {
-                      const result =
-                        await downloadFinancialHistoryCsv(financialHistory);
-                      setCsvMsg(
-                        result.ok
-                          ? `Saved history to ${result.path}`
-                          : `History export failed: ${result.error}`,
-                      );
-                      setMenuOpen(false);
-                    }}
-                    title="Save financial history CSV to OneDrive Finances folder"
-                    className={menuBtnCls}
-                  >
-                    Download history
-                  </button>
                   <button
                     type="button"
                     role="menuitem"

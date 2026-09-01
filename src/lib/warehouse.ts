@@ -464,57 +464,11 @@ function migrateBomLine(raw: unknown): WarehouseBomLine | null {
 }
 
 export function loadWarehouseState(): WarehouseState {
-  try {
-    const raw = window.localStorage.getItem("hydrogenera-warehouse-v2");
-    if (!raw) return emptyWarehouseState();
-    const parsed = JSON.parse(raw) as Partial<WarehouseState> & {
-      items?: unknown[];
-      lots?: unknown[];
-      balances?: unknown[];
-      movements?: unknown[];
-      groups?: unknown[];
-      serials?: unknown[];
-      boms?: unknown[];
-      bomLines?: unknown[];
-    };
-    return {
-      items: (parsed.items ?? []).map(migrateItem).filter(Boolean) as WarehouseItem[],
-      lots: (parsed.lots ?? []).map(migrateLot).filter(Boolean) as WarehouseLot[],
-      balances: (parsed.balances ?? [])
-        .map(migrateBalance)
-        .filter(Boolean) as WarehouseBalance[],
-      movements: (parsed.movements ?? [])
-        .map(migrateMovement)
-        .filter(Boolean) as WarehouseMovement[],
-      groups: (parsed.groups ?? [])
-        .map(migrateGroup)
-        .filter(Boolean) as WarehouseGroup[],
-      serials: (parsed.serials ?? [])
-        .map(migrateSerial)
-        .filter(Boolean) as WarehouseSerial[],
-      boms: (parsed.boms ?? []).map(migrateBom).filter(Boolean) as WarehouseBom[],
-      bomLines: (parsed.bomLines ?? [])
-        .map(migrateBomLine)
-        .filter(Boolean) as WarehouseBomLine[],
-      holdingProjectId:
-        typeof parsed.holdingProjectId === "string"
-          ? parsed.holdingProjectId
-          : null,
-    };
-  } catch {
-    return emptyWarehouseState();
-  }
+  return emptyWarehouseState();
 }
 
-export function saveWarehouseState(state: WarehouseState): void {
-  try {
-    window.localStorage.setItem(
-      "hydrogenera-warehouse-v2",
-      JSON.stringify(state),
-    );
-  } catch {
-    // ignore quota / private mode
-  }
+export function saveWarehouseState(_state: WarehouseState): void {
+  // Browser storage disabled — warehouse state lives in Supabase only.
 }
 
 export function unitCostExFromInc(

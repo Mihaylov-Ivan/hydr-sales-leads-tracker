@@ -1090,6 +1090,7 @@ export default function GanttFinancials({
     null,
   );
   const [opexGenerateOk, setOpexGenerateOk] = useState<string | null>(null);
+  const [sectionOpen, setSectionOpen] = useState(false);
   const project = projects.find((p) => p.id === projectId);
 
   // Edit against live project financials so new lines show immediately.
@@ -1175,10 +1176,29 @@ export default function GanttFinancials({
 
   return (
     <div className="mt-5 rounded-xl border border-line bg-surface p-4">
-      <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-deep">
-        Income &amp; expenses
-      </h3>
-      <p className="mb-4 text-[11px] text-muted">
+      <button
+        type="button"
+        aria-expanded={sectionOpen}
+        onClick={() => setSectionOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-3 text-left"
+      >
+        <span>
+          <span className="block text-xs font-bold uppercase tracking-wide text-deep">
+            Income &amp; expenses
+          </span>
+          <span className="mt-0.5 block text-[11px] text-muted">
+            {payments.length} income · {expenses.length} expense
+            {expenses.length === 1 ? "" : "s"}
+          </span>
+        </span>
+        <span className="shrink-0 text-sm font-semibold text-muted" aria-hidden>
+          {sectionOpen ? "▴" : "▾"}
+        </span>
+      </button>
+
+      {sectionOpen && (
+        <>
+      <p className="mb-4 mt-3 text-[11px] text-muted">
         Expected dates feed the board cash chart whether or not cash has been
         received. Set a received/paid date when it happens — or leave it empty.
       </p>
@@ -1533,6 +1553,8 @@ export default function GanttFinancials({
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

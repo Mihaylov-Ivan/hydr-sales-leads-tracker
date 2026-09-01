@@ -25,6 +25,7 @@ import {
   todayDate,
 } from "@/lib/types";
 
+
 const EXPANDED_KEY = "hydr-outstanding-expanded";
 const SORT_KEY = "hydr-outstanding-sort";
 const SCOPE_KEY = "hydr-outstanding-scope";
@@ -133,12 +134,79 @@ function DeadlineBadge({ date }: { date: string }) {
         : "Due ";
   return (
     <span
-      className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}
+      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone}`}
     >
       {label}
       {formatDue(date)}
     </span>
   );
+}
+
+function SidebarDueDate({
+  dueDate,
+  editable,
+  onChange,
+}: {
+  dueDate: string | null;
+  editable: boolean;
+  onChange: (dueDate: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  if (editing && editable) {
+    return (
+      <input
+        autoFocus
+        type="date"
+        value={dueDate ?? ""}
+        onChange={(e) => {
+          onChange(e.target.value || null);
+          setEditing(false);
+        }}
+        onBlur={() => setEditing(false)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setEditing(false);
+        }}
+        aria-label="Deadline"
+        className="mt-1 rounded border border-teal-accent bg-surface px-1.5 py-0.5 text-[10px] text-ink outline-none"
+      />
+    );
+  }
+
+  if (dueDate) {
+    if (editable) {
+      return (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          title="Click to change the deadline"
+          className="mt-1 block text-left transition hover:opacity-80"
+        >
+          <DeadlineBadge date={dueDate} />
+        </button>
+      );
+    }
+    return (
+      <span className="mt-1 inline-block">
+        <DeadlineBadge date={dueDate} />
+      </span>
+    );
+  }
+
+  if (editable) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        title="Set a deadline"
+        className="mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold text-muted/70 transition hover:bg-teal-soft hover:text-teal-accent"
+      >
+        + Set deadline
+      </button>
+    );
+  }
+
+  return null;
 }
 
 function SidebarAnswer({
@@ -210,6 +278,7 @@ function OutstandingItem({
   todo,
   ownerName,
   expanded,
+  deadlineEditable = false,
   highlight = false,
   projectLink,
   onProjectNavigate,
@@ -218,6 +287,7 @@ function OutstandingItem({
   todo: ProjectTodo;
   ownerName: string;
   expanded: boolean;
+  deadlineEditable?: boolean;
   highlight?: boolean;
   projectLink?: { id: string; name: string };
   onProjectNavigate?: () => void;
@@ -262,7 +332,13 @@ function OutstandingItem({
           <p className="mt-1 whitespace-pre-wrap text-xs leading-snug text-ink">
             {todo.text}
           </p>
-          {todo.dueDate && <DeadlineBadge date={todo.dueDate} />}
+          <SidebarDueDate
+            dueDate={todo.dueDate ?? null}
+            editable={deadlineEditable}
+            onChange={(nextDueDate) =>
+              updateTodo(projectId, todo.id, { dueDate: nextDueDate })
+            }
+          />
           {(todo.startDate || todo.endDate) && (
             <p className="mt-1 text-[10px] text-muted">
               Window:{" "}
@@ -444,6 +520,7 @@ type SidebarEntry =
   | { type: "todo"; todo: ProjectTodo; sortDate: string };
 
 type FlatEntry = SidebarEntry & { project: Project };
+type TodoFlatEntry = Extract<FlatEntry, { type: "todo" }>;
 
 type Group = {
   project: Project;
@@ -554,14 +631,14 @@ export default function OutstandingSidebar() {
   }, [fullscreen]);
 
   const projectWorkWindow = useMemo(() => {
-    const active: FlatEntry[] = [];
-    const upcoming: FlatEntry[] = [];
+    const active: TodoFlatEntry[] = [];
+    const upcoming: TodoFlatEntry[] = [];
     const excludedIds = new Set<string>();
 
     for (const project of projects) {
       for (const todo of project.todos) {
         if (todo.done) continue;
-        const entry: FlatEntry = {
+        const entry: TodoFlatEntry = {
           type: "todo",
           todo,
           sortDate: projectTodoSortDate(todo),
@@ -745,6 +822,7 @@ export default function OutstandingSidebar() {
                   todo={entry.todo}
                   ownerName={ownerName(entry.todo.ownerUserId)}
                   expanded={richChrome}
+                  deadlineEditable={layout === "fullscreen"}
                   highlight
                   projectLink={{
                     id: entry.project.id,
@@ -772,6 +850,7 @@ export default function OutstandingSidebar() {
                   todo={entry.todo}
                   ownerName={ownerName(entry.todo.ownerUserId)}
                   expanded={richChrome}
+                  deadlineEditable={layout === "fullscreen"}
                   projectLink={{
                     id: entry.project.id,
                     name: entry.project.name,
@@ -842,7 +921,10 @@ export default function OutstandingSidebar() {
     );
   }
 
-  function renderFlatEntry(entry: FlatEntry) {
+  function renderFlatEntry(
+    entry: FlatEntry,
+    layout: "rail" | "fullscreen",
+  ) {
     if (entry.type === "contact") {
       return (
         <ContactItem
@@ -862,6 +944,7 @@ export default function OutstandingSidebar() {
         todo={entry.todo}
         ownerName={ownerName(entry.todo.ownerUserId)}
         expanded={richChrome}
+        deadlineEditable={layout === "fullscreen"}
         projectLink={{ id: entry.project.id, name: entry.project.name }}
         onProjectNavigate={exitFullscreen}
       />
@@ -984,6 +1067,7 @@ export default function OutstandingSidebar() {
                       todo={entry.todo}
                       ownerName={ownerName(entry.todo.ownerUserId)}
                       expanded={richChrome}
+                      deadlineEditable={layout === "fullscreen"}
                     />
                   ),
                 )}
@@ -1016,7 +1100,7 @@ export default function OutstandingSidebar() {
                     : "flex flex-col gap-2"
                 }
               >
-                {items.map(renderFlatEntry)}
+                {items.map((entry) => renderFlatEntry(entry, layout))}
               </ul>
             </section>
           );

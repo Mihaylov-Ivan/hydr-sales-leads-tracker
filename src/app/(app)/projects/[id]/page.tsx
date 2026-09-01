@@ -12,7 +12,6 @@ import ContactList from "@/components/ContactList";
 import FileAttachments from "@/components/FileAttachments";
 import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
-import ProjectChangeHistory from "@/components/ProjectChangeHistory";
 import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import MarketMultiSelect from "@/components/MarketMultiSelect";
 
@@ -597,7 +596,6 @@ export default function ProjectPage() {
         financials={project.financials}
       />
 
-      <ProjectChangeHistory projectId={project.id} />
 
       {/* Questions and action items */}
       <TodoList

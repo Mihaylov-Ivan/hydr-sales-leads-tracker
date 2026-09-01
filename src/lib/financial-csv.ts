@@ -11,7 +11,6 @@
  *   - milestone     — financial timeline milestone
  *   - company       — opening cash / WC / win probabilities (one row)
  *   - company_opex  — company fixed monthly cost
- *   - history       — append-only financial change snapshots (amounts OK here)
  */
 
 import {
@@ -21,7 +20,6 @@ import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
   CompanyMonthlyExpenseStatus,
-  FinancialHistoryEntry,
   MilestoneKind,
   MILESTONE_KINDS,
   Project,
@@ -99,18 +97,6 @@ export const FINANCIAL_CSV_HEADERS = [
   "source_sklad",
   "wh_site",
   "wh_slot",
-  // History rows (type=history); empty on snapshot rows
-  "event_id",
-  "intentional",
-  "actor_user_id",
-  "actor_name",
-  "action",
-  "field",
-  "old_value",
-  "new_value",
-  "summary",
-  "occurred_at",
-  "entity_type",
   "entity_id",
 ] as const;
 
@@ -123,8 +109,6 @@ export type FinancialCsvBundle = {
   /** project_name (lower) → financials when id unknown */
   byProjectName: Record<string, ProjectFinancials>;
   financeSettings: CompanyFinanceSettings | null;
-  /** Append-only financial change snapshots from type=history rows */
-  history: FinancialHistoryEntry[];
   /** Lot unit costs / receipt meta from type=warehouse_lot rows */
   warehouseLots: WarehouseLotCsvRow[];
   /** MoneyWorks SKLAD → project maps from type=warehouse_sklad_map */
@@ -179,12 +163,11 @@ function numStr(n: number | null | undefined): string {
 }
 
 /**
- * Build CSV text from live projects + company finance settings + history + warehouse lots.
+ * Build CSV text from live projects + company finance settings + warehouse lots.
  */
 export function buildFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
-  history: FinancialHistoryEntry[] = [],
   warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
   skladMaps: WarehouseSkladMap[] = [],
 ): string {
@@ -344,30 +327,6 @@ export function buildFinancialCsv(
     lines.push(rowLine(r));
   }
 
-  const sortedHistory = [...history].sort((a, b) =>
-    a.occurredAt.localeCompare(b.occurredAt),
-  );
-  for (const h of sortedHistory) {
-    const r = emptyRow();
-    r.type = "history";
-    r.event_id = h.eventId;
-    r.project_id = h.projectId ?? "";
-    r.project_name = h.projectName ?? "";
-    r.intentional = h.intentional ? "true" : "false";
-    r.actor_user_id = h.actorUserId ?? "";
-    r.actor_name = h.actorName ?? "";
-    r.action = h.action;
-    r.field = h.field ?? "";
-    r.old_value = h.oldValue ?? "";
-    r.new_value = h.newValue ?? "";
-    r.summary = h.summary;
-    r.occurred_at = h.occurredAt;
-    r.entity_type = h.entityType;
-    r.entity_id = h.entityId ?? "";
-    r.created_at = h.occurredAt;
-    lines.push(rowLine(r));
-  }
-
   return lines.join("\r\n") + "\r\n";
 }
 
@@ -410,7 +369,6 @@ async function saveCsvToExportDir(
 export async function downloadFinancialCsv(
   projects: Project[],
   financeSettings: CompanyFinanceSettings,
-  history: FinancialHistoryEntry[] = [],
   warehouse?: Pick<WarehouseState, "lots" | "items"> | null,
   filename = `financial-data-${new Date().toISOString().slice(0, 10)}.csv`,
   skladMaps: WarehouseSkladMap[] = [],
@@ -418,24 +376,10 @@ export async function downloadFinancialCsv(
   const csv = buildFinancialCsv(
     projects,
     financeSettings,
-    history,
     warehouse,
     skladMaps,
   );
   return saveCsvToExportDir(filename, csv);
-}
-
-/** Export only type=history rows (amounts + metadata). */
-export async function downloadFinancialHistoryCsv(
-  history: FinancialHistoryEntry[],
-  filename = `financial-history-${new Date().toISOString().slice(0, 10)}.csv`,
-): Promise<CsvExportResult> {
-  const header = FINANCIAL_CSV_HEADERS.join(",");
-  const body = buildFinancialCsv([], defaultFinanceSettings(), history)
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("history,"));
-  const out = [header, ...body].join("\r\n") + "\r\n";
-  return saveCsvToExportDir(filename, out);
 }
 
 /** Minimal RFC4180-ish parser (quoted fields, commas, newlines). */
@@ -532,7 +476,7 @@ export function parseFinancialCsv(text: string):
     return {
       ok: false,
       error:
-        'Missing required column "type". Older files without history columns still work; only "type" is required.',
+        'Missing required column "type". Older CSV files without optional columns still work; only "type" is required.',
     };
   }
 
@@ -545,7 +489,6 @@ export function parseFinancialCsv(text: string):
   const byName = new Map<string, ProjectFinancials>();
   let financeSettings: CompanyFinanceSettings | null = null;
   const opex: CompanyMonthlyExpense[] = [];
-  const history: FinancialHistoryEntry[] = [];
   const warehouseLots: WarehouseLotCsvRow[] = [];
   const warehouseSkladMaps: WarehouseSkladMapCsvRow[] = [];
 
@@ -569,38 +512,6 @@ export function parseFinancialCsv(text: string):
     if (!type) continue;
 
     if (type === "history") {
-      const eventId = cell(row, "event_id") || cell(row, "id");
-      if (!eventId) continue;
-      const entry: FinancialHistoryEntry = {
-        eventId,
-        occurredAt:
-          cell(row, "occurred_at") ||
-          cell(row, "created_at") ||
-          new Date().toISOString(),
-        intentional:
-          cell(row, "intentional").toLowerCase() === "true" ||
-          cell(row, "intentional") === "1",
-        entityType: cell(row, "entity_type") || "financial",
-        action: cell(row, "action") || "update",
-        summary: cell(row, "summary") || "Financial change",
-      };
-      const actorUserId = cell(row, "actor_user_id");
-      if (actorUserId) entry.actorUserId = actorUserId;
-      const actorName = cell(row, "actor_name");
-      if (actorName) entry.actorName = actorName;
-      const projectId = cell(row, "project_id");
-      if (projectId) entry.projectId = projectId;
-      const projectName = cell(row, "project_name");
-      if (projectName) entry.projectName = projectName;
-      const entityId = cell(row, "entity_id");
-      if (entityId) entry.entityId = entityId;
-      const field = cell(row, "field");
-      if (field) entry.field = field;
-      const oldValue = cell(row, "old_value");
-      if (oldValue) entry.oldValue = oldValue;
-      const newValue = cell(row, "new_value");
-      if (newValue) entry.newValue = newValue;
-      history.push(entry);
       continue;
     }
 
@@ -906,7 +817,6 @@ export function parseFinancialCsv(text: string):
       byProjectId,
       byProjectName,
       financeSettings,
-      history,
       warehouseLots,
       warehouseSkladMaps,
     },

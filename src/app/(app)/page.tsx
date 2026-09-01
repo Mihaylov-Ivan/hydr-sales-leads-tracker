@@ -41,9 +41,10 @@ const COLUMN_ACCENT: Record<Stage, string> = {
   cancelled: "border-t-muted",
 };
 
+const COLUMN_MIN_PX = 270;
+
 const CANCELLED_STORAGE_KEY = "hydrogenera-show-cancelled-v1";
 const TO_CONTACT_STORAGE_KEY = "hydrogenera-show-to-contact-v1";
-const COLUMN_MIN_PX = 270;
 
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";

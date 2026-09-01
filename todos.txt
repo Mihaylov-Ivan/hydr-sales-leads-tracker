@@ -14,4 +14,4 @@ Update the database schema if required, ensruing the update is only additive/reo
 - expense and WH analysis for each project, able to give predictions of what expenses are expected for future project; the analysis is done on specific category project, ie 500kW E-series, 1000kW E-series etc... and a pattern is recognised of expense amounts, parts ordering and Bill of materials for such a project, and suggestion is made for future similar projects of what parts and expense schedule is expected 
 - add MH as product category
 
-- Add to projects: Desmet with Stargate, Dress&Sommmer, EU funding, Polish tender from Jersey for H2 unloading and usage in a plant..., 
+- Add to projects: Desmet with Stargate, EU funding, Polish tender from Jersey for H2 unloading and usage in a plant..., 

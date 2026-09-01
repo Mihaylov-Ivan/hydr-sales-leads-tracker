@@ -34,8 +34,6 @@ import {
   TodoKind,
   CompanyFinanceSettings,
   CompanyMetricsSettings,
-  ChangeEvent,
-  FinancialHistoryEntry,
   WarehouseItem,
   WarehouseGroup,
   WarehouseLocation,
@@ -74,20 +72,10 @@ import {
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
 import {
-  buildChangeEvent,
-  buildFinancialHistoryEntry,
-  changeEventFromRow,
-  changeEventToRow,
   createEventId,
   formatValue,
-  mergeFinancialHistory,
-  sortChangeEventsDesc,
-  summarizeCrmProjectPatch,
   summarizeFinancialFieldChange,
-  changeEventsFromStageHistory,
-  type ChangeEventRow,
-  type RecordChangeInput,
-} from "./change-history";
+} from "./format-utils";
 import {
   supabase,
   commentFromRow,
@@ -125,6 +113,7 @@ import {
   settingsAfterImport,
 } from "./finance-import";
 import { METRICS_SETTINGS_STORAGE_KEY } from "./metrics/config";
+import { purgeFinancialLocalStorage } from "./browser-storage";
 import {
   ensureProjectMetricsDefaults,
   initialMetricsFields,
@@ -191,94 +180,21 @@ import {
   movementSummary,
   preserveBudgetAmount,
   roundMoney,
-  saveWarehouseState,
   spentAgainstExpense,
   spentAgainstExpenseEx,
   unitCostExFromInc,
 } from "./warehouse";
 
+const FILE_STORAGE_BUCKET = "project-files";
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
-const FINANCE_SETTINGS_STORAGE_KEY = "hydrogenera-finance-settings-v1";
-const FINANCE_IMPORT_STORAGE_KEY = "hydrogenera-finance-import-v1";
-const PROJECT_FINANCIALS_STORAGE_KEY = "hydrogenera-project-financials-v1";
-const PROJECT_SCHEDULE_STORAGE_KEY = "hydrogenera-project-schedule-v2";
-const PROJECT_SCHEDULE_STORAGE_KEY_LEGACY = "hydrogenera-project-schedule-v1";
-const CHANGE_EVENTS_STORAGE_KEY = "hydrogenera-change-events-v1";
-const FINANCIAL_HISTORY_STORAGE_KEY = "hydrogenera-financial-history-v1";
-const MEANINGFUL_CHANGE_STORAGE_KEY = "hydrogenera-meaningful-change-v1";
-const STAGE_HISTORY_BACKFILL_KEY = "hydrogenera-stage-history-backfill-v1";
 const PERSONAL_TODOS_STORAGE_KEY = "hydrogenera-personal-todos-v1";
-const FILE_STORAGE_BUCKET = "project-files";
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
-
-function loadLocalChangeEvents(): ChangeEvent[] {
-  try {
-    const raw = window.localStorage.getItem(CHANGE_EVENTS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ChangeEvent[];
-    return Array.isArray(parsed) ? sortChangeEventsDesc(parsed) : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadLocalFinancialHistory(): FinancialHistoryEntry[] {
-  try {
-    const raw = window.localStorage.getItem(FINANCIAL_HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as FinancialHistoryEntry[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function loadLocalMeaningfulChangeMode(): boolean {
-  try {
-    return window.localStorage.getItem(MEANINGFUL_CHANGE_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-async function loadRemoteChangeEvents(): Promise<ChangeEvent[]> {
-  if (!supabase) return loadLocalChangeEvents();
-  const { data, error } = await supabase
-    .from("app_change_events")
-    .select("*")
-    .order("occurred_at", { ascending: false })
-    .limit(2000);
-  if (error || !data) {
-    if (error) console.error("Failed to load change events:", error.message);
-    return loadLocalChangeEvents();
-  }
-  const events: ChangeEvent[] = [];
-  for (const row of data as ChangeEventRow[]) {
-    const ev = changeEventFromRow(row);
-    if (ev) events.push(ev);
-  }
-  return sortChangeEventsDesc(events);
-}
 
 function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
-  try {
-    // Drop the pre-demo schedule blob (manual test entries).
-    window.localStorage.removeItem(PROJECT_SCHEDULE_STORAGE_KEY_LEGACY);
-    const raw = window.localStorage.getItem(PROJECT_SCHEDULE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, ProjectSchedule>;
-    if (!parsed || typeof parsed !== "object") return {};
-    const cleaned: Record<string, ProjectSchedule> = {};
-    for (const [id, s] of Object.entries(parsed)) {
-      cleaned[id] = ensureScheduleShape(s);
-    }
-    return cleaned;
-  } catch {
-    return {};
-  }
+  return {};
 }
 
 function withLocalSchedule(projects: Project[]): Project[] {
@@ -309,30 +225,11 @@ function withLocalSchedule(projects: Project[]): Project[] {
   });
 }
 
-function loadLocalProjectFinancials(): Record<string, ProjectFinancials> {
-  try {
-    const raw = window.localStorage.getItem(PROJECT_FINANCIALS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, ProjectFinancials>;
-    if (!parsed || typeof parsed !== "object") return {};
-    const cleaned: Record<string, ProjectFinancials> = {};
-    for (const [id, f] of Object.entries(parsed)) {
-      cleaned[id] = sanitizeAppFinancials(f);
-    }
-    return cleaned;
-  } catch {
-    return {};
-  }
-}
-
 function withLocalFinancials(projects: Project[]): Project[] {
-  const local = loadLocalProjectFinancials();
   return projects.map((p) =>
     ensureProjectMetricsDefaults({
       ...p,
-      financials: sanitizeAppFinancials(
-        local[p.id] ?? p.financials ?? emptyFinancials(),
-      ),
+      financials: sanitizeAppFinancials(p.financials ?? emptyFinancials()),
     }),
   );
 }
@@ -637,16 +534,6 @@ interface ProjectsApi {
   /** Currently selected app user (for authorship of updates) */
   currentUserId: string | null;
   setCurrentUserId: (userId: string | null) => void;
-  /**
-   * When true, recorded changes are tagged intentional (real process change).
-   * Default false = typo / data-entry correction.
-   */
-  meaningfulChangeMode: boolean;
-  setMeaningfulChangeMode: (on: boolean) => void;
-  /** Non-financial + finance_meta change events (DB when available) */
-  changeEvents: ChangeEvent[];
-  /** Financial before/after snapshots (localStorage + CSV only) */
-  financialHistory: FinancialHistoryEntry[];
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
@@ -664,7 +551,7 @@ interface ProjectsApi {
   importFinancialCsvText: (
     text: string,
   ) =>
-    | { ok: true; matched: number; historyRows: number }
+    | { ok: true; matched: number }
     | { ok: false; error: string };
   projects: Project[];
   ready: boolean;
@@ -908,7 +795,6 @@ function loadLocal(): Project[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Project[];
-      // Data saved before newer features may lack these fields
       return parsed.map((p) => ({
         ...p,
         stage: normalizeStage(p.stage),
@@ -933,15 +819,7 @@ function loadLocal(): Project[] {
             ? { stageChange: normalizeStage(c.stageChange) }
             : {}),
         })),
-        financials: {
-          ...emptyFinancials(),
-          ...p.financials,
-          payments: p.financials?.payments ?? [],
-          expenseSchedule: (p.financials?.expenseSchedule ?? []).map((e) =>
-            normalizeProjectExpense(e),
-          ),
-          milestones: p.financials?.milestones ?? [],
-        },
+        financials: emptyFinancials(),
         schedule: ensureScheduleShape(p.schedule),
       }));
     }
@@ -1129,8 +1007,6 @@ async function loadRemoteTeamMembers(): Promise<TeamMember[]> {
     if (remote.length === 0) {
       for (const m of local) byId.set(m.id, m);
     } else if (hadLocalStore) {
-      // This browser had edited the roster before DB sync — push those
-      // names up once, then treat Supabase as the source of truth.
       for (const m of local) byId.set(m.id, m);
     } else {
       for (const m of local) {
@@ -1169,70 +1045,6 @@ function loadLocalCurrentUserId(members: TeamMember[]): string | null {
     return members.some((m) => m.id === id) ? id : (members[0]?.id ?? null);
   } catch {
     return members[0]?.id ?? null;
-  }
-}
-
-function loadLocalFinanceSettings(): CompanyFinanceSettings {
-  try {
-    const raw = window.localStorage.getItem(FINANCE_SETTINGS_STORAGE_KEY);
-    if (!raw) return defaultFinanceSettings();
-    const parsed = JSON.parse(raw) as Partial<CompanyFinanceSettings>;
-    const base = defaultFinanceSettings();
-    return {
-      openingCash:
-        typeof parsed.openingCash === "number"
-          ? parsed.openingCash
-          : base.openingCash,
-      minWorkingCapital:
-        typeof parsed.minWorkingCapital === "number"
-          ? parsed.minWorkingCapital
-          : base.minWorkingCapital,
-      stageProbabilities: {
-        ...base.stageProbabilities,
-        ...(parsed.stageProbabilities ?? {}),
-      },
-      monthlyExpenses: Array.isArray(parsed.monthlyExpenses)
-        ? parsed.monthlyExpenses
-            .map(normalizeCompanyMonthlyExpense)
-            .filter((e): e is NonNullable<typeof e> => e != null)
-        : base.monthlyExpenses,
-      ...(typeof parsed.openingCashAsOf === "string"
-        ? { openingCashAsOf: parsed.openingCashAsOf.slice(0, 7) }
-        : {}),
-    };
-  } catch {
-    return defaultFinanceSettings();
-  }
-}
-
-function loadLocalFinanceImport(): FinanceImportData | null {
-  try {
-    const raw = window.localStorage.getItem(FINANCE_IMPORT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as FinanceImportData;
-    if (!parsed || !Array.isArray(parsed.projectActuals)) {
-      return null;
-    }
-    return {
-      ...parsed,
-      companyMonths: Array.isArray(parsed.companyMonths)
-        ? parsed.companyMonths
-        : [],
-      projectExpected: Array.isArray(parsed.projectExpected)
-        ? parsed.projectExpected
-        : [],
-      projectMilestones: Array.isArray(parsed.projectMilestones)
-        ? parsed.projectMilestones
-        : [],
-      ...(Array.isArray(parsed.companyMonthlyExpenses)
-        ? { companyMonthlyExpenses: parsed.companyMonthlyExpenses }
-        : {}),
-      ...(Array.isArray(parsed.projectCaps)
-        ? { projectCaps: parsed.projectCaps }
-        : {}),
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -1371,16 +1183,16 @@ function logDbError(action: string) {
   };
 }
 
+/** History tracking removed — stable no-op for existing call sites. */
+function recordChangeEvent(..._args: unknown[]): void {
+  // intentionally empty
+}
+
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
-  const [meaningfulChangeMode, setMeaningfulChangeModeState] = useState(false);
-  const [changeEvents, setChangeEvents] = useState<ChangeEvent[]>([]);
-  const [financialHistory, setFinancialHistory] = useState<
-    FinancialHistoryEntry[]
-  >([]);
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
     defaultFinanceSettings,
   );
@@ -1412,12 +1224,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
-  const meaningfulChangeModeRef = useRef(meaningfulChangeMode);
-  meaningfulChangeModeRef.current = meaningfulChangeMode;
-  const changeEventsRef = useRef<ChangeEvent[]>(changeEvents);
-  changeEventsRef.current = changeEvents;
-  const financialHistoryRef = useRef<FinancialHistoryEntry[]>(financialHistory);
-  financialHistoryRef.current = financialHistory;
   const warehouseRef = useRef<WarehouseState>(warehouse);
   warehouseRef.current = warehouse;
   const deleteWarehouseLotRef = useRef<
@@ -1442,6 +1248,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function boot() {
+      purgeFinancialLocalStorage();
       const wh = loadWarehouseState();
       setWarehouse(wh);
       setManufacturingCostReferenceProjectIdState(
@@ -1467,60 +1274,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             wh.holdingProjectId,
           ),
         );
-        setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceSettings(defaultFinanceSettings());
         setMetricsSettings(remoteMetrics);
-        setFinanceImport(loadLocalFinanceImport());
-        setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
-        setFinancialHistory(loadLocalFinancialHistory());
-        let remoteEvents = await loadRemoteChangeEvents().catch(() =>
-          loadLocalChangeEvents(),
-        );
-
-        // One-shot backfill from project_stage_history → app_change_events
-        try {
-          const already =
-            window.localStorage.getItem(STAGE_HISTORY_BACKFILL_KEY) === "1";
-          if (!already && supabase) {
-            const { data: stageRows, error: stageErr } = await supabase
-              .from("project_stage_history")
-              .select("id, project_id, stage, entered_at")
-              .order("entered_at", { ascending: true });
-            if (!stageErr && stageRows && stageRows.length > 0) {
-              const names = new Map(
-                remoteProjects.map((p) => [p.id, p.name] as const),
-              );
-              const existingIds = new Set(remoteEvents.map((e) => e.id));
-              const backfilled = changeEventsFromStageHistory(
-                stageRows as {
-                  id: string;
-                  project_id: string;
-                  stage: string;
-                  entered_at: string;
-                }[],
-                names,
-              ).filter((e) => !existingIds.has(e.id));
-              if (backfilled.length > 0) {
-                remoteEvents = sortChangeEventsDesc([
-                  ...backfilled,
-                  ...remoteEvents,
-                ]);
-                // Insert missing rows into app_change_events (ignore duplicates)
-                for (const ev of backfilled) {
-                  void supabase
-                    .from("app_change_events")
-                    .upsert(changeEventToRow(ev), { onConflict: "id" })
-                    .then(logDbError("stage history backfill"));
-                }
-              }
-            }
-            window.localStorage.setItem(STAGE_HISTORY_BACKFILL_KEY, "1");
-          }
-        } catch (e) {
-          console.error("Stage history backfill failed:", e);
-        }
-
-        setChangeEvents(remoteEvents);
-
+        setFinanceImport(null);
         const remotePersonal = await loadRemotePersonalTodos().catch(() => null);
         if (remotePersonal) {
           setPersonalTodos(remotePersonal);
@@ -1559,12 +1315,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             wh.holdingProjectId,
           ),
         );
-        setFinanceSettings(loadLocalFinanceSettings());
+        setFinanceSettings(defaultFinanceSettings());
         setMetricsSettings(loadLocalMetricsSettings());
-        setFinanceImport(loadLocalFinanceImport());
-        setMeaningfulChangeModeState(loadLocalMeaningfulChangeMode());
-        setFinancialHistory(loadLocalFinancialHistory());
-        setChangeEvents(loadLocalChangeEvents());
+        setFinanceImport(null);
         setPersonalTodos(loadLocalPersonalTodos());
         setSupportsPersonalTodos(false);
         setReady(true);
@@ -1618,10 +1371,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Without a database the tracker keeps persisting to localStorage.
+  useEffect(() => {
+    if (!ready) return;
+    if (!supabase) return;
+    const t = window.setTimeout(() => {
+      void persistRemoteWarehouseState(warehouse).then((res) => {
+        if (!res.ok) console.error("Warehouse persist failed:", res.error);
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [warehouse, ready]);
+
+  // Offline dev fallback only — never persist financials to browser storage.
   useEffect(() => {
     if (ready && !supabase) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      const snapshot = projects.map((p) => ({
+        ...p,
+        financials: emptyFinancials(),
+      }));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     }
   }, [projects, ready]);
 
@@ -1643,94 +1411,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (ready) {
       window.localStorage.setItem(
-        FINANCE_SETTINGS_STORAGE_KEY,
-        JSON.stringify(financeSettings),
-      );
-    }
-  }, [financeSettings, ready]);
-
-  // App-entered project financials (CSV portable “financial DB”).
-  useEffect(() => {
-    if (!ready) return;
-    const map: Record<string, ProjectFinancials> = {};
-    for (const p of projects) {
-      map[p.id] = sanitizeAppFinancials(p.financials);
-    }
-    window.localStorage.setItem(
-      PROJECT_FINANCIALS_STORAGE_KEY,
-      JSON.stringify(map),
-    );
-  }, [projects, ready]);
-
-  // Gantt schedules — always mirrored locally (and synced to DB when available).
-  useEffect(() => {
-    if (!ready) return;
-    const map: Record<string, ProjectSchedule> = {};
-    for (const p of projects) {
-      map[p.id] = p.schedule ?? emptySchedule();
-    }
-    window.localStorage.setItem(
-      PROJECT_SCHEDULE_STORAGE_KEY,
-      JSON.stringify(map),
-    );
-  }, [projects, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    if (financeImport) {
-      window.localStorage.setItem(
-        FINANCE_IMPORT_STORAGE_KEY,
-        JSON.stringify(financeImport),
-      );
-    } else {
-      window.localStorage.removeItem(FINANCE_IMPORT_STORAGE_KEY);
-    }
-  }, [financeImport, ready]);
-
-  useEffect(() => {
-    if (ready) {
-      window.localStorage.setItem(
         CURRENT_USER_STORAGE_KEY,
         JSON.stringify(currentUserId),
       );
     }
   }, [currentUserId, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem(
-      MEANINGFUL_CHANGE_STORAGE_KEY,
-      meaningfulChangeMode ? "1" : "0",
-    );
-  }, [meaningfulChangeMode, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem(
-      CHANGE_EVENTS_STORAGE_KEY,
-      JSON.stringify(changeEvents.slice(0, 2000)),
-    );
-  }, [changeEvents, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem(
-      FINANCIAL_HISTORY_STORAGE_KEY,
-      JSON.stringify(financialHistory),
-    );
-  }, [financialHistory, ready]);
-
-  useEffect(() => {
-    if (!ready) return;
-    saveWarehouseState(warehouse);
-    if (!supabase) return;
-    const t = window.setTimeout(() => {
-      void persistRemoteWarehouseState(warehouse).then((res) => {
-        if (!res.ok) console.error("Warehouse persist failed:", res.error);
-      });
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [warehouse, ready]);
 
   // If the selected user is removed/edited away, fall back to first member.
   useEffect(() => {
@@ -1745,10 +1430,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const setCurrentUserId = useCallback((userId: string | null) => {
     setCurrentUserIdState(userId);
-  }, []);
-
-  const setMeaningfulChangeMode = useCallback((on: boolean) => {
-    setMeaningfulChangeModeState(on);
   }, []);
 
   type RecordFinanceSnapshot = {
@@ -1766,75 +1447,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   /** Resolves when a newly created project row is confirmed in Supabase (or immediately if offline). */
   const projectInsertWaitersRef = useRef(
     new Map<string, Promise<boolean>>(),
-  );
-
-  const persistChangeEventRemote = useCallback((event: ChangeEvent) => {
-    const client = supabase;
-    if (!client) return;
-    const row = changeEventToRow(event);
-    void client
-      .from("app_change_events")
-      .insert(row)
-      .then(async ({ error }) => {
-        // Project create races: event can arrive before projects row. Retry without FK.
-        if (
-          error &&
-          row.project_id &&
-          /app_change_events_project_id_fkey/i.test(error.message)
-        ) {
-          const { project_id: _drop, ...rest } = row;
-          void client
-            .from("app_change_events")
-            .insert({ ...rest, project_id: null })
-            .then(logDbError("change event insert (no project_id)"));
-          return;
-        }
-        logDbError("change event insert")({ error });
-      });
-  }, []);
-
-  const recordChangeEvent = useCallback(
-    (
-      input: Omit<RecordChangeInput, "intentional" | "actorUserId" | "actorName"> & {
-        intentional?: boolean;
-      },
-      financeSnapshot?: RecordFinanceSnapshot,
-      options?: { skipRemote?: boolean },
-    ): ChangeEvent => {
-      const authorInfo = (() => {
-        const id = currentUserIdRef.current;
-        const member = id
-          ? teamMembersRef.current.find((m) => m.id === id)
-          : undefined;
-        return {
-          actorName: member?.name ?? "You",
-          ...(member ? { actorUserId: member.id } : {}),
-        };
-      })();
-      const event = buildChangeEvent({
-        ...input,
-        intentional:
-          input.intentional ?? meaningfulChangeModeRef.current,
-        ...authorInfo,
-      });
-      setChangeEvents((prev) => sortChangeEventsDesc([event, ...prev]));
-      if (supabase && !options?.skipRemote) {
-        persistChangeEventRemote(event);
-      }
-      if (financeSnapshot) {
-        const hist = buildFinancialHistoryEntry({
-          eventId: event.id,
-          occurredAt: event.occurredAt,
-          intentional: event.intentional,
-          ...(event.actorUserId ? { actorUserId: event.actorUserId } : {}),
-          ...(event.actorName ? { actorName: event.actorName } : {}),
-          ...financeSnapshot,
-        });
-        setFinancialHistory((prev) => mergeFinancialHistory(prev, [hist]));
-      }
-      return event;
-    },
-    [persistChangeEventRemote],
   );
 
   const updateFinanceSettings = useCallback(
@@ -1988,14 +1600,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             });
           });
         }
-        try {
-          window.localStorage.setItem(
-            METRICS_SETTINGS_STORAGE_KEY,
-            JSON.stringify(next),
-          );
-        } catch {
-          /* ignore */
-        }
         if (supabase && supportsMetricsSettingsTable) {
           void supabase
             .from("company_metrics_settings")
@@ -2004,6 +1608,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               updated_at: new Date().toISOString(),
             })
             .then(logDbError("metrics settings upsert"));
+        } else {
+          try {
+            window.localStorage.setItem(
+              METRICS_SETTINGS_STORAGE_KEY,
+              JSON.stringify(next),
+            );
+          } catch {
+            /* ignore */
+          }
         }
         return next;
       });
@@ -2108,11 +1721,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (data.financeSettings) {
         setFinanceSettings(data.financeSettings);
       }
-      if (data.history.length > 0) {
-        setFinancialHistory((prev) =>
-          mergeFinancialHistory(prev, data.history),
-        );
-      }
       if (data.warehouseLots.length > 0) {
         setWarehouse((prev) => applyWarehouseLotCsvRows(prev, data.warehouseLots));
       }
@@ -2146,7 +1754,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           void persistRemoteSkladMaps(maps);
         }
       }
-      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.history.length} history row${data.history.length === 1 ? "" : "s"}, ${data.warehouseLots.length} warehouse lot${data.warehouseLots.length === 1 ? "" : "s"}, ${data.warehouseSkladMaps.length} sklad map${data.warehouseSkladMaps.length === 1 ? "" : "s"})`;
+      const summary = `Imported financial CSV (${matched} project${matched === 1 ? "" : "s"} matched, ${data.warehouseLots.length} warehouse lot${data.warehouseLots.length === 1 ? "" : "s"}, ${data.warehouseSkladMaps.length} sklad map${data.warehouseSkladMaps.length === 1 ? "" : "s"})`;
       recordChangeEvent(
         {
           id: createEventId(),
@@ -2157,7 +1765,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           summary,
           payloadJson: {
             matched,
-            historyRows: data.history.length,
           },
         },
         {
@@ -2168,7 +1775,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           newValue: String(matched),
         },
       );
-      return { ok: true as const, matched, historyRows: data.history.length };
+      return { ok: true as const, matched };
     },
     [recordChangeEvent],
   );
@@ -2314,25 +1921,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       createdAt,
     };
     setProjects((prev) => [project, ...prev]);
-    // Keep change event local until projects row exists (FK on app_change_events).
-    const event = recordChangeEvent(
-      {
-        domain: "crm",
-        entityType: "project",
-        entityId: id,
-        projectId: id,
-        action: "create",
-        summary: `Created project ${project.name}`,
-        payloadJson: {
-          name: project.name,
-          stage: project.stage,
-          market: project.market,
-        },
-      },
-      undefined,
-      { skipRemote: Boolean(supabase) },
-    );
-    if (supabase) {
+if (supabase) {
       // Insert comment / history only after the project row exists (FK constraint).
       const insertPromise = supabase
         .from("projects")
@@ -2385,17 +1974,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               })
               .then(logDbError("initial comment insert"));
           }
-          if (supportsMetricsFields) {
-            void supabase!
-              .from("project_stage_history")
-              .insert({
-                project_id: id,
-                stage: project.stage,
-                entered_at: project.coldLeadEnteredAt,
-              })
-              .then(logDbError("stage history insert"));
-          }
-          persistChangeEventRemote(event);
           return true;
         });
       projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));
@@ -2409,7 +1987,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     supportsMetricsFields,
     resolveAuthor,
     recordChangeEvent,
-    persistChangeEventRemote,
   ]);
 
   const addComment = useCallback(
@@ -2496,16 +2073,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             .update(row)
             .eq("id", projectId)
             .then(logDbError("stage update"));
-          if (supportsMetricsFields) {
-            void supabase
-              .from("project_stage_history")
-              .insert({
-                project_id: projectId,
-                stage: stageChange,
-                entered_at: todayDate(),
-              })
-              .then(logDbError("stage history insert"));
-          }
         }
       }
       void requestAiSummary(updated);
@@ -2547,24 +2114,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (mergedPatch.cancelledAt === "") delete updated.cancelledAt;
       if (mergedPatch.cancellationReason === "")
         delete updated.cancellationReason;
-
-      const diffs = summarizeCrmProjectPatch(
-        current as unknown as Record<string, unknown>,
-        patch as unknown as Record<string, unknown>,
-        current.name,
-      );
-      for (const d of diffs) {
-        recordChangeEvent({
-          domain: "crm",
-          entityType: "project",
-          entityId: projectId,
-          projectId,
-          action: d.field === "stage" ? "stage_change" : "update",
-          field: d.field,
-          summary: d.summary,
-          payloadJson: d.payload,
-        });
-      }
 
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
@@ -2611,20 +2160,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .update(row)
           .eq("id", projectId)
           .then(logDbError("project update"));
-        if (
-          supportsMetricsFields &&
-          patch.stage &&
-          patch.stage !== current.stage
-        ) {
-          void supabase
-            .from("project_stage_history")
-            .insert({
-              project_id: projectId,
-              stage: patch.stage,
-              entered_at: todayDate(),
-            })
-            .then(logDbError("stage history insert"));
-        }
       }
       void requestAiSummary(updated);
     },
@@ -5804,7 +5339,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         .then((res) => {
           logDbError("warehouse holding project insert")(res);
           if (res.error) return false;
-          persistChangeEventRemote(event);
           return true;
         });
       projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));
@@ -5814,7 +5348,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, [
     recordChangeEvent,
-    persistChangeEventRemote,
     supportsMetricsFields,
     supportsWarehouseHolding,
   ]);
@@ -6235,31 +5768,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
                 nextAmount = spent;
                 nextEx = spentEx > 0 ? spentEx : undefined;
                 settled = true;
-              } else if (
-                spent > 0 &&
-                !(e.budgetAmount != null && e.budgetAmount > 0)
-              ) {
-                // Recover original prediction from history when already settled
-                let best = 0;
-                for (const h of financialHistoryRef.current) {
-                  if (
-                    h.entityType !== "expense" ||
-                    h.entityId !== e.id ||
-                    h.field !== "amount" ||
-                    !h.oldValue
-                  ) {
-                    continue;
-                  }
-                  const parsed = Number(
-                    String(h.oldValue).replace(/[^0-9.-]/g, ""),
-                  );
-                  if (Number.isFinite(parsed) && parsed > best) best = parsed;
-                }
-                if (best > 0 && Math.abs(best - e.amount) > 0.01) {
-                  changed = true;
-                  return { ...e, budgetAmount: roundMoney(best) };
-                }
-                return e;
               } else {
                 return e;
               }
@@ -7520,10 +7028,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateTeamMember,
         currentUserId,
         setCurrentUserId,
-        meaningfulChangeMode,
-        setMeaningfulChangeMode,
-        changeEvents,
-        financialHistory,
         financeSettings,
         updateFinanceSettings,
         metricsSettings,
