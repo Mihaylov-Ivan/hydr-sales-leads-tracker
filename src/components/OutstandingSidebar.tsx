@@ -293,6 +293,8 @@ function OutstandingItem({
   onProjectNavigate?: () => void;
 }) {
   const { toggleTodo, updateTodo } = useProjects();
+  const sortDate = projectTodoSortDate(todo);
+  const overdue = sortDate !== "9999-12-31" && isOverdueDate(sortDate);
 
   return (
     <li
@@ -346,19 +348,37 @@ function OutstandingItem({
               {todo.endDate ? formatDue(todo.endDate) : "…"}
             </p>
           )}
-          {expanded && todo.dueDate && (
-            <button
-              type="button"
-              onClick={() =>
-                updateTodo(projectId, todo.id, {
-                  dueDate: addDays(todo.dueDate!, 1),
-                })
-              }
-              className="mt-1 inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
-              title="Move deadline by 1 day"
-            >
-              +1 day
-            </button>
+          {(overdue || (expanded && todo.dueDate)) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {overdue && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateTodo(projectId, todo.id, {
+                      dueDate: todayDate(),
+                    })
+                  }
+                  className="inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+                  title="Move deadline to today"
+                >
+                  Today
+                </button>
+              )}
+              {expanded && todo.dueDate && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateTodo(projectId, todo.id, {
+                      dueDate: addDays(todo.dueDate!, 1),
+                    })
+                  }
+                  className="inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+                  title="Move deadline by 1 day"
+                >
+                  +1 day
+                </button>
+              )}
+            </div>
           )}
           <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Owner: {ownerName}
@@ -389,6 +409,7 @@ function PersonalOutstandingItem({
   const { updatePersonalTodo } = useProjects();
   const sortDate = personalTodoSortDate(todo);
   const hasDate = sortDate !== "9999-12-31";
+  const overdue = hasDate && isOverdueDate(sortDate);
 
   return (
     <li
@@ -416,19 +437,37 @@ function PersonalOutstandingItem({
             {todo.title}
           </Link>
           {hasDate && <DeadlineBadge date={sortDate} />}
-          {expanded && hasDate && todo.dueDate && (
-            <button
-              type="button"
-              onClick={() =>
-                updatePersonalTodo(todo.id, {
-                  dueDate: addDays(todo.dueDate!, 1),
-                })
-              }
-              className="mt-1 inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
-              title="Move deadline by 1 day"
-            >
-              +1 day
-            </button>
+          {(overdue || (expanded && hasDate && todo.dueDate)) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {overdue && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePersonalTodo(todo.id, {
+                      dueDate: todayDate(),
+                    })
+                  }
+                  className="inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+                  title="Move deadline to today"
+                >
+                  Today
+                </button>
+              )}
+              {expanded && hasDate && todo.dueDate && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePersonalTodo(todo.id, {
+                      dueDate: addDays(todo.dueDate!, 1),
+                    })
+                  }
+                  className="inline-flex rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+                  title="Move deadline by 1 day"
+                >
+                  +1 day
+                </button>
+              )}
+            </div>
           )}
           {(todo.startDate || todo.endDate) && (
             <p className="mt-1 text-[10px] text-muted">
