@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -9,6 +10,8 @@ import { useAuth } from "@/lib/auth-context";
 import { visibleNavItems } from "@/lib/permissions";
 import { downloadFinancialCsv } from "@/lib/financial-csv";
 import { buildDefaultSkladMaps } from "@/lib/warehouse-sklad-map";
+
+type MenuPos = { top: number; left: number };
 
 export default function Header() {
   const router = useRouter();
@@ -23,17 +26,45 @@ export default function Header() {
   } = useProjects();
   const fileRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [csvMsg, setCsvMsg] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<MenuPos | null>(null);
 
   const displayName = user?.name ?? "Account";
   const showFinanceCsv = can("finance");
   const navItems = visibleNavItems(user);
 
+  useLayoutEffect(() => {
+    if (!menuOpen || !btnRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    function update() {
+      const btn = btnRef.current;
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      const menuW = 224; // w-56
+      const pad = 8;
+      let left = r.right - menuW;
+      left = Math.min(Math.max(pad, left), window.innerWidth - pad - menuW);
+      setMenuPos({ top: r.bottom + 6, left });
+    }
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [menuOpen]);
+
   useEffect(() => {
     if (!menuOpen) return;
     function onDoc(e: MouseEvent) {
-      if (menuRef.current?.contains(e.target as Node)) return;
+      const t = e.target as Node;
+      if (menuRef.current?.contains(t) || panelRef.current?.contains(t)) return;
       setMenuOpen(false);
     }
     function onKey(e: KeyboardEvent) {
@@ -170,6 +201,7 @@ export default function Header() {
 
           <div ref={menuRef} className="relative shrink-0">
             <button
+              ref={btnRef}
               type="button"
               onClick={() => setMenuOpen((o) => !o)}
               aria-expanded={menuOpen}
@@ -193,43 +225,49 @@ export default function Header() {
               </svg>
             </button>
 
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-lg border border-line bg-panel shadow-lg"
-              >
-                <div className="border-b border-line px-3 py-2.5">
-                  <p className="truncate text-sm font-semibold text-deep">
-                    {displayName}
-                  </p>
-                  {user?.username && (
-                    <p className="truncate text-[11px] text-muted">
-                      @{user.username}
-                      {user.isAdmin ? " · Admin" : ""}
+            {menuOpen &&
+              menuPos &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  ref={panelRef}
+                  role="menu"
+                  className="fixed z-[80] w-56 overflow-hidden rounded-lg border border-line bg-panel shadow-lg"
+                  style={{ top: menuPos.top, left: menuPos.left }}
+                >
+                  <div className="border-b border-line px-3 py-2.5">
+                    <p className="truncate text-sm font-semibold text-deep">
+                      {displayName}
                     </p>
-                  )}
-                </div>
+                    {user?.username && (
+                      <p className="truncate text-[11px] text-muted">
+                        @{user.username}
+                        {user.isAdmin ? " · Admin" : ""}
+                      </p>
+                    )}
+                  </div>
 
-                <div className="flex flex-col gap-0.5 p-1.5">
-                  <Link
-                    href="/change-password"
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                    className={menuBtnCls}
-                  >
-                    Change password
-                  </Link>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void onLogout()}
-                    className={`${menuBtnCls} text-muted hover:text-deep`}
-                  >
-                    Log out
-                  </button>
-                </div>
-              </div>
-            )}
+                  <div className="flex flex-col gap-0.5 p-1.5">
+                    <Link
+                      href="/change-password"
+                      role="menuitem"
+                      onClick={() => setMenuOpen(false)}
+                      className={menuBtnCls}
+                    >
+                      Change password
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => void onLogout()}
+                      className={`${menuBtnCls} text-muted hover:text-deep`}
+                    >
+                      Log out
+                    </button>
+                  </div>
+                </div>,
+                document.body,
+              )}
           </div>
         </div>
       </div>

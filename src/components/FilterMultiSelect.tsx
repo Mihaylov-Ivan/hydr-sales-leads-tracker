@@ -22,8 +22,16 @@ function computeMenuPos(btn: HTMLElement, itemCount: number): MenuPos {
   const spaceAbove = r.top - 8;
   const openUp = spaceBelow < estimatedH && spaceAbove > spaceBelow;
   const maxHeight = Math.max(160, openUp ? spaceAbove : spaceBelow);
-  const menuW = Math.min(256, window.innerWidth - 16);
-  const left = Math.min(Math.max(8, r.left), window.innerWidth - 8 - menuW);
+  const pad = 8;
+  const menuW = Math.min(256, window.innerWidth - pad * 2);
+  // Right-side triggers (e.g. Outstanding sidebar): prefer right-align so the
+  // menu grows leftward and stays on screen.
+  const preferRightAlign = r.right > window.innerWidth * 0.55;
+  let left = preferRightAlign ? r.right - menuW : r.left;
+  if (left + menuW > window.innerWidth - pad) {
+    left = r.right - menuW;
+  }
+  left = Math.min(Math.max(pad, left), window.innerWidth - pad - menuW);
   if (openUp) {
     return {
       bottom: window.innerHeight - r.top + 4,
