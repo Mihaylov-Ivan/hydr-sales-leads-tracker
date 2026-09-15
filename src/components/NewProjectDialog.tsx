@@ -56,13 +56,9 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-deep/40 p-4 backdrop-blur-sm sm:items-center"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-deep/40 p-4 backdrop-blur-sm sm:items-center">
       <form
         onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
         className="my-8 w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-2xl"
       >
         <h2 className="mb-5 text-lg font-bold text-deep">New Project</h2>

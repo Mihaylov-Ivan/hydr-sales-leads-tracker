@@ -59,15 +59,10 @@ function ModalShell({
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-deep/40 p-4 backdrop-blur-sm sm:items-center"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-deep/40 p-4 backdrop-blur-sm sm:items-center">
       <div
-        onClick={(e) => e.stopPropagation()}
-        className={`my-6 w-full rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${
-          wide ? "max-w-2xl" : "max-w-lg"
-        }`}
+        className={`my-6 w-full rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${wide ? "max-w-2xl" : "max-w-lg"
+          }`}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-lg font-bold text-deep">{title}</h2>
@@ -134,14 +129,14 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
       strategyWhy,
       ...(contactName.trim()
         ? {
-            contact: {
-              name: contactName,
-              title: contactTitle,
-              email: contactEmail,
-              phone: contactPhone,
-              isPrimary: true,
-            },
-          }
+          contact: {
+            name: contactName,
+            title: contactTitle,
+            email: contactEmail,
+            phone: contactPhone,
+            isPrimary: true,
+          },
+        }
         : {}),
     });
     if (result.duplicateWarning) {
@@ -542,20 +537,9 @@ export function LogOutreachDialog({
         {contact.title ? ` · ${contact.title}` : ""} at{" "}
         <span className="font-semibold text-deep">{company.name}</span>
       </p>
-      {isFirst && (
-        <p className="mb-3 rounded-lg bg-teal-soft/60 px-3 py-2 text-xs text-deep">
-          First contact — counts toward the weekly/monthly new-contact target.
-        </p>
-      )}
       {!isFirst && (
         <p className="mb-3 rounded-lg bg-surface-tint px-3 py-2 text-xs text-muted">
           Follow-up — does not count toward the 20/80 new-contact target.
-        </p>
-      )}
-      {result === "communication-started" && (
-        <p className="mb-3 rounded-lg border border-teal-accent/30 bg-teal-soft/50 px-3 py-2 text-xs text-deep">
-          This will create (or link) a <strong>Cold Lead</strong> on Sales
-          Projects so the opportunity continues there.
         </p>
       )}
       <form onSubmit={submit} className="grid gap-3">
@@ -854,17 +838,17 @@ export function PromoteDialog({
   const [stage, setStage] = useState<Stage>(promoteDefaultStage(company));
   const [leadUserId, setLeadUserId] = useState(
     company.ownerId ||
-      (currentUserId && assignable.some((m) => m.id === currentUserId)
-        ? currentUserId
-        : assignable[0]?.id || ""),
+    (currentUserId && assignable.some((m) => m.id === currentUserId)
+      ? currentUserId
+      : assignable[0]?.id || ""),
   );
   const [description, setDescription] = useState(
     [
       company.strategyWhy && `Why: ${company.strategyWhy}`,
       company.qualification.painPoint &&
-        `Pain: ${company.qualification.painPoint}`,
+      `Pain: ${company.qualification.painPoint}`,
       company.qualification.identifiedProject &&
-        `Project: ${company.qualification.identifiedProject}`,
+      `Project: ${company.qualification.identifiedProject}`,
       company.notes && `Notes: ${company.notes}`,
     ]
       .filter(Boolean)
@@ -919,22 +903,20 @@ export function PromoteDialog({
           <button
             type="button"
             onClick={() => setMode("link")}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-              mode === "link"
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${mode === "link"
                 ? "bg-panel text-teal-accent shadow-sm"
                 : "text-muted"
-            }`}
+              }`}
           >
             Link existing
           </button>
           <button
             type="button"
             onClick={() => setMode("create")}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-              mode === "create"
+            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${mode === "create"
                 ? "bg-panel text-teal-accent shadow-sm"
                 : "text-muted"
-            }`}
+              }`}
           >
             Create new
           </button>

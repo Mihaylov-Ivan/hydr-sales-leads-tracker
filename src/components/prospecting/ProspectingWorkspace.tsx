@@ -416,11 +416,11 @@ export default function ProspectingWorkspace() {
             Projects.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="shrink-0">
           <button
             type="button"
             onClick={() => setDialog({ type: "add-company" })}
-            className="rounded-lg bg-teal-accent px-3.5 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-sm"
+            className="rounded-lg bg-teal-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm"
           >
             + Target company
           </button>
@@ -698,7 +698,7 @@ export default function ProspectingWorkspace() {
 
           <div className="flex min-h-[28rem] gap-4">
             {/* Table */}
-            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-panel">
+            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-panel shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[960px] text-left text-sm">
                   <thead className="sticky top-0 bg-surface-tint/90 text-[10px] uppercase tracking-wide text-muted backdrop-blur">
@@ -718,10 +718,10 @@ export default function ProspectingWorkspace() {
                       <tr>
                         <td
                           colSpan={8}
-                          className="px-3 py-12 text-center text-muted"
+                          className="px-3 pt-12 pb-16 text-center text-muted"
                         >
                           {rows.length === 0 ? (
-                            <div>
+                            <div className="mx-auto max-w-sm px-2">
                               <p className="font-medium text-deep">
                                 No prospects yet
                               </p>
@@ -734,7 +734,7 @@ export default function ProspectingWorkspace() {
                                 onClick={() =>
                                   setDialog({ type: "add-company" })
                                 }
-                                className="mt-3 rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase text-white"
+                                className="mt-4 mb-2 rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase text-white"
                               >
                                 Add first company
                               </button>
