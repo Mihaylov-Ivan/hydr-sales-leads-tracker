@@ -74,6 +74,11 @@ import {
   nextEmailReminderDateForUser,
   ProjectUserReminder,
 } from "./types";
+import {
+  AppNotification,
+  NotificationType,
+  parseMentionedUserIds,
+} from "./notifications";
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
 import {
@@ -587,6 +592,11 @@ interface ProjectsApi {
   ) => void;
   /** Persist defaults for the current user if they have no prefs row yet */
   ensureProjectUserReminder: (projectId: string) => void;
+  /** In-app notifications for the signed-in user */
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  markNotificationRead: (notificationId: string) => void;
+  markAllNotificationsRead: () => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
@@ -1109,6 +1119,51 @@ async function loadRemoteProjectUserReminders(): Promise<ProjectUserReminder[]> 
   }));
 }
 
+function notificationFromRow(row: {
+  id: string;
+  recipient_user_id: string;
+  actor_user_id: string | null;
+  type: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  project_id: string | null;
+  todo_id: string | null;
+  comment_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}): AppNotification {
+  return {
+    id: row.id,
+    recipientUserId: row.recipient_user_id,
+    ...(row.actor_user_id ? { actorUserId: row.actor_user_id } : {}),
+    type: (row.type === "mentioned" ? "mentioned" : "task_assigned") as NotificationType,
+    title: row.title,
+    ...(row.body ? { body: row.body } : {}),
+    ...(row.href ? { href: row.href } : {}),
+    ...(row.project_id ? { projectId: row.project_id } : {}),
+    ...(row.todo_id ? { todoId: row.todo_id } : {}),
+    ...(row.comment_id ? { commentId: row.comment_id } : {}),
+    ...(row.read_at ? { readAt: row.read_at } : {}),
+    createdAt: row.created_at,
+  };
+}
+
+async function loadRemoteNotifications(
+  recipientUserId: string,
+): Promise<AppNotification[]> {
+  const res = await supabase!
+    .from("notifications")
+    .select("*")
+    .eq("recipient_user_id", recipientUserId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (res.error) throw new Error(res.error.message);
+  return ((res.data ?? []) as Array<Parameters<typeof notificationFromRow>[0]>).map(
+    notificationFromRow,
+  );
+}
+
 async function loadRemote(): Promise<Project[]> {
   const [
     projectsRes,
@@ -1256,6 +1311,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projectUserReminders, setProjectUserReminders] = useState<
     ProjectUserReminder[]
   >([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
@@ -1287,6 +1343,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   personalTodosRef.current = personalTodos;
   const projectUserRemindersRef = useRef<ProjectUserReminder[]>([]);
   projectUserRemindersRef.current = projectUserReminders;
+  const suppressAssignmentNotifyRef = useRef(false);
   const teamMembersRef = useRef<TeamMember[]>(teamMembers);
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
@@ -1359,6 +1416,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           },
         );
         setProjectUserReminders(remoteReminders);
+
+        // Notifications load after we know the signed-in user (see effect below)
 
         const remoteWh = await loadRemoteWarehouseState(
           wh.holdingProjectId,
@@ -1503,6 +1562,25 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       setCurrentUserIdState(teamMembers[0]?.id ?? null);
     }
   }, [authReady, authEnabled, authUser?.userId, teamMembers]);
+
+  useEffect(() => {
+    if (!ready || !supabase || !currentUserId) {
+      if (!currentUserId) setNotifications([]);
+      return;
+    }
+    let cancelled = false;
+    void loadRemoteNotifications(currentUserId)
+      .then((list) => {
+        if (!cancelled) setNotifications(list);
+      })
+      .catch((e) => {
+        console.error("Failed to load notifications:", e);
+        if (!cancelled) setNotifications([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, currentUserId]);
 
   type RecordFinanceSnapshot = {
     projectId?: string;
@@ -1863,6 +1941,137 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const pushNotification = useCallback(
+    (input: {
+      recipientUserId: string;
+      type: NotificationType;
+      title: string;
+      body?: string;
+      href?: string;
+      projectId?: string;
+      todoId?: string;
+      commentId?: string;
+    }) => {
+      const actorId = currentUserIdRef.current;
+      if (!input.recipientUserId) return;
+      if (actorId && input.recipientUserId === actorId) return;
+
+      const notification: AppNotification = {
+        id: crypto.randomUUID(),
+        recipientUserId: input.recipientUserId,
+        ...(actorId ? { actorUserId: actorId } : {}),
+        type: input.type,
+        title: input.title,
+        ...(input.body ? { body: input.body } : {}),
+        ...(input.href ? { href: input.href } : {}),
+        ...(input.projectId ? { projectId: input.projectId } : {}),
+        ...(input.todoId ? { todoId: input.todoId } : {}),
+        ...(input.commentId ? { commentId: input.commentId } : {}),
+        createdAt: new Date().toISOString(),
+      };
+
+      // Only keep in local state if it's for the signed-in user
+      if (
+        currentUserIdRef.current &&
+        notification.recipientUserId === currentUserIdRef.current
+      ) {
+        setNotifications((prev) => [notification, ...prev].slice(0, 100));
+      }
+
+      if (supabase) {
+        void supabase
+          .from("notifications")
+          .insert({
+            id: notification.id,
+            recipient_user_id: notification.recipientUserId,
+            actor_user_id: notification.actorUserId ?? null,
+            type: notification.type,
+            title: notification.title,
+            body: notification.body ?? null,
+            href: notification.href ?? null,
+            project_id: notification.projectId ?? null,
+            todo_id: notification.todoId ?? null,
+            comment_id: notification.commentId ?? null,
+            created_at: notification.createdAt,
+          })
+          .then(logDbError("notification insert"));
+      }
+    },
+    [],
+  );
+
+  const notifyMentions = useCallback(
+    (
+      text: string,
+      opts: {
+        title: string;
+        href?: string;
+        projectId?: string;
+        todoId?: string;
+        commentId?: string;
+        excludeUserIds?: string[];
+      },
+    ) => {
+      const mentioned = parseMentionedUserIds(text, teamMembersRef.current);
+      const excluded = new Set(opts.excludeUserIds ?? []);
+      for (const userId of mentioned) {
+        if (excluded.has(userId)) continue;
+        pushNotification({
+          recipientUserId: userId,
+          type: "mentioned",
+          title: opts.title,
+          body: text.slice(0, 160),
+          href: opts.href,
+          projectId: opts.projectId,
+          todoId: opts.todoId,
+          commentId: opts.commentId,
+        });
+      }
+    },
+    [pushNotification],
+  );
+
+  const markNotificationRead = useCallback((notificationId: string) => {
+    const readAt = new Date().toISOString();
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.id === notificationId && !n.readAt ? { ...n, readAt } : n,
+      ),
+    );
+    if (supabase) {
+      void supabase
+        .from("notifications")
+        .update({ read_at: readAt })
+        .eq("id", notificationId)
+        .then(logDbError("notification mark read"));
+    }
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    const uid = currentUserIdRef.current;
+    if (!uid) return;
+    const readAt = new Date().toISOString();
+    setNotifications((prev) =>
+      prev.map((n) =>
+        n.recipientUserId === uid && !n.readAt ? { ...n, readAt } : n,
+      ),
+    );
+    if (supabase) {
+      void supabase
+        .from("notifications")
+        .update({ read_at: readAt })
+        .eq("recipient_user_id", uid)
+        .is("read_at", null)
+        .then(logDbError("notification mark all read"));
+    }
+  }, []);
+
+  const unreadNotificationCount = notifications.filter(
+    (n) =>
+      !n.readAt &&
+      (!currentUserId || n.recipientUserId === currentUserId),
+  ).length;
+
   const reloadTeamMembers = useCallback(async () => {
     if (supabase) {
       try {
@@ -2160,6 +2369,12 @@ if (supabase) {
             .then(logDbError("stage update"));
         }
       }
+      notifyMentions(text, {
+        title: `Mentioned you on ${current.name}`,
+        href: `/projects/${projectId}`,
+        projectId,
+        commentId: comment.id,
+      });
       void requestAiSummary(updated);
     },
     [
@@ -2167,6 +2382,7 @@ if (supabase) {
       resolveAuthor,
       supportsCommentAuthorId,
       supportsMetricsFields,
+      notifyMentions,
       recordChangeEvent,
     ],
   );
@@ -2566,8 +2782,36 @@ if (supabase) {
           })
           .then(logDbError("todo insert"));
       }
+      if (
+        ownerUserId &&
+        !suppressAssignmentNotifyRef.current &&
+        ownerUserId !== currentUserIdRef.current
+      ) {
+        pushNotification({
+          recipientUserId: ownerUserId,
+          type: "task_assigned",
+          title: `Assigned a task on ${project?.name ?? "a project"}`,
+          body: text.slice(0, 160),
+          href: `/projects/${projectId}`,
+          projectId,
+          todoId: todo.id,
+        });
+      }
+      notifyMentions(text, {
+        title: `Mentioned you on a task (${project?.name ?? "project"})`,
+        href: `/projects/${projectId}`,
+        projectId,
+        todoId: todo.id,
+        excludeUserIds: ownerUserId ? [ownerUserId] : [],
+      });
     },
-    [mutateTodos, supportsOwnershipFields, recordChangeEvent],
+    [
+      mutateTodos,
+      supportsOwnershipFields,
+      recordChangeEvent,
+      pushNotification,
+      notifyMentions,
+    ],
   );
 
   const toggleTodo = useCallback(
@@ -2603,6 +2847,7 @@ if (supabase) {
   const updateTodo = useCallback(
     (projectId: string, todoId: string, patch: TodoPatch) => {
       const project = projectsRef.current.find((p) => p.id === projectId);
+      const previous = project?.todos.find((t) => t.id === todoId);
       mutateTodos(projectId, (todos) =>
         todos.map((t) => {
           if (t.id !== todoId) return t;
@@ -2671,14 +2916,48 @@ if (supabase) {
           .eq("id", todoId)
           .then(logDbError("todo update"));
       }
+      if (
+        patch.ownerUserId &&
+        patch.ownerUserId !== previous?.ownerUserId &&
+        !suppressAssignmentNotifyRef.current
+      ) {
+        pushNotification({
+          recipientUserId: patch.ownerUserId,
+          type: "task_assigned",
+          title: `Assigned a task on ${project?.name ?? "a project"}`,
+          body: (patch.text ?? previous?.text ?? "").slice(0, 160),
+          href: `/projects/${projectId}`,
+          projectId,
+          todoId,
+        });
+      }
+      if (patch.text !== undefined) {
+        notifyMentions(patch.text, {
+          title: `Mentioned you on a task (${project?.name ?? "project"})`,
+          href: `/projects/${projectId}`,
+          projectId,
+          todoId,
+          excludeUserIds:
+            patch.ownerUserId && patch.ownerUserId !== previous?.ownerUserId
+              ? [patch.ownerUserId]
+              : [],
+        });
+      }
     },
-    [mutateTodos, supportsOwnershipFields, recordChangeEvent],
+    [
+      mutateTodos,
+      supportsOwnershipFields,
+      recordChangeEvent,
+      pushNotification,
+      notifyMentions,
+    ],
   );
 
   const syncClientFollowUpTodos = useCallback(() => {
     const list = projectsRef.current;
     const reminders = projectUserRemindersRef.current;
-
+    suppressAssignmentNotifyRef.current = true;
+    try {
     for (const project of list) {
       if (project.isWarehouseHolding || project.stage === "cancelled") {
         for (const t of project.todos) {
@@ -2744,6 +3023,9 @@ if (supabase) {
           updateTodo(project.id, t.id, { done: true });
         }
       }
+    }
+    } finally {
+      suppressAssignmentNotifyRef.current = false;
     }
   }, [addTodo, updateTodo]);
 
@@ -2837,9 +3119,35 @@ if (supabase) {
           })
           .then(logDbError("personal todo insert"));
       }
+      if (
+        todo.ownerUserId &&
+        todo.ownerUserId !== currentUserIdRef.current
+      ) {
+        pushNotification({
+          recipientUserId: todo.ownerUserId,
+          type: "task_assigned",
+          title: "Assigned a personal task",
+          body: title.slice(0, 160),
+          href: "/todos",
+          todoId: todo.id,
+        });
+      }
+      if (todo.description) {
+        notifyMentions(todo.description, {
+          title: "Mentioned you on a personal task",
+          href: "/todos",
+          todoId: todo.id,
+          excludeUserIds: todo.ownerUserId ? [todo.ownerUserId] : [],
+        });
+      }
       return todo.id;
     },
-    [recordChangeEvent, supportsPersonalTodos],
+    [
+      recordChangeEvent,
+      supportsPersonalTodos,
+      pushNotification,
+      notifyMentions,
+    ],
   );
 
   const updatePersonalTodo = useCallback(
@@ -2937,8 +3245,42 @@ if (supabase) {
           .eq("id", todoId)
           .then(logDbError("personal todo update"));
       }
+      if (
+        patch.ownerUserId &&
+        patch.ownerUserId !== current.ownerUserId
+      ) {
+        pushNotification({
+          recipientUserId: patch.ownerUserId,
+          type: "task_assigned",
+          title: "Assigned a personal task",
+          body: next.title.slice(0, 160),
+          href: "/todos",
+          todoId,
+        });
+      }
+      if (
+        patch.description !== undefined &&
+        typeof patch.description === "string" &&
+        patch.description.trim()
+      ) {
+        notifyMentions(patch.description.trim(), {
+          title: "Mentioned you on a personal task",
+          href: "/todos",
+          todoId,
+          excludeUserIds:
+            patch.ownerUserId && patch.ownerUserId !== current.ownerUserId
+              ? [patch.ownerUserId]
+              : [],
+        });
+      }
     },
-    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
+    [
+      authUser?.isAdmin,
+      recordChangeEvent,
+      supportsPersonalTodos,
+      pushNotification,
+      notifyMentions,
+    ],
   );
 
   const movePersonalTodo = useCallback(
@@ -3122,8 +3464,14 @@ if (supabase) {
           })
           .then(logDbError("personal todo comment insert"));
       }
+      notifyMentions(trimmed, {
+        title: "Mentioned you on a personal task",
+        href: "/todos",
+        todoId,
+        commentId: comment.id,
+      });
     },
-    [supportsPersonalTodos],
+    [supportsPersonalTodos, notifyMentions],
   );
 
   const updatePersonalTodoComment = useCallback(
@@ -7394,6 +7742,10 @@ if (supabase) {
         getProjectUserReminder,
         updateProjectUserReminder,
         ensureProjectUserReminder,
+        notifications,
+        unreadNotificationCount,
+        markNotificationRead,
+        markAllNotificationsRead,
         updateComment,
         deleteComment,
         regenerateSummary,

@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { visibleNavItems } from "@/lib/permissions";
+import NotificationBell from "@/components/NotificationBell";
 import { downloadFinancialCsv } from "@/lib/financial-csv";
 import { buildDefaultSkladMaps } from "@/lib/warehouse-sklad-map";
 
@@ -198,6 +199,8 @@ export default function Header() {
               </button>
             </>
           )}
+
+          <NotificationBell />
 
           <div ref={menuRef} className="relative shrink-0">
             <button

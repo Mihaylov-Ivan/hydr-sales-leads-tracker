@@ -7,6 +7,8 @@ import {
   addDays,
   todayDate,
 } from "@/lib/types";
+import { MentionInput, MentionRichText } from "@/components/MentionTextarea";
+import { assignableTeamMembers } from "@/lib/permissions";
 
 export const PERSONAL_TODO_DRAG_TYPE = "application/x-hydr-personal-todo-id";
 
@@ -456,7 +458,7 @@ export default function PersonalTodoCard({
                                 title="Click to edit"
                                 className="min-w-0 flex-1 cursor-text rounded px-0.5 text-left text-xs text-ink transition hover:bg-teal-soft/40"
                               >
-                                {c.text}
+                                <MentionRichText text={c.text} />
                               </button>
                               <div className="flex shrink-0 items-center gap-0.5">
                                 <button
@@ -498,10 +500,11 @@ export default function PersonalTodoCard({
                 </ul>
               )}
               <form onSubmit={submitComment} className="mb-1 flex gap-1.5 pb-1">
-                <input
+                <MentionInput
+                  members={assignableTeamMembers(teamMembers)}
                   value={commentDraft}
-                  onChange={(e) => setCommentDraft(e.target.value)}
-                  placeholder="Add a comment…"
+                  onChange={setCommentDraft}
+                  placeholder="Add a comment… use @name"
                   className="min-w-0 flex-1 rounded-md border border-line bg-panel px-2 py-1.5 text-xs text-ink outline-none focus:border-teal-accent"
                 />
                 <button

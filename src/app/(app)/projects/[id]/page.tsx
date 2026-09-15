@@ -14,6 +14,10 @@ import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
 import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import MarketMultiSelect from "@/components/MarketMultiSelect";
+import {
+  MentionTextarea,
+  MentionRichText,
+} from "@/components/MentionTextarea";
 import { useAuth } from "@/lib/auth-context";
 import { assignableTeamMembers } from "@/lib/permissions";
 
@@ -642,10 +646,11 @@ export default function ProjectPage() {
           </p>
         </div>
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <textarea
+          <MentionTextarea
+            members={leadOptions}
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="What happened? Site visit, call, offer sent, contract signed…"
+            onChange={setText}
+            placeholder="What happened? Use @name to mention someone…"
             className="min-h-24 w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -777,7 +782,7 @@ export default function ProjectPage() {
                         title="Click to edit"
                         className="-mx-1 cursor-text whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
                       >
-                        {c.text}
+                        <MentionRichText text={c.text} />
                       </p>
                     )}
                   </div>
