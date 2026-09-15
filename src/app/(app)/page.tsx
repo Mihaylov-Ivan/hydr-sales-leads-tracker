@@ -21,7 +21,7 @@ import {
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import ProjectMultiSelect from "@/components/ProjectMultiSelect";
 import NewProjectDialog from "@/components/NewProjectDialog";
-import TeamMembersPanel from "@/components/TeamMembersPanel";
+import { useAuth } from "@/lib/auth-context";
 
 type SizeBucket = "any" | "small" | "medium" | "large";
 
@@ -346,6 +346,7 @@ export default function Dashboard() {
     ready,
     updateProject,
   } = useProjects();
+  const { user } = useAuth();
   const [countryFilter, setCountryFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState<Set<MarketTag>>(
     () => new Set(MARKETS),
@@ -353,7 +354,6 @@ export default function Dashboard() {
   const [sizeFilter, setSizeFilter] = useState<SizeBucket>("any");
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
-  const [showTeamMembers, setShowTeamMembers] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [cancelledPrefReady, setCancelledPrefReady] = useState(false);
@@ -542,12 +542,14 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-deep">Projects</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowTeamMembers(true)}
-            className="rounded-lg border border-line bg-panel px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
-          >
-            Team Members
-          </button>
+          {user?.isAdmin && (
+            <Link
+              href="/admin/users"
+              className="rounded-lg border border-line bg-panel px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
+            >
+              Manage Users
+            </Link>
+          )}
           <button
             onClick={() => setShowNew(true)}
             className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
@@ -845,9 +847,6 @@ export default function Dashboard() {
       )}
 
       {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}
-      {showTeamMembers && (
-        <TeamMembersPanel onClose={() => setShowTeamMembers(false)} />
-      )}
     </div>
   );
 }

@@ -2,39 +2,69 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   AUTH_COOKIE,
   AUTH_MAX_AGE,
-  expectedAuthToken,
-  getSitePassword,
-  passwordsMatch,
+  LEGACY_AUTH_COOKIE,
+  cookieOptions,
+  createSessionToken,
+  isAuthEnabled,
 } from "@/lib/auth";
+import { verifyPassword } from "@/lib/auth-passwords";
+import { findUserByUsername } from "@/lib/auth-users";
+import { defaultHomePath } from "@/lib/permissions";
+import { hasServiceRoleConfig } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
-  const password = getSitePassword();
-  if (!password) {
+  if (!isAuthEnabled()) {
     return NextResponse.json(
-      { error: "Password protection is not configured." },
+      { error: "Authentication is not configured (SESSION_SECRET)." },
+      { status: 503 },
+    );
+  }
+  if (!hasServiceRoleConfig()) {
+    return NextResponse.json(
+      { error: "SUPABASE_SERVICE_ROLE_KEY is required for login." },
       { status: 503 },
     );
   }
 
-  let body: { password?: string };
+  let body: { username?: string; password?: string };
   try {
-    body = (await request.json()) as { password?: string };
+    body = (await request.json()) as { username?: string; password?: string };
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const submitted = body.password ?? "";
-  if (!(await passwordsMatch(submitted, password))) {
-    return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
+  const username = body.username?.trim() ?? "";
+  const password = body.password ?? "";
+  if (!username || !password) {
+    return NextResponse.json(
+      { error: "Username and password are required." },
+      { status: 400 },
+    );
   }
 
-  const response = NextResponse.json({ ok: true });
-  response.cookies.set(AUTH_COOKIE, await expectedAuthToken(password), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: AUTH_MAX_AGE,
-  });
-  return response;
+  try {
+    const found = await findUserByUsername(username);
+    if (!found || !verifyPassword(password, found.passwordHash)) {
+      return NextResponse.json(
+        { error: "Incorrect username or password." },
+        { status: 401 },
+      );
+    }
+
+    const token = await createSessionToken(found.user);
+    const response = NextResponse.json({
+      ok: true,
+      user: found.user,
+      home: defaultHomePath(found.user),
+    });
+    response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE));
+    response.cookies.set(LEGACY_AUTH_COOKIE, "", cookieOptions(0));
+    return response;
+  } catch (e) {
+    console.error("Login failed:", e);
+    return NextResponse.json(
+      { error: "Could not sign in. Try again." },
+      { status: 500 },
+    );
+  }
 }

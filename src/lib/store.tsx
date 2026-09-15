@@ -114,6 +114,7 @@ import {
 } from "./finance-import";
 import { METRICS_SETTINGS_STORAGE_KEY } from "./metrics/config";
 import { purgeFinancialLocalStorage } from "./browser-storage";
+import { useAuth } from "./auth-context";
 import {
   ensureProjectMetricsDefaults,
   initialMetricsFields,
@@ -190,7 +191,6 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
-const CURRENT_USER_STORAGE_KEY = "hydrogenera-current-user-v1";
 const PERSONAL_TODOS_STORAGE_KEY = "hydrogenera-personal-todos-v1";
 
 function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
@@ -526,14 +526,14 @@ export interface GanttDeadlineInput {
 
 interface ProjectsApi {
   teamMembers: TeamMember[];
+  reloadTeamMembers: () => Promise<void>;
   addTeamMember: (input: { name: string; email?: string }) => void;
   updateTeamMember: (
     memberId: string,
     patch: { name?: string; email?: string | null },
   ) => void;
-  /** Currently selected app user (for authorship of updates) */
+  /** Signed-in app user id (from session); used for authorship */
   currentUserId: string | null;
-  setCurrentUserId: (userId: string | null) => void;
   /** Company opening cash, min WC, stage win probabilities (local only) */
   financeSettings: CompanyFinanceSettings;
   updateFinanceSettings: (patch: FinanceSettingsPatch) => void;
@@ -1036,18 +1036,6 @@ async function loadRemoteTeamMembers(): Promise<TeamMember[]> {
   return loadLocalTeamMembers();
 }
 
-function loadLocalCurrentUserId(members: TeamMember[]): string | null {
-  try {
-    const raw = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-    if (!raw) return members[0]?.id ?? null;
-    const id = JSON.parse(raw) as string | null;
-    if (!id) return null;
-    return members.some((m) => m.id === id) ? id : (members[0]?.id ?? null);
-  } catch {
-    return members[0]?.id ?? null;
-  }
-}
-
 async function loadRemote(): Promise<Project[]> {
   const [
     projectsRes,
@@ -1189,6 +1177,7 @@ function recordChangeEvent(..._args: unknown[]): void {
 }
 
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
+  const { user: authUser, authEnabled, ready: authReady } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
@@ -1267,7 +1256,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           loadRemoteMetricsSettings().catch(() => loadLocalMetricsSettings()),
         ]);
         setTeamMembers(members);
-        setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(
           tagHoldingProjects(
             withLocalSchedule(withLocalFinancials(remoteProjects)),
@@ -1308,7 +1296,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       } else {
         const members = loadLocalTeamMembers();
         setTeamMembers(members);
-        setCurrentUserIdState(loadLocalCurrentUserId(members));
         setProjects(
           tagHoldingProjects(
             withLocalSchedule(withLocalFinancials(loadLocal())),
@@ -1408,29 +1395,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [teamMembers, ready]);
 
+  // Session user drives authorship; when auth is disabled (dev), fall back
+  // to the first team member so comments still have an author.
   useEffect(() => {
-    if (ready) {
-      window.localStorage.setItem(
-        CURRENT_USER_STORAGE_KEY,
-        JSON.stringify(currentUserId),
-      );
+    if (!authReady) return;
+    if (authEnabled && authUser?.userId) {
+      setCurrentUserIdState(authUser.userId);
+      return;
     }
-  }, [currentUserId, ready]);
-
-  // If the selected user is removed/edited away, fall back to first member.
-  useEffect(() => {
-    if (!ready) return;
-    if (
-      currentUserId &&
-      !teamMembers.some((m) => m.id === currentUserId)
-    ) {
+    if (!authEnabled) {
       setCurrentUserIdState(teamMembers[0]?.id ?? null);
     }
-  }, [teamMembers, currentUserId, ready]);
-
-  const setCurrentUserId = useCallback((userId: string | null) => {
-    setCurrentUserIdState(userId);
-  }, []);
+  }, [authReady, authEnabled, authUser?.userId, teamMembers]);
 
   type RecordFinanceSnapshot = {
     projectId?: string;
@@ -1789,6 +1765,19 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       author: member?.name ?? "You",
       ...(member ? { authorUserId: member.id } : {}),
     };
+  }, []);
+
+  const reloadTeamMembers = useCallback(async () => {
+    if (supabase) {
+      try {
+        const members = await loadRemoteTeamMembers();
+        setTeamMembers(members);
+        return;
+      } catch (e) {
+        console.error("Failed to reload team members:", e);
+      }
+    }
+    setTeamMembers(loadLocalTeamMembers());
   }, []);
 
   const addTeamMember = useCallback(
@@ -2479,7 +2468,9 @@ if (supabase) {
         ...(input.dueDate ? { dueDate: input.dueDate } : {}),
         ...(input.startDate ? { startDate: input.startDate } : {}),
         ...(input.endDate ? { endDate: input.endDate } : {}),
-        ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
+        ...(input.ownerUserId || currentUserIdRef.current
+          ? { ownerUserId: input.ownerUserId ?? currentUserIdRef.current! }
+          : {}),
         comments: [],
         createdAt: now,
         ...(status === "done" ? { completedAt: now } : {}),
@@ -2522,6 +2513,13 @@ if (supabase) {
     (todoId: string, patch: PersonalTodoPatch) => {
       const current = personalTodosRef.current.find((t) => t.id === todoId);
       if (!current) return;
+      if (
+        !authUser?.isAdmin &&
+        current.ownerUserId &&
+        current.ownerUserId !== currentUserIdRef.current
+      ) {
+        return;
+      }
       const now = new Date().toISOString();
       let next: PersonalTodo = { ...current };
       if (patch.title !== undefined) {
@@ -2607,7 +2605,7 @@ if (supabase) {
           .then(logDbError("personal todo update"));
       }
     },
-    [recordChangeEvent, supportsPersonalTodos],
+    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
   );
 
   const movePersonalTodo = useCallback(
@@ -2618,6 +2616,13 @@ if (supabase) {
     ) => {
       const dragged = personalTodosRef.current.find((t) => t.id === todoId);
       if (!dragged) return;
+      if (
+        !authUser?.isAdmin &&
+        dragged.ownerUserId &&
+        dragged.ownerUserId !== currentUserIdRef.current
+      ) {
+        return;
+      }
 
       const column = personalTodosRef.current
         .filter((t) => t.status === targetStatus)
@@ -2701,7 +2706,7 @@ if (supabase) {
         }
       }
     },
-    [recordChangeEvent, supportsPersonalTodos],
+    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
   );
 
   const reorderPersonalTodo = useCallback(
@@ -2726,13 +2731,21 @@ if (supabase) {
   const deletePersonalTodo = useCallback(
     (todoId: string) => {
       const todo = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!todo) return;
+      if (
+        !authUser?.isAdmin &&
+        todo.ownerUserId &&
+        todo.ownerUserId !== currentUserIdRef.current
+      ) {
+        return;
+      }
       setPersonalTodos((prev) => prev.filter((t) => t.id !== todoId));
       recordChangeEvent({
         domain: "crm",
         entityType: "personal_todo",
         entityId: todoId,
         action: "delete",
-        summary: `Personal todo: deleted${todo ? ` — ${todo.title.slice(0, 80)}` : ""}`,
+        summary: `Personal todo: deleted — ${todo.title.slice(0, 80)}`,
       });
       if (supabase && supportsPersonalTodos) {
         void supabase
@@ -2742,7 +2755,7 @@ if (supabase) {
           .then(logDbError("personal todo delete"));
       }
     },
-    [recordChangeEvent, supportsPersonalTodos],
+    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
   );
 
   const addPersonalTodoComment = useCallback(
@@ -7024,10 +7037,10 @@ if (supabase) {
     <ProjectsContext.Provider
       value={{
         teamMembers,
+        reloadTeamMembers,
         addTeamMember,
         updateTeamMember,
         currentUserId,
-        setCurrentUserId,
         financeSettings,
         updateFinanceSettings,
         metricsSettings,

@@ -1,18 +1,37 @@
-export const AUTH_COOKIE = "hydr_site_auth";
+/**
+ * Session cookie auth (Edge + Node compatible).
+ * Password hashing lives in auth-passwords.ts (Node-only).
+ */
+
+import type { PermissionType, SessionUser } from "./permissions";
+import { isPermissionType } from "./permissions";
+
+export const AUTH_COOKIE = "hydr_session";
+
+/** Legacy shared-password cookie — cleared on logout/login. */
+export const LEGACY_AUTH_COOKIE = "hydr_site_auth";
 
 /** 30 days */
 export const AUTH_MAX_AGE = 60 * 60 * 24 * 30;
 
-const AUTH_MESSAGE = "hydr-sales-access-v1";
+export interface SessionPayload {
+  userId: string;
+  username: string;
+  name: string;
+  isAdmin: boolean;
+  permissions: PermissionType[];
+  mustChangePassword: boolean;
+  exp: number;
+}
 
-export function getSitePassword(): string | undefined {
-  const value = process.env.SITE_PASSWORD?.trim();
+export function getSessionSecret(): string | undefined {
+  const value = process.env.SESSION_SECRET?.trim();
   return value || undefined;
 }
 
-/** Auth is only enforced when SITE_PASSWORD is set. */
+/** Auth is enforced when SESSION_SECRET is set. */
 export function isAuthEnabled(): boolean {
-  return Boolean(getSitePassword());
+  return Boolean(getSessionSecret());
 }
 
 function toHex(buffer: ArrayBuffer): string {
@@ -21,48 +40,135 @@ function toHex(buffer: ArrayBuffer): string {
     .join("");
 }
 
-/** HMAC token derived from the site password (Edge + Node compatible). */
-export async function expectedAuthToken(password: string): Promise<string> {
+function base64UrlEncode(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): string {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+  const binary = atob(padded + pad);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+async function hmacSign(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
-    enc.encode(password),
+    enc.encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    enc.encode(AUTH_MESSAGE),
-  );
+  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(message));
   return toHex(signature);
 }
 
-export async function isValidAuthToken(
-  token: string | undefined,
+async function hmacVerify(
+  secret: string,
+  message: string,
+  signatureHex: string,
 ): Promise<boolean> {
-  const password = getSitePassword();
-  if (!password || !token) return false;
-  const expected = await expectedAuthToken(password);
-  if (token.length !== expected.length) return false;
+  const expected = await hmacSign(secret, message);
+  if (expected.length !== signatureHex.length) return false;
   let mismatch = 0;
-  for (let i = 0; i < token.length; i++) {
-    mismatch |= token.charCodeAt(i) ^ expected.charCodeAt(i);
+  for (let i = 0; i < expected.length; i++) {
+    mismatch |= expected.charCodeAt(i) ^ signatureHex.charCodeAt(i);
   }
   return mismatch === 0;
 }
 
-export async function passwordsMatch(
-  input: string,
-  expected: string,
-): Promise<boolean> {
-  const a = await expectedAuthToken(input);
-  const b = await expectedAuthToken(expected);
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+function normalizePermissions(raw: unknown): PermissionType[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PermissionType[] = [];
+  for (const item of raw) {
+    if (typeof item === "string" && isPermissionType(item) && !out.includes(item)) {
+      out.push(item);
+    }
   }
-  return mismatch === 0;
+  return out;
+}
+
+export function sessionUserFromPayload(payload: SessionPayload): SessionUser {
+  return {
+    userId: payload.userId,
+    username: payload.username,
+    name: payload.name,
+    isAdmin: payload.isAdmin,
+    permissions: payload.permissions,
+    mustChangePassword: payload.mustChangePassword,
+  };
+}
+
+export async function createSessionToken(
+  user: SessionUser,
+  maxAgeSeconds: number = AUTH_MAX_AGE,
+): Promise<string> {
+  const secret = getSessionSecret();
+  if (!secret) throw new Error("SESSION_SECRET is not configured.");
+  const payload: SessionPayload = {
+    userId: user.userId,
+    username: user.username,
+    name: user.name,
+    isAdmin: user.isAdmin,
+    permissions: user.permissions,
+    mustChangePassword: user.mustChangePassword,
+    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+  };
+  const body = base64UrlEncode(JSON.stringify(payload));
+  const sig = await hmacSign(secret, body);
+  return `${body}.${sig}`;
+}
+
+export async function parseSessionToken(
+  token: string | undefined,
+): Promise<SessionPayload | null> {
+  const secret = getSessionSecret();
+  if (!secret || !token) return null;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  if (!body || !sig) return null;
+  if (!(await hmacVerify(secret, body, sig))) return null;
+
+  try {
+    const raw = JSON.parse(base64UrlDecode(body)) as Partial<SessionPayload>;
+    if (
+      typeof raw.userId !== "string" ||
+      typeof raw.username !== "string" ||
+      typeof raw.name !== "string" ||
+      typeof raw.isAdmin !== "boolean" ||
+      typeof raw.exp !== "number"
+    ) {
+      return null;
+    }
+    if (raw.exp < Math.floor(Date.now() / 1000)) return null;
+    return {
+      userId: raw.userId,
+      username: raw.username,
+      name: raw.name,
+      isAdmin: raw.isAdmin,
+      permissions: normalizePermissions(raw.permissions),
+      mustChangePassword: Boolean(raw.mustChangePassword),
+      exp: raw.exp,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function cookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge,
+  };
 }
