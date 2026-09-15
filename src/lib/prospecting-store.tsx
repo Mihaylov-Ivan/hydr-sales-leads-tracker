@@ -371,6 +371,18 @@ export interface LogOutreachInput {
   nextActionAt?: string | null;
   /** Force counting as new contact; default = first outreach for this contact */
   countsAsNewContact?: boolean;
+  /** When set, overrides activity createdAt (e.g. client response date). */
+  occurredAt?: string | null;
+}
+
+export interface MarkContactedInput {
+  companyId: string;
+  contactId: string;
+  userId: string;
+  channel: OutreachChannel;
+  summary: string;
+  /** Follow-up date → reminder task for the logger */
+  followUpAt: string;
 }
 
 export interface ProspectingKpis {
@@ -406,12 +418,16 @@ export interface ProspectingApi {
   deleteContact: (id: string) => void;
   markPrepared: (contactId: string) => void;
   logOutreach: (input: LogOutreachInput) => string;
+  /** Prepare → Contacted: log outreach + set follow-up. */
+  markContacted: (input: MarkContactedInput) => string;
   scheduleFollowUp: (
     contactId: string,
     date: string,
     reason?: string,
   ) => void;
   markEngaged: (contactId: string) => void;
+  /** Contacted → Engaged: log response and move to engaged (or not-interested). */
+  logEngagement: (input: LogOutreachInput) => string;
   markQualified: (
     companyId: string,
     qualification?: ProspectQualification,
@@ -475,27 +491,81 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     }
   }, [state, ready]);
 
-  const persistCompany = useCallback((c: ProspectCompany, mode: "upsert" | "delete") => {
-    if (!supabase || !remoteRef.current) return;
-    if (mode === "delete") {
-      void supabase.from("prospect_companies").delete().eq("id", c.id);
-      return;
-    }
-    void supabase.from("prospect_companies").upsert(companyToRow(c));
-  }, []);
+  const persistCompany = useCallback(
+    async (c: ProspectCompany, mode: "upsert" | "delete") => {
+      if (!supabase || !remoteRef.current) return true;
+      if (mode === "delete") {
+        const res = await supabase
+          .from("prospect_companies")
+          .delete()
+          .eq("id", c.id);
+        if (res.error) {
+          console.error(
+            "Supabase prospect company delete failed:",
+            res.error.message,
+          );
+          return false;
+        }
+        return true;
+      }
+      const res = await supabase
+        .from("prospect_companies")
+        .upsert(companyToRow(c));
+      if (res.error) {
+        console.error(
+          "Supabase prospect company upsert failed:",
+          res.error.message,
+        );
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
 
-  const persistContact = useCallback((c: ProspectContact, mode: "upsert" | "delete") => {
-    if (!supabase || !remoteRef.current) return;
-    if (mode === "delete") {
-      void supabase.from("prospect_contacts").delete().eq("id", c.id);
-      return;
-    }
-    void supabase.from("prospect_contacts").upsert(contactToRow(c));
-  }, []);
+  const persistContact = useCallback(
+    async (c: ProspectContact, mode: "upsert" | "delete") => {
+      if (!supabase || !remoteRef.current) return true;
+      if (mode === "delete") {
+        const res = await supabase
+          .from("prospect_contacts")
+          .delete()
+          .eq("id", c.id);
+        if (res.error) {
+          console.error(
+            "Supabase prospect contact delete failed:",
+            res.error.message,
+          );
+          return false;
+        }
+        return true;
+      }
+      const res = await supabase
+        .from("prospect_contacts")
+        .upsert(contactToRow(c));
+      if (res.error) {
+        console.error(
+          "Supabase prospect contact upsert failed:",
+          res.error.message,
+        );
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
 
-  const persistActivity = useCallback((a: ProspectActivity) => {
-    if (!supabase || !remoteRef.current) return;
-    void supabase.from("prospect_activities").upsert(activityToRow(a));
+  const persistActivity = useCallback(async (a: ProspectActivity) => {
+    if (!supabase || !remoteRef.current) return true;
+    const res = await supabase.from("prospect_activities").upsert(activityToRow(a));
+    if (res.error) {
+      console.error(
+        "Supabase prospect activity upsert failed:",
+        res.error.message,
+      );
+      return false;
+    }
+    return true;
   }, []);
 
   const findDuplicateCompany = useCallback((name: string) => {
@@ -569,8 +639,16 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         companies: [company, ...prev.companies],
         contacts: contact ? [contact, ...prev.contacts] : prev.contacts,
       }));
-      persistCompany(company, "upsert");
-      if (contact) persistContact(contact, "upsert");
+      // Company must exist in DB before contact (FK). Chain the upserts.
+      void persistCompany(company, "upsert").then((ok) => {
+        if (contact && ok) void persistContact(contact, "upsert");
+        else if (contact && !ok) {
+          console.error(
+            "Supabase prospect contact upsert skipped: company insert failed",
+            company.id,
+          );
+        }
+      });
 
       const warnings: string[] = [];
       if (dup) warnings.push(`Similar company already exists: “${dup.name}”`);
@@ -722,12 +800,30 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
   const logOutreach = useCallback(
     (input: LogOutreachInput) => {
       const now = new Date().toISOString();
+      const occurredAt = input.occurredAt
+        ? new Date(input.occurredAt.includes("T")
+            ? input.occurredAt
+            : `${input.occurredAt}T12:00:00`).toISOString()
+        : now;
       const contact = stateRef.current.contacts.find(
         (c) => c.id === input.contactId,
       );
       const isFirst =
         input.countsAsNewContact ??
         !(contact?.firstContactedAt || (contact?.outreachAttempts ?? 0) > 0);
+
+      let newStatus = statusAfterOutreachResult(
+        input.result,
+        contact?.status ?? "contacted",
+      );
+      // Outreach with a follow-up date stays in the contacted queue as follow-up-due
+      if (
+        input.result === "outreach-sent" &&
+        input.nextActionAt &&
+        newStatus === "contacted"
+      ) {
+        newStatus = "follow-up-due";
+      }
 
       const activity: ProspectActivity = {
         id: crypto.randomUUID(),
@@ -740,13 +836,8 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         nextAction: input.nextAction?.trim() ?? "",
         nextActionAt: input.nextActionAt ?? null,
         countsAsNewContact: Boolean(isFirst),
-        createdAt: now,
+        createdAt: occurredAt,
       };
-
-      const newStatus = statusAfterOutreachResult(
-        input.result,
-        contact?.status ?? "contacted",
-      );
 
       setState((prev) => {
         const contacts = prev.contacts.map((c) => {
@@ -755,8 +846,8 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             ...c,
             status: newStatus,
             outreachAttempts: c.outreachAttempts + 1,
-            firstContactedAt: c.firstContactedAt ?? now,
-            lastContactedAt: now,
+            firstContactedAt: c.firstContactedAt ?? occurredAt,
+            lastContactedAt: occurredAt,
             responseStatus: input.result,
             nextFollowUpAt: input.nextActionAt ?? c.nextFollowUpAt,
             followUpReason: input.nextAction?.trim() || c.followUpReason,
@@ -778,7 +869,8 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             nextStatus = co.status;
           } else if (
             newStatus === "engaged" ||
-            newStatus === "follow-up-due"
+            newStatus === "follow-up-due" ||
+            newStatus === "contacted"
           ) {
             nextStatus = newStatus;
           } else if (
@@ -810,6 +902,32 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       return activity.id;
     },
     [persistActivity, persistCompany, persistContact],
+  );
+
+  const markContacted = useCallback(
+    (input: MarkContactedInput) => {
+      return logOutreach({
+        companyId: input.companyId,
+        contactId: input.contactId,
+        userId: input.userId,
+        channel: input.channel,
+        result: "outreach-sent",
+        summary: input.summary,
+        nextAction: "Follow up",
+        nextActionAt: input.followUpAt,
+      });
+    },
+    [logOutreach],
+  );
+
+  const logEngagement = useCallback(
+    (input: LogOutreachInput) => {
+      return logOutreach({
+        ...input,
+        countsAsNewContact: false,
+      });
+    },
+    [logOutreach],
   );
 
   const scheduleFollowUp = useCallback(
@@ -1156,8 +1274,10 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       deleteContact,
       markPrepared,
       logOutreach,
+      markContacted,
       scheduleFollowUp,
       markEngaged,
+      logEngagement,
       markQualified,
       markPromoted,
       syncFromSalesProject,
@@ -1178,8 +1298,10 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       deleteContact,
       markPrepared,
       logOutreach,
+      markContacted,
       scheduleFollowUp,
       markEngaged,
+      logEngagement,
       markQualified,
       markPromoted,
       syncFromSalesProject,

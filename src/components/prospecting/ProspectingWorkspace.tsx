@@ -11,14 +11,11 @@ import {
   PROSPECT_PRODUCT_PURITY,
   PROSPECT_SOURCE_LABELS,
   PROSPECT_SOURCES,
-  PROSPECT_STATUS_LABELS,
-  PROSPECT_STATUSES,
   PROSPECT_VIEW_LABELS,
   ProspectCompany,
   ProspectContact,
   ProspectMarket,
   ProspectSource,
-  ProspectStatus,
   ProspectView,
   ProspectWorkRow,
   todayDateOnly,
@@ -30,38 +27,18 @@ import { assignableTeamMembers } from "@/lib/permissions";
 import {
   AddCompanyDialog,
   AddContactDialog,
-  LogOutreachDialog,
+  MarkContactedDialog,
+  MarkEngagedDialog,
   PrepareContactDialog,
-  PromoteDialog,
-  QualifyDialog,
 } from "./ProspectingDialogs";
-import { useLinkProspectToColdLead } from "./ProspectSalesSync";
 
 type DialogState =
   | { type: "add-company" }
   | { type: "add-contact"; company: ProspectCompany }
   | { type: "prepare"; company: ProspectCompany; contact: ProspectContact }
-  | { type: "log"; company: ProspectCompany; contact: ProspectContact }
-  | { type: "qualify"; company: ProspectCompany }
-  | {
-      type: "promote";
-      company: ProspectCompany;
-      contacts: ProspectContact[];
-    }
+  | { type: "mark-contacted"; company: ProspectCompany; contact: ProspectContact }
+  | { type: "mark-engaged"; company: ProspectCompany; contact: ProspectContact }
   | null;
-
-const STATUS_TONE: Record<ProspectStatus, string> = {
-  "target-identified": "bg-surface-tint text-muted",
-  "contact-prepared": "bg-teal-soft text-teal-accent",
-  contacted: "bg-deep/10 text-deep",
-  "follow-up-due": "bg-amber-accent/15 text-amber-accent",
-  engaged: "bg-olive/25 text-olive-ink",
-  qualified: "bg-green-accent/15 text-green-accent",
-  promoted: "bg-green-accent/20 text-green-accent",
-  "not-interested": "bg-muted/15 text-muted",
-  dormant: "bg-muted/10 text-muted",
-  disqualified: "bg-muted/15 text-muted",
-};
 
 function ProgressBar({
   value,
@@ -116,16 +93,6 @@ function KpiChip({
   );
 }
 
-function StatusBadge({ status }: { status: ProspectStatus }) {
-  return (
-    <span
-      className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STATUS_TONE[status]}`}
-    >
-      {PROSPECT_STATUS_LABELS[status]}
-    </span>
-  );
-}
-
 function ownerName(
   id: string,
   team: { id: string; name: string }[],
@@ -142,20 +109,16 @@ export default function ProspectingWorkspace() {
     targets,
     kpis,
     markPrepared,
-    markEngaged,
-    scheduleFollowUp,
     deleteContact,
     deleteCompany,
   } = useProspecting();
   const { teamMembers, currentUserId, projects } = useProjects();
   const assignableMembers = assignableTeamMembers(teamMembers);
-  const linkToColdLead = useLinkProspectToColdLead();
 
-  const [view, setView] = useState<ProspectView>("my-work");
+  const [view, setView] = useState<ProspectView>("prepare");
   const [search, setSearch] = useState("");
   const [filterMarket, setFilterMarket] = useState<ProspectMarket | "">("");
   const [filterSource, setFilterSource] = useState<ProspectSource | "">("");
-  const [filterStatus, setFilterStatus] = useState<ProspectStatus | "">("");
   const [filterOwner, setFilterOwner] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     null,
@@ -239,9 +202,8 @@ export default function ProspectingWorkspace() {
           return false;
         }
       }
-      if (view === "contact") {
+      if (view === "contacted") {
         if (
-          contact.status !== "contact-prepared" &&
           contact.status !== "contacted" &&
           contact.status !== "follow-up-due"
         ) {
@@ -249,13 +211,16 @@ export default function ProspectingWorkspace() {
         }
       }
       if (view === "engaged") {
-        if (contact.status !== "engaged" && contact.status !== "qualified") {
+        if (
+          contact.status !== "engaged" &&
+          contact.status !== "qualified" &&
+          contact.status !== "promoted"
+        ) {
           return false;
         }
       }
       if (filterMarket && company.market !== filterMarket) return false;
       if (filterSource && company.source !== filterSource) return false;
-      if (filterStatus && contact.status !== filterStatus) return false;
       if (filterOwner && contact.ownerId !== filterOwner) return false;
 
       if (!q) return true;
@@ -280,7 +245,6 @@ export default function ProspectingWorkspace() {
     me,
     filterMarket,
     filterSource,
-    filterStatus,
     filterOwner,
     search,
   ]);
@@ -382,15 +346,16 @@ export default function ProspectingWorkspace() {
           r.contact.status === "target-identified" ||
           r.contact.status === "contact-prepared",
       ).length,
-      contact: rows.filter(
+      contacted: rows.filter(
         (r) =>
-          r.contact.status === "contact-prepared" ||
           r.contact.status === "contacted" ||
           r.contact.status === "follow-up-due",
       ).length,
       engaged: rows.filter(
         (r) =>
-          r.contact.status === "engaged" || r.contact.status === "qualified",
+          r.contact.status === "engaged" ||
+          r.contact.status === "qualified" ||
+          r.contact.status === "promoted",
       ).length,
       all: rows.length,
       insights: 0,
@@ -412,7 +377,7 @@ export default function ProspectingWorkspace() {
         <div>
           <h1 className="text-xl font-bold text-deep">Prospecting</h1>
           <p className="mt-0.5 text-sm text-muted">
-            Build pipeline, prepare outreach, log outcomes — before Sales
+            Prepare contacts, log outreach, then engage replies — before Sales
             Projects.
           </p>
         </div>
@@ -519,7 +484,7 @@ export default function ProspectingWorkspace() {
                   focus === "prepare" || focus === "research"
                     ? "prepare"
                     : focus === "contact"
-                      ? "contact"
+                      ? "contacted"
                       : "my-work",
                 );
               }}
@@ -669,20 +634,6 @@ export default function ProspectingWorkspace() {
               ))}
             </select>
             <select
-              value={filterStatus}
-              onChange={(e) =>
-                setFilterStatus(e.target.value as ProspectStatus | "")
-              }
-              className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
-            >
-              <option value="">All statuses</option>
-              {PROSPECT_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {PROSPECT_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-            <select
               value={filterOwner}
               onChange={(e) => setFilterOwner(e.target.value)}
               className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
@@ -706,7 +657,6 @@ export default function ProspectingWorkspace() {
                       <th className="px-3 py-2.5 font-semibold">Company</th>
                       <th className="px-3 py-2.5 font-semibold">Contact</th>
                       <th className="px-3 py-2.5 font-semibold">Market</th>
-                      <th className="px-3 py-2.5 font-semibold">Status</th>
                       <th className="px-3 py-2.5 font-semibold">Follow-up</th>
                       <th className="px-3 py-2.5 font-semibold">Attempts</th>
                       <th className="px-3 py-2.5 font-semibold">Owner</th>
@@ -717,7 +667,7 @@ export default function ProspectingWorkspace() {
                     {filteredRows.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={8}
+                          colSpan={7}
                           className="px-3 pt-12 pb-16 text-center text-muted"
                         >
                           {rows.length === 0 ? (
@@ -790,12 +740,7 @@ export default function ProspectingWorkspace() {
                                 {PROSPECT_MARKET_LABELS[company.market]}
                               </div>
                               <div className="text-[10px] text-muted">
-                                {company.product}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <StatusBadge status={contact.status} />
-                              <div className="mt-1 text-[10px] uppercase text-muted">
+                                {company.product} ·{" "}
                                 {PROSPECT_PRIORITY_LABELS[contact.priority]}
                               </div>
                             </td>
@@ -825,77 +770,61 @@ export default function ProspectingWorkspace() {
                               <div className="flex flex-wrap gap-1">
                                 {(contact.status === "target-identified" ||
                                   contact.status === "contact-prepared") && (
-                                  <button
-                                    type="button"
-                                    title="Prepare"
-                                    onClick={() =>
-                                      setDialog({
-                                        type: "prepare",
-                                        company,
-                                        contact,
-                                      })
-                                    }
-                                    className="rounded-md border border-line px-2 py-1 text-[10px] font-bold uppercase text-deep hover:border-teal-accent hover:text-teal-accent"
+                                  <>
+                                    <button
+                                      type="button"
+                                      title="Prepare"
+                                      onClick={() =>
+                                        setDialog({
+                                          type: "prepare",
+                                          company,
+                                          contact,
+                                        })
+                                      }
+                                      className="rounded-md border border-teal-accent/40 bg-teal-soft px-2 py-1 text-[10px] font-bold uppercase text-teal-accent"
                                   >
                                     Prep
                                   </button>
+                                    <button
+                                      type="button"
+                                      title="Mark contacted"
+                                      onClick={() =>
+                                        setDialog({
+                                          type: "mark-contacted",
+                                          company,
+                                          contact,
+                                        })
+                                      }
+                                      className="rounded-md bg-teal-accent px-2 py-1 text-[10px] font-bold uppercase text-white"
+                                    >
+                                      Contacted
+                                    </button>
+                                  </>
                                 )}
-                                {view !== "prepare" && (
+                                {(contact.status === "contacted" ||
+                                  contact.status === "follow-up-due") && (
                                   <button
                                     type="button"
-                                    title="Log outreach"
+                                    title="Mark engaged"
                                     onClick={() =>
                                       setDialog({
-                                        type: "log",
+                                        type: "mark-engaged",
                                         company,
                                         contact,
                                       })
                                     }
-                                    className="rounded-md border border-line px-2 py-1 text-[10px] font-bold uppercase text-deep hover:border-teal-accent hover:text-teal-accent"
+                                    className="rounded-md bg-olive px-2 py-1 text-[10px] font-bold uppercase text-olive-ink"
                                   >
-                                    Log
+                                    Engaged
                                   </button>
                                 )}
-                                {(contact.status === "engaged" ||
-                                  contact.status === "qualified" ||
-                                  contact.status === "follow-up-due") && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setDialog({ type: "qualify", company })
-                                    }
-                                    className="rounded-md border border-line px-2 py-1 text-[10px] font-bold uppercase text-deep hover:border-teal-accent hover:text-teal-accent"
-                                  >
-                                    Qualify
-                                  </button>
-                                )}
-                                {(company.status === "qualified" ||
-                                  company.status === "engaged" ||
-                                  contact.status === "qualified") &&
-                                  company.status !== "promoted" && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setDialog({
-                                          type: "promote",
-                                          company,
-                                          contacts: contacts.filter(
-                                            (c) => c.companyId === company.id,
-                                          ),
-                                        })
-                                      }
-                                      className="rounded-md bg-deep px-2 py-1 text-[10px] font-bold uppercase text-white"
-                                    >
-                                      Promote
-                                    </button>
-                                  )}
                                 <button
                                   type="button"
                                   title="Delete contact"
                                   onClick={() =>
                                     handleDeleteContact(contact, company)
                                   }
-                                  className="rounded-md border border-line px-2 py-1 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                                  className="rounded-md border border-line bg-panel px-2 py-1 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
                                 >
                                   Delete
                                 </button>
@@ -936,10 +865,12 @@ export default function ProspectingWorkspace() {
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <StatusBadge status={selected.contact.status} />
                     <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
                       {selected.company.product} ·{" "}
                       {PROSPECT_PRODUCT_PURITY[selected.company.product]}
+                    </span>
+                    <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
+                      {PROSPECT_PRIORITY_LABELS[selected.contact.priority]}
                     </span>
                   </div>
                 </div>
@@ -1018,8 +949,7 @@ export default function ProspectingWorkspace() {
                           >
                             <div className="font-semibold">{c.name}</div>
                             <div className="text-muted">
-                              {c.title || "No title"} ·{" "}
-                              {PROSPECT_STATUS_LABELS[c.status]}
+                              {c.title || "No title"}
                             </div>
                           </button>
                         </li>
@@ -1122,90 +1052,60 @@ export default function ProspectingWorkspace() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 border-t border-line p-3">
-                  {selected.contact.status === "target-identified" && (
-                    <button
-                      type="button"
-                      onClick={() => markPrepared(selected.contact.id)}
-                      className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase"
-                    >
-                      Quick prep
-                    </button>
+                  {(selected.contact.status === "target-identified" ||
+                    selected.contact.status === "contact-prepared") && (
+                    <>
+                      {selected.contact.status === "target-identified" && (
+                        <button
+                          type="button"
+                          onClick={() => markPrepared(selected.contact.id)}
+                          className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-deep"
+                        >
+                          Quick prep
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDialog({
+                            type: "prepare",
+                            company: selected.company,
+                            contact: selected.contact,
+                          })
+                        }
+                        className="rounded-lg border border-teal-accent/40 bg-teal-soft px-2.5 py-1.5 text-[10px] font-bold uppercase text-teal-accent"
+                      >
+                        Prepare
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDialog({
+                            type: "mark-contacted",
+                            company: selected.company,
+                            contact: selected.contact,
+                          })
+                        }
+                        className="rounded-lg bg-teal-accent px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
+                      >
+                        Contacted
+                      </button>
+                    </>
                   )}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDialog({
-                        type: "prepare",
-                        company: selected.company,
-                        contact: selected.contact,
-                      })
-                    }
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase"
-                  >
-                    Prepare
-                  </button>
-                  {view !== "prepare" && (
+                  {(selected.contact.status === "contacted" ||
+                    selected.contact.status === "follow-up-due") && (
                     <button
                       type="button"
                       onClick={() =>
                         setDialog({
-                          type: "log",
+                          type: "mark-engaged",
                           company: selected.company,
                           contact: selected.contact,
                         })
                       }
-                      className="rounded-lg bg-teal-accent px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
+                      className="rounded-lg bg-olive px-2.5 py-1.5 text-[10px] font-bold uppercase text-olive-ink"
                     >
-                      Log outcome
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const d = new Date();
-                      d.setDate(d.getDate() + 7);
-                      scheduleFollowUp(
-                        selected.contact.id,
-                        d.toISOString().slice(0, 10),
-                        "Scheduled +7 days",
-                      );
-                    }}
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase"
-                  >
-                    +7d follow-up
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      markEngaged(selected.contact.id);
-                      linkToColdLead(selected.company, companyContacts);
-                    }}
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase"
-                  >
-                    Engaged → Cold Lead
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDialog({ type: "qualify", company: selected.company })
-                    }
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase"
-                  >
-                    Qualify
-                  </button>
-                  {selected.company.status !== "promoted" && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setDialog({
-                          type: "promote",
-                          company: selected.company,
-                          contacts: companyContacts,
-                        })
-                      }
-                      className="rounded-lg bg-deep px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
-                    >
-                      Promote
+                      Engaged
                     </button>
                   )}
                   <button
@@ -1213,14 +1113,14 @@ export default function ProspectingWorkspace() {
                     onClick={() =>
                       handleDeleteContact(selected.contact, selected.company)
                     }
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                    className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
                   >
                     Delete contact
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteCompany(selected.company)}
-                    className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                    className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
                   >
                     Delete company
                   </button>
@@ -1247,23 +1147,17 @@ export default function ProspectingWorkspace() {
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog?.type === "log" && (
-        <LogOutreachDialog
+      {dialog?.type === "mark-contacted" && (
+        <MarkContactedDialog
           company={dialog.company}
           contact={dialog.contact}
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog?.type === "qualify" && (
-        <QualifyDialog
+      {dialog?.type === "mark-engaged" && (
+        <MarkEngagedDialog
           company={dialog.company}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {dialog?.type === "promote" && (
-        <PromoteDialog
-          company={dialog.company}
-          contacts={dialog.contacts}
+          contact={dialog.contact}
           onClose={() => setDialog(null)}
         />
       )}

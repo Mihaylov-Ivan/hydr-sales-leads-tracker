@@ -260,6 +260,7 @@ export const OUTREACH_CHANNEL_LABELS: Record<OutreachChannel, string> = {
 };
 
 export type OutreachResult =
+  | "outreach-sent"
   | "communication-started"
   | "no-response-follow-up"
   | "no-response-cancel"
@@ -274,6 +275,20 @@ export type OutreachResult =
   | "referred"
   | "not-relevant";
 
+/** Results used when logging that outreach was sent (Prepare → Contacted). */
+export const CONTACTED_OUTREACH_RESULT: OutreachResult = "outreach-sent";
+
+/** Results used on the Engaged form (Contacted → Engaged). */
+export const ENGAGED_RESULTS: OutreachResult[] = [
+  "communication-started",
+  "positive",
+  "requested-info",
+  "requested-meeting",
+  "requested-offer",
+  "negative",
+  "not-relevant",
+];
+
 export const OUTREACH_RESULTS: OutreachResult[] = [
   "communication-started",
   "no-response-follow-up",
@@ -281,6 +296,7 @@ export const OUTREACH_RESULTS: OutreachResult[] = [
 ];
 
 export const OUTREACH_RESULT_LABELS: Record<OutreachResult, string> = {
+  "outreach-sent": "Outreach sent",
   "communication-started": "Communication started",
   "no-response-follow-up": "No response, follow up",
   "no-response-cancel": "No response, cancel lead",
@@ -439,7 +455,7 @@ export interface ProspectingState {
 export type ProspectView =
   | "my-work"
   | "prepare"
-  | "contact"
+  | "contacted"
   | "engaged"
   | "all"
   | "insights";
@@ -447,7 +463,7 @@ export type ProspectView =
 export const PROSPECT_VIEW_LABELS: Record<ProspectView, string> = {
   "my-work": "My Work",
   prepare: "Prepare",
-  contact: "Contact",
+  contacted: "Contacted",
   engaged: "Engaged",
   all: "All Prospects",
   insights: "Insights",
@@ -588,6 +604,8 @@ export function statusAfterOutreachResult(
 ): ProspectStatus {
   if (current === "promoted" || current === "disqualified") return current;
   switch (result) {
+    case "outreach-sent":
+      return "contacted";
     case "communication-started":
     case "positive":
     case "requested-info":

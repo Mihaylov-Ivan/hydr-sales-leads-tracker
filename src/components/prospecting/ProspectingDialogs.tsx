@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import { useProspecting } from "@/lib/prospecting-store";
 import {
+  ENGAGED_RESULTS,
   OUTREACH_CHANNEL_LABELS,
   OUTREACH_RESULTS,
   OUTREACH_RESULT_LABELS,
@@ -28,6 +29,7 @@ import {
   OutreachResult,
   YesNoUnknown,
   promoteDefaultStage,
+  todayDateOnly,
 } from "@/lib/prospecting-types";
 import { CREATE_STAGES, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
@@ -493,7 +495,7 @@ export function LogOutreachDialog({
 
   const needsFollowUp = result === "no-response-follow-up";
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     logOutreach({
       companyId: company.id,
@@ -509,7 +511,7 @@ export function LogOutreachDialog({
     });
 
     if (result === "communication-started") {
-      const projectId = linkToColdLead(
+      const projectId = await linkToColdLead(
         company,
         contacts.filter((c) => c.companyId === company.id),
       );
@@ -633,6 +635,280 @@ export function LogOutreachDialog({
             {result === "communication-started"
               ? "Save & move to Cold Lead"
               : "Save outcome"}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** Prepare → Contacted: channel, summary, follow-up date + reminder task. */
+export function MarkContactedDialog({
+  company,
+  contact,
+  onClose,
+}: {
+  company: ProspectCompany;
+  contact: ProspectContact;
+  onClose: () => void;
+}) {
+  const { markContacted } = useProspecting();
+  const { currentUserId, teamMembers, addPersonalTodo } = useProjects();
+  const userId =
+    currentUserId && teamMembers.some((m) => m.id === currentUserId)
+      ? currentUserId
+      : contact.ownerId || teamMembers[0]?.id || "";
+
+  const [channel, setChannel] = useState<OutreachChannel>(() => {
+    if (
+      contact.plannedChannel &&
+      PROSPECTING_CHANNELS.includes(contact.plannedChannel)
+    ) {
+      return contact.plannedChannel;
+    }
+    return "email";
+  });
+  const [summary, setSummary] = useState("");
+  const [followUpAt, setFollowUpAt] = useState(() => {
+    if (contact.nextFollowUpAt) return contact.nextFollowUpAt.slice(0, 10);
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!followUpAt) return;
+    const text =
+      summary.trim() ||
+      `${OUTREACH_CHANNEL_LABELS[channel]} outreach to ${contact.name}`;
+
+    markContacted({
+      companyId: company.id,
+      contactId: contact.id,
+      userId,
+      channel,
+      summary: text,
+      followUpAt,
+    });
+
+    addPersonalTodo({
+      title: `Follow up: ${contact.name} @ ${company.name}`,
+      description: [
+        `Channel: ${OUTREACH_CHANNEL_LABELS[channel]}`,
+        text,
+        `Prospecting contact follow-up for ${company.name}.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      dueDate: followUpAt,
+      ownerUserId: userId,
+      status: "todo",
+    });
+
+    onClose();
+  }
+
+  return (
+    <ModalShell title="Mark contacted" onClose={onClose}>
+      <p className="mb-3 text-sm text-muted">
+        Log outreach to{" "}
+        <span className="font-semibold text-deep">{contact.name}</span>
+        {contact.title ? ` · ${contact.title}` : ""} at{" "}
+        <span className="font-semibold text-deep">{company.name}</span>. Moves
+        them to Contacted and creates your follow-up reminder.
+      </p>
+      <form onSubmit={submit} className="grid gap-3">
+        <div>
+          <label className={labelCls}>Channel</label>
+          <select
+            className={selectCls}
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as OutreachChannel)}
+          >
+            {PROSPECTING_CHANNELS.map((c) => (
+              <option key={c} value={c}>
+                {OUTREACH_CHANNEL_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Summary</label>
+          <textarea
+            autoFocus
+            required
+            className={`${inputCls} min-h-[72px]`}
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="What did you send / say?"
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Follow-up date</label>
+          <input
+            type="date"
+            required
+            className={inputCls}
+            value={followUpAt}
+            onChange={(e) => setFollowUpAt(e.target.value)}
+            min={todayDateOnly()}
+          />
+          <p className="mt-1 text-[11px] text-muted">
+            Creates a personal reminder task for you on this date.
+          </p>
+        </div>
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-semibold text-muted"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white"
+          >
+            Mark contacted
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** Contacted → Engaged: response date, result, summary, optional cold lead. */
+export function MarkEngagedDialog({
+  company,
+  contact,
+  onClose,
+}: {
+  company: ProspectCompany;
+  contact: ProspectContact;
+  onClose: () => void;
+}) {
+  const { logEngagement, contacts } = useProspecting();
+  const { currentUserId, teamMembers } = useProjects();
+  const linkToColdLead = useLinkProspectToColdLead();
+  const router = useRouter();
+  const userId =
+    currentUserId && teamMembers.some((m) => m.id === currentUserId)
+      ? currentUserId
+      : contact.ownerId || teamMembers[0]?.id || "";
+
+  const [responseDate, setResponseDate] = useState(todayDateOnly());
+  const [result, setResult] = useState<OutreachResult>("communication-started");
+  const [summary, setSummary] = useState("");
+  const [openColdLead, setOpenColdLead] = useState(true);
+
+  const createsColdLead =
+    openColdLead &&
+    (result === "communication-started" ||
+      result === "positive" ||
+      result === "requested-info" ||
+      result === "requested-meeting" ||
+      result === "requested-offer");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const text =
+      summary.trim() ||
+      `Client response — ${OUTREACH_RESULT_LABELS[result]}`;
+
+    logEngagement({
+      companyId: company.id,
+      contactId: contact.id,
+      userId,
+      channel: contact.plannedChannel || "email",
+      result,
+      summary: text,
+      occurredAt: responseDate,
+    });
+
+    if (createsColdLead) {
+      const projectId = await linkToColdLead(
+        company,
+        contacts.filter((c) => c.companyId === company.id),
+      );
+      onClose();
+      if (projectId) router.push(`/projects/${projectId}`);
+      return;
+    }
+
+    onClose();
+  }
+
+  return (
+    <ModalShell title="Mark engaged" onClose={onClose}>
+      <p className="mb-3 text-sm text-muted">
+        Record the response from{" "}
+        <span className="font-semibold text-deep">{contact.name}</span> at{" "}
+        <span className="font-semibold text-deep">{company.name}</span>.
+      </p>
+      <form onSubmit={submit} className="grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Response date</label>
+            <input
+              type="date"
+              required
+              className={inputCls}
+              value={responseDate}
+              onChange={(e) => setResponseDate(e.target.value)}
+              max={todayDateOnly()}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Result</label>
+            <select
+              className={selectCls}
+              value={result}
+              onChange={(e) => setResult(e.target.value as OutreachResult)}
+            >
+              {ENGAGED_RESULTS.map((r) => (
+                <option key={r} value={r}>
+                  {OUTREACH_RESULT_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Summary</label>
+          <textarea
+            autoFocus
+            required
+            className={`${inputCls} min-h-[72px]`}
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            placeholder="What did they say / ask for?"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={openColdLead}
+            onChange={(e) => setOpenColdLead(e.target.checked)}
+            disabled={
+              result === "negative" || result === "not-relevant"
+            }
+          />
+          Open cold lead on Sales Projects
+        </label>
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-semibold text-muted"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink"
+          >
+            {createsColdLead ? "Save & create cold lead" : "Save engaged"}
           </button>
         </div>
       </form>
@@ -809,7 +1085,7 @@ export function PromoteDialog({
   onClose: () => void;
 }) {
   const { markPromoted } = useProspecting();
-  const { addProject, addContact, projects, teamMembers, currentUserId } =
+  const { addProject, addContact, waitForProjectInsert, projects, teamMembers, currentUserId } =
     useProjects();
   const assignable = assignableTeamMembers(teamMembers);
   const router = useRouter();
@@ -855,7 +1131,7 @@ export function PromoteDialog({
       .join("\n"),
   );
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     let projectId = linkProjectId;
 
@@ -873,13 +1149,21 @@ export function PromoteDialog({
         baseDescription: description.trim(),
         leadUserId: leadUserId || undefined,
       });
-      for (const c of contacts) {
-        addContact(projectId, {
-          name: c.name,
-          email: c.email || undefined,
-          phone: c.phone || undefined,
-          position: c.title || undefined,
-        });
+      const projectOk = await waitForProjectInsert(projectId);
+      if (!projectOk) {
+        console.error(
+          "Promote project insert failed; contacts/link not persisted",
+          projectId,
+        );
+      } else {
+        for (const c of contacts) {
+          addContact(projectId, {
+            name: c.name,
+            email: c.email || undefined,
+            phone: c.phone || undefined,
+            position: c.title || undefined,
+          });
+        }
       }
     } else if (!projectId) {
       return;

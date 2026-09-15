@@ -572,6 +572,8 @@ interface ProjectsApi {
   /** Project ids with an AI summary generation currently in flight */
   summarizing: Record<string, boolean>;
   addProject: (input: NewProjectInput) => string;
+  /** Resolves when a newly created project row is in Supabase (or immediately offline). */
+  waitForProjectInsert: (projectId: string) => Promise<boolean>;
   addComment: (projectId: string, text: string, stageChange?: Stage) => void;
   updateProject: (projectId: string, patch: ProjectPatch) => void;
   /** Mark client as contacted today — restarts this user's follow-up window */
@@ -2283,6 +2285,12 @@ if (supabase) {
     recordChangeEvent,
   ]);
 
+  const waitForProjectInsert = useCallback((projectId: string) => {
+    return (
+      projectInsertWaitersRef.current.get(projectId) ?? Promise.resolve(true)
+    );
+  }, []);
+
   const addComment = useCallback(
     (projectId: string, text: string, stageChange?: Stage) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
@@ -3562,18 +3570,30 @@ if (supabase) {
         payloadJson: { name: name ?? null, email: email ?? null },
       });
       if (supabase) {
-        void supabase
-          .from("project_contacts")
-          .insert({
-            id: contact.id,
-            project_id: projectId,
-            name: name || null,
-            email: email || null,
-            phone: phone || null,
-            position: position || null,
-            created_at: contact.createdAt,
-          })
-          .then(logDbError("contact insert"));
+        const waiter =
+          projectInsertWaitersRef.current.get(projectId) ??
+          Promise.resolve(true);
+        void waiter.then((projectOk) => {
+          if (!projectOk) {
+            console.error(
+              "Supabase contact insert skipped: project insert failed",
+              projectId,
+            );
+            return;
+          }
+          void supabase
+            .from("project_contacts")
+            .insert({
+              id: contact.id,
+              project_id: projectId,
+              name: name || null,
+              email: email || null,
+              phone: phone || null,
+              position: position || null,
+              created_at: contact.createdAt,
+            })
+            .then(logDbError("contact insert"));
+        });
       }
     },
     [mutateContacts, recordChangeEvent],
@@ -7735,6 +7755,7 @@ if (supabase) {
         aiEnabled,
         summarizing,
         addProject,
+        waitForProjectInsert,
         addComment,
         updateProject,
         markClientContacted,

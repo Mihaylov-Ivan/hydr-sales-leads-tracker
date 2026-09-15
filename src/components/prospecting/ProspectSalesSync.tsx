@@ -52,13 +52,14 @@ export function ProspectSalesSync() {
 
 /** Create or reuse a Cold Lead Sales Project for an engaged prospect. */
 export function useLinkProspectToColdLead() {
-  const { projects, addProject, addContact } = useProjects();
+  const { projects, addProject, addContact, waitForProjectInsert } =
+    useProjects();
   const { markPromoted, contacts } = useProspecting();
 
-  return function linkProspectToColdLead(
+  return async function linkProspectToColdLead(
     company: ProspectCompany,
     companyContacts?: ProspectContact[],
-  ): string {
+  ): Promise<string> {
     if (company.promotedProjectId) {
       const existing = projects.find((p) => p.id === company.promotedProjectId);
       if (existing) {
@@ -114,6 +115,15 @@ export function useLinkProspectToColdLead() {
       baseDescription: description,
       leadUserId: company.ownerId || undefined,
     });
+
+    const projectOk = await waitForProjectInsert(projectId);
+    if (!projectOk) {
+      console.error(
+        "Cold lead project insert failed; contacts/link not persisted",
+        projectId,
+      );
+      return projectId;
+    }
 
     for (const c of people) {
       addContact(projectId, {
