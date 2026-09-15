@@ -188,15 +188,10 @@ export interface TeamMember {
 }
 
 /**
- * Default team roster used when no DB / local list exists yet.
- * Live data lives in Supabase `team_members` (or localStorage without DB).
+ * Offline-only fallback when Supabase has no team_members yet.
+ * Live roster comes from the database (Users admin page).
  */
-export const TEAM_MEMBERS: TeamMember[] = [
-  { id: "u-andrew", name: "Andrew" },
-  { id: "u-maria", name: "Maria" },
-  { id: "u-daniel", name: "Daniel" },
-  { id: "u-irina", name: "Irina" },
-];
+export const TEAM_MEMBERS: TeamMember[] = [];
 
 export interface ProjectComment {
   id: string;
