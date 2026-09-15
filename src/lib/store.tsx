@@ -82,10 +82,16 @@ import {
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
 import {
+  buildChangeEvent,
+  changeDiffPayload,
   createEventId,
   formatValue,
+  persistChangeEventRemote,
+  recordPersistedChange,
+  summarizeCrmProjectPatch,
   summarizeFinancialFieldChange,
-} from "./format-utils";
+  type RecordChangeInput,
+} from "./change-history";
 import {
   supabase,
   commentFromRow,
@@ -1301,11 +1307,6 @@ function logDbError(action: string) {
   };
 }
 
-/** History tracking removed — stable no-op for existing call sites. */
-function recordChangeEvent(..._args: unknown[]): void {
-  // intentionally empty
-}
-
 export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const { user: authUser, authEnabled, ready: authReady } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -1599,6 +1600,47 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   /** Resolves when a newly created project row is confirmed in Supabase (or immediately if offline). */
   const projectInsertWaitersRef = useRef(
     new Map<string, Promise<boolean>>(),
+  );
+
+  /**
+   * Append-only process history for DB-backed non-financial changes.
+   * `finance_meta` / finance snapshots are accepted for call-site compatibility
+   * but are not persisted yet (Excel financial history comes later).
+   */
+  const recordChangeEvent = useCallback(
+    (
+      input: Omit<RecordChangeInput, "intentional" | "actorUserId" | "actorName"> & {
+        intentional?: boolean;
+      },
+      _financeSnapshot?: RecordFinanceSnapshot,
+      options?: { skipRemote?: boolean },
+    ) => {
+      try {
+        const id = currentUserIdRef.current;
+        const members = teamMembersRef.current;
+        const member =
+          id && Array.isArray(members)
+            ? members.find((m) => m.id === id)
+            : undefined;
+        return recordPersistedChange(
+          {
+            ...input,
+            intentional: input.intentional ?? true,
+            actorName: member?.name ?? "You",
+            ...(member ? { actorUserId: member.id } : {}),
+          },
+          options,
+        );
+      } catch (e) {
+        console.error("Failed to record change event:", e);
+        return buildChangeEvent({
+          ...input,
+          intentional: input.intentional ?? true,
+          actorName: "You",
+        });
+      }
+    },
+    [],
   );
 
   const updateFinanceSettings = useCallback(
@@ -2217,7 +2259,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       createdAt,
     };
     setProjects((prev) => [project, ...prev]);
-if (supabase) {
+    const event = recordChangeEvent(
+      {
+        domain: "crm",
+        entityType: "project",
+        entityId: id,
+        projectId: id,
+        action: "create",
+        summary: `Created project ${project.name}`,
+        payloadJson: {
+          name: project.name,
+          stage: project.stage,
+          market: project.market,
+        },
+      },
+      undefined,
+      { skipRemote: Boolean(supabase) },
+    );
+    if (supabase) {
       // Insert comment / history only after the project row exists (FK constraint).
       const insertPromise = supabase
         .from("projects")
@@ -2270,6 +2329,7 @@ if (supabase) {
               })
               .then(logDbError("initial comment insert"));
           }
+          persistChangeEventRemote(event);
           return true;
         });
       projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));
@@ -2313,9 +2373,19 @@ if (supabase) {
         ...current,
         ...stagePatch,
         stage: stageChange ?? current.stage,
-        comments: [...current.comments, comment],
+        comments: [...(current.comments ?? []), comment],
       };
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
+      setProjects((prev) =>
+        prev.map((p) => {
+          if (p.id !== projectId) return p;
+          return {
+            ...p,
+            ...stagePatch,
+            stage: stageChange ?? p.stage,
+            comments: [...(p.comments ?? []), comment],
+          };
+        }),
+      );
       recordChangeEvent({
         domain: "crm",
         entityType: "comment",
@@ -2323,10 +2393,10 @@ if (supabase) {
         projectId,
         action: "create",
         summary: `${current.name}: added update${stageChange ? ` (→ ${STAGE_LABELS[stageChange]})` : ""}`,
-        payloadJson: {
+        payloadJson: changeDiffPayload(null, text, {
           stageChange: stageChange ?? null,
           preview: text.slice(0, 120),
-        },
+        }),
       });
       if (stageChange && stageChange !== current.stage) {
         recordChangeEvent({
@@ -2337,10 +2407,11 @@ if (supabase) {
           action: "stage_change",
           field: "stage",
           summary: `${current.name}: stage ${STAGE_LABELS[current.stage]} → ${STAGE_LABELS[stageChange]}`,
-          payloadJson: {
-            old: current.stage,
-            new: stageChange,
-          },
+          payloadJson: changeDiffPayload(
+            STAGE_LABELS[current.stage],
+            STAGE_LABELS[stageChange],
+            { field: "stage" },
+          ),
         });
       }
       if (supabase) {
@@ -2423,6 +2494,24 @@ if (supabase) {
       if (mergedPatch.cancelledAt === "") delete updated.cancelledAt;
       if (mergedPatch.cancellationReason === "")
         delete updated.cancellationReason;
+
+      const diffs = summarizeCrmProjectPatch(
+        current as unknown as Record<string, unknown>,
+        patch as unknown as Record<string, unknown>,
+        current.name,
+      );
+      for (const d of diffs) {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "project",
+          entityId: projectId,
+          projectId,
+          action: d.field === "stage" ? "stage_change" : "update",
+          field: d.field,
+          summary: d.summary,
+          payloadJson: d.payload,
+        });
+      }
 
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
@@ -2548,6 +2637,25 @@ if (supabase) {
     [],
   );
 
+  /**
+   * Completing or deleting an auto follow-up todo means the contact was handled
+   * for this cycle — snooze the per-user reminder so sync does not recreate it.
+   */
+  const advanceFollowUpReminderForTodo = useCallback(
+    (projectId: string, todo: ProjectTodo) => {
+      if (!isClientFollowUpTodo(todo)) return;
+      const uid = todo.ownerUserId ?? currentUserIdRef.current;
+      if (!uid) return;
+      const reminder = getProjectUserReminder(projectId, uid);
+      persistProjectUserReminder({
+        ...reminder,
+        userId: uid,
+        lastClientContactAt: todayDate(),
+      });
+    },
+    [getProjectUserReminder, persistProjectUserReminder],
+  );
+
   const updateProjectUserReminder = useCallback(
     (
       projectId: string,
@@ -2654,36 +2762,89 @@ if (supabase) {
     [getProjectUserReminder, persistProjectUserReminder, supportsMetricsFields],
   );
 
+  const mutateComments = useCallback(
+    (
+      projectId: string,
+      fn: (comments: ProjectComment[]) => ProjectComment[],
+    ) => {
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, comments: fn(p.comments ?? []) }
+            : p,
+        ),
+      );
+    },
+    [],
+  );
+
   const updateComment = useCallback(
     (projectId: string, commentId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
       const current = projectsRef.current.find((p) => p.id === projectId);
-      if (!current) return;
-      const updated: Project = {
-        ...current,
-        comments: current.comments.map((c) =>
-          c.id === commentId ? { ...c, text } : c,
+      if (!current) {
+        console.error("updateComment: project not found", projectId);
+        return;
+      }
+      const existing = (current.comments ?? []).find((c) => c.id === commentId);
+      if (!existing) {
+        console.error("updateComment: comment not found", commentId);
+        return;
+      }
+      if (existing.text === trimmed) return;
+
+      mutateComments(projectId, (comments) =>
+        comments.map((c) =>
+          c.id === commentId ? { ...c, text: trimmed } : c,
         ),
-      };
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
-      recordChangeEvent({
-        domain: "crm",
-        entityType: "comment",
-        entityId: commentId,
-        projectId,
-        action: "update",
-        summary: `${current.name}: edited update`,
-        payloadJson: { preview: text.slice(0, 120) },
-      });
+      );
+
+      try {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "comment",
+          entityId: commentId,
+          projectId,
+          action: "update",
+          summary: `${current.name}: edited update`,
+          payloadJson: changeDiffPayload(existing.text, trimmed, {
+            preview: trimmed.slice(0, 120),
+          }),
+        });
+      } catch (e) {
+        console.error("Failed to record comment edit history:", e);
+      }
+
       if (supabase) {
         void supabase
           .from("project_comments")
-          .update({ text })
+          .update({ text: trimmed })
           .eq("id", commentId)
-          .then(logDbError("comment update"));
+          .select("id")
+          .then(({ data, error }) => {
+            if (error) {
+              console.error("Supabase comment update failed:", error.message);
+              return;
+            }
+            if (!data?.length) {
+              console.error(
+                "Supabase comment update matched 0 rows for id",
+                commentId,
+              );
+            }
+          });
       }
+
+      const updated: Project = {
+        ...current,
+        comments: (current.comments ?? []).map((c) =>
+          c.id === commentId ? { ...c, text: trimmed } : c,
+        ),
+      };
       void requestAiSummary(updated);
     },
-    [requestAiSummary, recordChangeEvent],
+    [mutateComments, requestAiSummary, recordChangeEvent],
   );
 
   const deleteComment = useCallback(
@@ -2692,17 +2853,28 @@ if (supabase) {
       if (!current) return;
       const updated: Project = {
         ...current,
-        comments: current.comments.filter((c) => c.id !== commentId),
+        comments: (current.comments ?? []).filter((c) => c.id !== commentId),
       };
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
-      recordChangeEvent({
-        domain: "crm",
-        entityType: "comment",
-        entityId: commentId,
-        projectId,
-        action: "delete",
-        summary: `${current.name}: deleted update`,
-      });
+      mutateComments(projectId, (comments) =>
+        comments.filter((c) => c.id !== commentId),
+      );
+      try {
+        recordChangeEvent({
+          domain: "crm",
+          entityType: "comment",
+          entityId: commentId,
+          projectId,
+          action: "delete",
+          summary: `${current.name}: deleted update`,
+          payloadJson: changeDiffPayload(
+            (current.comments ?? []).find((c) => c.id === commentId)?.text ??
+              null,
+            null,
+          ),
+        });
+      } catch (e) {
+        console.error("Failed to record comment delete history:", e);
+      }
       if (supabase) {
         void supabase
           .from("project_comments")
@@ -2712,7 +2884,7 @@ if (supabase) {
       }
       void requestAiSummary(updated);
     },
-    [requestAiSummary, recordChangeEvent],
+    [mutateComments, requestAiSummary, recordChangeEvent],
   );
 
   const regenerateSummary = useCallback(
@@ -2764,12 +2936,14 @@ if (supabase) {
         projectId,
         action: "create",
         summary: `${project?.name ?? projectId}: added ${kind} — ${text.slice(0, 80)}`,
-        payloadJson: {
+        payloadJson: changeDiffPayload(null, {
+          text,
           kind,
           dueDate: dueDate ?? null,
           startDate: startDate ?? null,
           endDate: endDate ?? null,
-        },
+          ownerUserId: ownerUserId ?? null,
+        }),
       });
       if (supabase) {
         void supabase
@@ -2832,6 +3006,8 @@ if (supabase) {
       mutateTodos(projectId, (todos) =>
         todos.map((t) => (t.id === todoId ? { ...t, done, doneAt } : t)),
       );
+      // Completing a managed follow-up snoozes the reminder so sync won't spawn a copy.
+      if (done) advanceFollowUpReminderForTodo(projectId, current);
       recordChangeEvent({
         domain: "crm",
         entityType: "todo",
@@ -2839,7 +3015,10 @@ if (supabase) {
         projectId,
         action: done ? "complete" : "reopen",
         summary: `${project?.name ?? projectId}: ${done ? "completed" : "reopened"} todo — ${current.text.slice(0, 80)}`,
-        payloadJson: { done },
+        payloadJson: changeDiffPayload(
+          { done: current.done, text: current.text },
+          { done, text: current.text },
+        ),
       });
       if (supabase) {
         void supabase
@@ -2849,7 +3028,7 @@ if (supabase) {
           .then(logDbError("todo toggle"));
       }
     },
-    [mutateTodos, recordChangeEvent],
+    [mutateTodos, recordChangeEvent, advanceFollowUpReminderForTodo],
   );
 
   const updateTodo = useCallback(
@@ -2896,13 +3075,44 @@ if (supabase) {
         projectId,
         action: "update",
         summary: `${project?.name ?? projectId}: updated todo`,
-        payloadJson: {
-          text: patch.text ?? null,
-          dueDate: patch.dueDate ?? null,
-          startDate: patch.startDate ?? null,
-          endDate: patch.endDate ?? null,
-          done: patch.done ?? null,
-        },
+        payloadJson: changeDiffPayload(
+          previous
+            ? {
+                text: previous.text,
+                answer: previous.answer ?? null,
+                dueDate: previous.dueDate ?? null,
+                startDate: previous.startDate ?? null,
+                endDate: previous.endDate ?? null,
+                ownerUserId: previous.ownerUserId ?? null,
+                done: previous.done,
+              }
+            : null,
+          {
+            text: patch.text !== undefined ? patch.text : (previous?.text ?? null),
+            answer:
+              patch.answer !== undefined
+                ? patch.answer
+                : (previous?.answer ?? null),
+            dueDate:
+              patch.dueDate !== undefined
+                ? patch.dueDate
+                : (previous?.dueDate ?? null),
+            startDate:
+              patch.startDate !== undefined
+                ? patch.startDate
+                : (previous?.startDate ?? null),
+            endDate:
+              patch.endDate !== undefined
+                ? patch.endDate
+                : (previous?.endDate ?? null),
+            ownerUserId:
+              patch.ownerUserId !== undefined
+                ? patch.ownerUserId
+                : (previous?.ownerUserId ?? null),
+            done:
+              patch.done !== undefined ? patch.done : (previous?.done ?? null),
+          },
+        ),
       });
       if (supabase) {
         const row: Record<string, string | boolean | null> = {};
@@ -3012,13 +3222,9 @@ if (supabase) {
 
         if (!existing) {
           addTodo(project.id, "our-action", text, dueDate, reminder.userId);
-        } else {
-          const patch: TodoPatch = {};
-          if (existing.text !== text) patch.text = text;
-          if (existing.dueDate !== dueDate) patch.dueDate = dueDate;
-          if (Object.keys(patch).length > 0) {
-            updateTodo(project.id, existing.id, patch);
-          }
+        } else if (existing.dueDate !== dueDate) {
+          // Only sync due date — never overwrite a user-edited title.
+          updateTodo(project.id, existing.id, { dueDate });
         }
       }
 
@@ -3051,6 +3257,8 @@ if (supabase) {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo = project?.todos.find((t) => t.id === todoId);
       mutateTodos(projectId, (todos) => todos.filter((t) => t.id !== todoId));
+      // Deleting a managed follow-up also snoozes the reminder (same as completing).
+      if (todo) advanceFollowUpReminderForTodo(projectId, todo);
       recordChangeEvent({
         domain: "crm",
         entityType: "todo",
@@ -3058,6 +3266,17 @@ if (supabase) {
         projectId,
         action: "delete",
         summary: `${project?.name ?? projectId}: deleted todo${todo ? ` — ${todo.text.slice(0, 80)}` : ""}`,
+        payloadJson: changeDiffPayload(
+          todo
+            ? {
+                text: todo.text,
+                kind: todo.kind,
+                done: todo.done,
+                dueDate: todo.dueDate ?? null,
+              }
+            : null,
+          null,
+        ),
       });
       if (supabase) {
         void supabase
@@ -3067,7 +3286,7 @@ if (supabase) {
           .then(logDbError("todo delete"));
       }
     },
-    [mutateTodos, recordChangeEvent],
+    [mutateTodos, recordChangeEvent, advanceFollowUpReminderForTodo],
   );
 
   const addPersonalTodo = useCallback(
@@ -3567,7 +3786,12 @@ if (supabase) {
         projectId,
         action: "create",
         summary: `${project?.name ?? projectId}: added contact ${name || email || phone || "—"}`,
-        payloadJson: { name: name ?? null, email: email ?? null },
+        payloadJson: changeDiffPayload(null, {
+          name: name ?? null,
+          email: email ?? null,
+          phone: phone ?? null,
+          position: position ?? null,
+        }),
       });
       if (supabase) {
         const waiter =
@@ -3602,6 +3826,7 @@ if (supabase) {
   const updateContact = useCallback(
     (projectId: string, contactId: string, patch: ContactInput) => {
       const project = projectsRef.current.find((p) => p.id === projectId);
+      const previous = project?.contacts.find((c) => c.id === contactId);
       mutateContacts(projectId, (contacts) =>
         contacts.map((c) => {
           if (c.id !== contactId) return c;
@@ -3616,6 +3841,24 @@ if (supabase) {
           return next;
         }),
       );
+      const after = {
+        name:
+          patch.name !== undefined
+            ? patch.name.trim() || null
+            : (previous?.name ?? null),
+        email:
+          patch.email !== undefined
+            ? patch.email.trim() || null
+            : (previous?.email ?? null),
+        phone:
+          patch.phone !== undefined
+            ? patch.phone.trim() || null
+            : (previous?.phone ?? null),
+        position:
+          patch.position !== undefined
+            ? patch.position.trim() || null
+            : (previous?.position ?? null),
+      };
       recordChangeEvent({
         domain: "crm",
         entityType: "contact",
@@ -3623,10 +3866,17 @@ if (supabase) {
         projectId,
         action: "update",
         summary: `${project?.name ?? projectId}: updated contact`,
-        payloadJson: {
-          name: patch.name ?? null,
-          email: patch.email ?? null,
-        },
+        payloadJson: changeDiffPayload(
+          previous
+            ? {
+                name: previous.name ?? null,
+                email: previous.email ?? null,
+                phone: previous.phone ?? null,
+                position: previous.position ?? null,
+              }
+            : null,
+          after,
+        ),
       });
       if (supabase) {
         const row: Record<string, string | null> = {};
@@ -3658,6 +3908,17 @@ if (supabase) {
         projectId,
         action: "delete",
         summary: `${project?.name ?? projectId}: deleted contact ${contact?.name || contact?.email || contactId}`,
+        payloadJson: changeDiffPayload(
+          contact
+            ? {
+                name: contact.name ?? null,
+                email: contact.email ?? null,
+                phone: contact.phone ?? null,
+                position: contact.position ?? null,
+              }
+            : null,
+          null,
+        ),
       });
       if (supabase) {
         void supabase
@@ -6053,6 +6314,7 @@ if (supabase) {
         .then((res) => {
           logDbError("warehouse holding project insert")(res);
           if (res.error) return false;
+          persistChangeEventRemote(event);
           return true;
         });
       projectInsertWaitersRef.current.set(id, Promise.resolve(insertPromise));

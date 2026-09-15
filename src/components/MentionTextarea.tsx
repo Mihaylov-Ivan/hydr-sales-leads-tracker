@@ -366,7 +366,7 @@ export function MentionRichText({
   text: string;
   className?: string;
 }) {
-  const parts = text.split(/(@[A-Za-z0-9._-]+)/g);
+  const parts = String(text ?? "").split(/(@[A-Za-z0-9._-]+)/g);
   return (
     <span className={className}>
       {parts.map((part, i) =>

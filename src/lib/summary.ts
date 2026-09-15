@@ -27,7 +27,10 @@ function formatDate(iso: string): string {
 
 /** Trim a comment down to a summary-friendly snippet (first sentence, max ~160 chars). */
 function snippet(text: string): string {
-  const clean = text.trim().replace(/\s+/g, " ");
+  const clean = String(text ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!clean) return "";
   const firstSentence = clean.match(/^.*?[.!?](\s|$)/)?.[0]?.trim() ?? clean;
   const cut =
     firstSentence.length > 160
@@ -60,7 +63,7 @@ export function generateSummary(project: Project): string {
     `The project is currently ${STAGE_PHRASES[project.stage]} (${sizePart}${project.series} for ${project.client}, ${project.city}, ${project.country}).`,
   );
 
-  const sorted = [...project.comments].sort(
+  const sorted = [...(project.comments ?? [])].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 

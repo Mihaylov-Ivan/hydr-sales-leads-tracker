@@ -1692,6 +1692,7 @@ export type ChangeEventDomain =
   | "gantt"
   | "finance_meta"
   | "warehouse"
+  | "prospecting"
   | "system";
 
 export const CHANGE_EVENT_DOMAINS: ChangeEventDomain[] = [
@@ -1699,6 +1700,16 @@ export const CHANGE_EVENT_DOMAINS: ChangeEventDomain[] = [
   "gantt",
   "finance_meta",
   "warehouse",
+  "prospecting",
+  "system",
+];
+
+/** Domains currently written to Postgres (finance_meta deferred). */
+export const ACTIVE_CHANGE_EVENT_DOMAINS: ChangeEventDomain[] = [
+  "crm",
+  "gantt",
+  "warehouse",
+  "prospecting",
   "system",
 ];
 

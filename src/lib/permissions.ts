@@ -148,6 +148,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/production", label: "Production", access: { kind: "permission", permission: "production" } },
   { href: "/finance", label: "Finance", access: { kind: "permission", permission: "finance" } },
   { href: "/metrics", label: "Metrics", access: { kind: "permission", permission: "sales" } },
+  { href: "/admin/history", label: "History", access: { kind: "admin" } },
   { href: "/admin/users", label: "Users", access: { kind: "admin" } },
 ];
 

@@ -14,14 +14,14 @@ export async function GET() {
 }
 
 function buildPrompt(project: Project): string {
-  const comments = [...project.comments]
+  const comments = [...(project.comments ?? [])]
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .map((c) => {
       const date = new Date(c.createdAt).toISOString().slice(0, 10);
       const stage = c.stageChange
         ? ` [stage changed to: ${STAGE_LABELS[c.stageChange]}]`
         : "";
-      return `- ${date}${stage}: ${c.text}`;
+      return `- ${date}${stage}: ${c.text ?? ""}`;
     })
     .join("\n");
 

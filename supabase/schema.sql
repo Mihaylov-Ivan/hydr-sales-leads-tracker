@@ -420,6 +420,48 @@ create index if not exists warehouse_balances_lot_idx
 create index if not exists warehouse_movements_lot_idx
   on public.warehouse_movements (lot_id, occurred_at desc);
 
+-- ---------- Change / process history (non-financial) ----------
+
+create table if not exists public.app_change_events (
+  id uuid primary key default gen_random_uuid(),
+  occurred_at timestamptz not null default now(),
+  actor_user_id text,
+  actor_name text,
+  intentional boolean not null default true,
+  domain text not null
+    check (domain in (
+      'crm',
+      'gantt',
+      'warehouse',
+      'prospecting',
+      'system',
+      'finance_meta'
+    )),
+  entity_type text not null,
+  entity_id text,
+  project_id uuid references public.projects (id) on delete set null,
+  action text not null,
+  field text,
+  summary text not null default '',
+  payload_json jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists app_change_events_occurred_at_idx
+  on public.app_change_events (occurred_at desc);
+
+create index if not exists app_change_events_project_occurred_idx
+  on public.app_change_events (project_id, occurred_at desc);
+
+create index if not exists app_change_events_domain_occurred_idx
+  on public.app_change_events (domain, occurred_at desc);
+
+create index if not exists app_change_events_actor_occurred_idx
+  on public.app_change_events (actor_user_id, occurred_at desc);
+
+create index if not exists app_change_events_entity_occurred_idx
+  on public.app_change_events (entity_type, entity_id, occurred_at desc);
+
 alter table public.warehouse_items enable row level security;
 alter table public.warehouse_lots enable row level security;
 alter table public.warehouse_balances enable row level security;
@@ -436,6 +478,11 @@ create policy "anon full access" on public.warehouse_balances
   for all to anon, authenticated using (true) with check (true);
 drop policy if exists "anon full access" on public.warehouse_movements;
 create policy "anon full access" on public.warehouse_movements
+  for all to anon, authenticated using (true) with check (true);
+
+alter table public.app_change_events enable row level security;
+drop policy if exists "anon full access" on public.app_change_events;
+create policy "anon full access" on public.app_change_events
   for all to anon, authenticated using (true) with check (true);
 
 -- ---------- Seed data (optional) ----------

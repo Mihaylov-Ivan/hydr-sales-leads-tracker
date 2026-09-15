@@ -10,6 +10,11 @@ import React, {
   useState,
 } from "react";
 import { supabase } from "./supabase";
+import { useAuth } from "./auth-context";
+import {
+  recordPersistedChange,
+  type RecordChangeInput,
+} from "./change-history";
 import {
   createEmptyCompany,
   createEmptyContact,
@@ -454,12 +459,34 @@ export interface ProspectingApi {
 const ProspectingContext = createContext<ProspectingApi | null>(null);
 
 export function ProspectingProvider({ children }: { children: React.ReactNode }) {
+  const { user: authUser } = useAuth();
   const [state, setState] = useState<ProspectingState>(emptyState);
   const [ready, setReady] = useState(false);
   const [usingRemote, setUsingRemote] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
   const remoteRef = useRef(false);
+  const authUserRef = useRef(authUser);
+  authUserRef.current = authUser;
+
+  const recordProspectChange = useCallback(
+    (
+      input: Omit<
+        RecordChangeInput,
+        "domain" | "intentional" | "actorUserId" | "actorName"
+      > & { intentional?: boolean },
+    ) => {
+      const actor = authUserRef.current;
+      recordPersistedChange({
+        ...input,
+        domain: "prospecting",
+        intentional: input.intentional ?? true,
+        actorName: actor?.name ?? "You",
+        ...(actor ? { actorUserId: actor.userId } : {}),
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -650,6 +677,27 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         }
       });
 
+      recordProspectChange({
+        entityType: "prospect_company",
+        entityId: company.id,
+        action: "create",
+        summary: `Created prospect ${company.name}`,
+        payloadJson: {
+          name: company.name,
+          market: company.market,
+          source: company.source,
+        },
+      });
+      if (contact) {
+        recordProspectChange({
+          entityType: "prospect_contact",
+          entityId: contact.id,
+          action: "create",
+          summary: `Added contact ${contact.name} at ${company.name}`,
+          payloadJson: { companyId: company.id, name: contact.name },
+        });
+      }
+
       const warnings: string[] = [];
       if (dup) warnings.push(`Similar company already exists: “${dup.name}”`);
       if (contactDup) warnings.push(`Similar contact already exists`);
@@ -662,11 +710,18 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           : {}),
       };
     },
-    [findDuplicateCompany, findDuplicateContact, persistCompany, persistContact],
+    [
+      findDuplicateCompany,
+      findDuplicateContact,
+      persistCompany,
+      persistContact,
+      recordProspectChange,
+    ],
   );
 
   const updateCompany = useCallback(
     (id: string, patch: Partial<ProspectCompany>) => {
+      const before = stateRef.current.companies.find((c) => c.id === id);
       setState((prev) => {
         const companies = prev.companies.map((c) => {
           if (c.id !== id) return c;
@@ -680,8 +735,26 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         });
         return { ...prev, companies };
       });
+      if (before) {
+        const name = typeof patch.name === "string" ? patch.name : before.name;
+        const changed = Object.keys(patch).filter((k) => k !== "updatedAt");
+        if (changed.length > 0) {
+          recordProspectChange({
+            entityType: "prospect_company",
+            entityId: id,
+            action: "update",
+            summary: `Updated prospect ${name}`,
+            payloadJson: {
+              fields: changed,
+              ...(patch.status && patch.status !== before.status
+                ? { oldStatus: before.status, newStatus: patch.status }
+                : {}),
+            },
+          });
+        }
+      }
     },
-    [persistCompany],
+    [persistCompany, recordProspectChange],
   );
 
   const deleteCompany = useCallback(
@@ -693,13 +766,22 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         contacts: prev.contacts.filter((c) => c.companyId !== id),
         activities: prev.activities.filter((a) => a.companyId !== id),
       }));
-      if (existing) persistCompany(existing, "delete");
+      if (existing) {
+        persistCompany(existing, "delete");
+        recordProspectChange({
+          entityType: "prospect_company",
+          entityId: id,
+          action: "delete",
+          summary: `Deleted prospect ${existing.name}`,
+          payloadJson: { name: existing.name },
+        });
+      }
       if (supabase && remoteRef.current) {
         void supabase.from("prospect_contacts").delete().eq("company_id", id);
         void supabase.from("prospect_activities").delete().eq("company_id", id);
       }
     },
-    [persistCompany],
+    [persistCompany, recordProspectChange],
   );
 
   const addContact = useCallback(
@@ -720,6 +802,14 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         ),
       }));
       persistContact(contact, "upsert");
+      const company = stateRef.current.companies.find((c) => c.id === companyId);
+      recordProspectChange({
+        entityType: "prospect_contact",
+        entityId: contact.id,
+        action: "create",
+        summary: `Added contact ${contact.name}${company ? ` at ${company.name}` : ""}`,
+        payloadJson: { companyId, name: contact.name },
+      });
       return {
         contactId: contact.id,
         ...(dup
@@ -727,11 +817,12 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           : {}),
       };
     },
-    [findDuplicateContact, persistContact],
+    [findDuplicateContact, persistContact, recordProspectChange],
   );
 
   const updateContact = useCallback(
     (id: string, patch: Partial<ProspectContact>) => {
+      const before = stateRef.current.contacts.find((c) => c.id === id);
       setState((prev) => {
         const contacts = prev.contacts.map((c) => {
           if (c.id !== id) return c;
@@ -745,8 +836,26 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         });
         return { ...prev, contacts };
       });
+      if (before) {
+        const name = typeof patch.name === "string" ? patch.name : before.name;
+        const changed = Object.keys(patch).filter((k) => k !== "updatedAt");
+        if (changed.length > 0) {
+          recordProspectChange({
+            entityType: "prospect_contact",
+            entityId: id,
+            action: "update",
+            summary: `Updated contact ${name}`,
+            payloadJson: {
+              fields: changed,
+              ...(patch.status && patch.status !== before.status
+                ? { oldStatus: before.status, newStatus: patch.status }
+                : {}),
+            },
+          });
+        }
+      }
     },
-    [persistContact],
+    [persistContact, recordProspectChange],
   );
 
   const deleteContact = useCallback(
@@ -756,9 +865,18 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         ...prev,
         contacts: prev.contacts.filter((c) => c.id !== id),
       }));
-      if (existing) persistContact(existing, "delete");
+      if (existing) {
+        persistContact(existing, "delete");
+        recordProspectChange({
+          entityType: "prospect_contact",
+          entityId: id,
+          action: "delete",
+          summary: `Deleted contact ${existing.name}`,
+          payloadJson: { name: existing.name, companyId: existing.companyId },
+        });
+      }
     },
-    [persistContact],
+    [persistContact, recordProspectChange],
   );
 
   const markPrepared = useCallback(
@@ -899,9 +1017,26 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         };
       });
 
+      const companyName =
+        stateRef.current.companies.find((c) => c.id === input.companyId)?.name ??
+        input.companyId;
+      recordProspectChange({
+        entityType: "prospect_activity",
+        entityId: activity.id,
+        action: "create",
+        summary: `Logged ${input.channel} outreach at ${companyName}`,
+        payloadJson: {
+          companyId: input.companyId,
+          contactId: input.contactId,
+          channel: input.channel,
+          result: input.result,
+          preview: input.summary.trim().slice(0, 120),
+        },
+      });
+
       return activity.id;
     },
-    [persistActivity, persistCompany, persistContact],
+    [persistActivity, persistCompany, persistContact, recordProspectChange],
   );
 
   const markContacted = useCallback(
@@ -1005,6 +1140,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
   const markQualified = useCallback(
     (companyId: string, qualification?: ProspectQualification) => {
       const now = new Date().toISOString();
+      const company = stateRef.current.companies.find((c) => c.id === companyId);
       setState((prev) => {
         const companies = prev.companies.map((co) => {
           if (co.id !== companyId) return co;
@@ -1040,8 +1176,15 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         });
         return { ...prev, companies, contacts };
       });
+      recordProspectChange({
+        entityType: "prospect_company",
+        entityId: companyId,
+        action: "qualify",
+        summary: `Qualified prospect ${company?.name ?? companyId}`,
+        payloadJson: { previousStatus: company?.status ?? null },
+      });
     },
-    [persistCompany, persistContact],
+    [persistCompany, persistContact, recordProspectChange],
   );
 
   const markPromoted = useCallback(
@@ -1052,6 +1195,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     ) => {
       const now = new Date().toISOString();
       const prospectStatus = options?.prospectStatus ?? "promoted";
+      const company = stateRef.current.companies.find((c) => c.id === companyId);
       setState((prev) => {
         const companies = prev.companies.map((co) => {
           if (co.id !== companyId) return co;
@@ -1084,8 +1228,16 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         });
         return { ...prev, companies, contacts };
       });
+      recordProspectChange({
+        entityType: "prospect_company",
+        entityId: companyId,
+        projectId,
+        action: "promote",
+        summary: `Promoted prospect ${company?.name ?? companyId} to sales project`,
+        payloadJson: { projectId, status: prospectStatus },
+      });
     },
-    [persistCompany, persistContact],
+    [persistCompany, persistContact, recordProspectChange],
   );
 
   const syncFromSalesProject = useCallback(
@@ -1161,28 +1313,38 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [persistCompany, persistContact],
   );
 
-  const updateTargets = useCallback((patch: Partial<ProspectingTargets>) => {
-    setState((prev) => {
-      const targets: ProspectingTargets = {
-        ...prev.targets,
-        ...patch,
-        marketAllocation: {
-          ...prev.targets.marketAllocation,
-          ...(patch.marketAllocation ?? {}),
-        },
-      };
-      if (supabase && remoteRef.current) {
-        void supabase.from("prospecting_targets").upsert({
-          id: 1,
-          monthly_contact_target: targets.monthlyContactTarget,
-          weekly_contact_target: targets.weeklyContactTarget,
-          market_allocation: targets.marketAllocation,
-          updated_at: new Date().toISOString(),
-        });
-      }
-      return { ...prev, targets };
-    });
-  }, []);
+  const updateTargets = useCallback(
+    (patch: Partial<ProspectingTargets>) => {
+      setState((prev) => {
+        const targets: ProspectingTargets = {
+          ...prev.targets,
+          ...patch,
+          marketAllocation: {
+            ...prev.targets.marketAllocation,
+            ...(patch.marketAllocation ?? {}),
+          },
+        };
+        if (supabase && remoteRef.current) {
+          void supabase.from("prospecting_targets").upsert({
+            id: 1,
+            monthly_contact_target: targets.monthlyContactTarget,
+            weekly_contact_target: targets.weeklyContactTarget,
+            market_allocation: targets.marketAllocation,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        return { ...prev, targets };
+      });
+      recordProspectChange({
+        entityType: "prospecting_targets",
+        entityId: "company",
+        action: "update",
+        summary: "Updated prospecting targets",
+        payloadJson: { fields: Object.keys(patch) },
+      });
+    },
+    [recordProspectChange],
+  );
 
   const kpis = useMemo((): ProspectingKpis => {
     const weekStart = startOfWeekMonday();

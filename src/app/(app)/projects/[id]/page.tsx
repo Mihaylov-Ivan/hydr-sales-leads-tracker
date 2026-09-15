@@ -209,28 +209,34 @@ export default function ProjectPage() {
 
   const summary = project.aiSummary ?? generateSummary(project);
   const isSummarizing = Boolean(summarizing[project.id]);
+  const projectId = project.id;
   const currentUserName =
     teamMembers.find((m) => m.id === currentUserId)?.name ?? null;
-  const timeline = [...project.comments].sort(
+  const timeline = [...(project.comments ?? [])].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!text.trim()) return;
-    addComment(project!.id, text.trim(), stageChange || undefined);
+    addComment(projectId, text.trim(), stageChange || undefined);
     setText("");
     setStageChange("");
   }
 
-  function saveComment(commentId: string) {
-    const next = commentDraft.trim();
-    if (next) updateComment(project!.id, commentId, next);
+  function saveComment(commentId: string, draft = commentDraft) {
+    const next = draft.trim();
+    if (next) updateComment(projectId, commentId, next);
     setEditingCommentId(null);
   }
 
+  function cancelCommentEdit() {
+    setEditingCommentId(null);
+    setCommentDraft("");
+  }
+
   function handleDelete() {
-    deleteProject(project!.id);
+    deleteProject(projectId);
     router.push("/");
   }
 
@@ -751,19 +757,31 @@ export default function ProjectPage() {
                           autoFocus
                           value={commentDraft}
                           onChange={(e) => setCommentDraft(e.target.value)}
+                          onBlur={() => saveComment(c.id)}
                           onKeyDown={(e) => {
-                            if (e.key === "Escape") setEditingCommentId(null);
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelCommentEdit();
+                            }
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              saveComment(c.id);
+                            }
                           }}
                           className="min-h-20 w-full resize-y rounded-lg border border-teal-accent bg-surface px-3 py-2 text-sm text-ink outline-none"
                         />
                         <div className="flex justify-end gap-2 text-xs">
                           <button
-                            onClick={() => setEditingCommentId(null)}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={cancelCommentEdit}
                             className="rounded px-3 py-1.5 text-muted hover:text-ink"
                           >
                             Cancel
                           </button>
                           <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => saveComment(c.id)}
                             disabled={!commentDraft.trim()}
                             className="rounded-lg bg-olive px-3 py-1.5 font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-40"
@@ -776,13 +794,13 @@ export default function ProjectPage() {
                       <p
                         onClick={() => {
                           setEditingCommentId(c.id);
-                          setCommentDraft(c.text);
+                          setCommentDraft(c.text ?? "");
                           setDeletingCommentId(null);
                         }}
                         title="Click to edit"
                         className="-mx-1 cursor-text whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
                       >
-                        <MentionRichText text={c.text} />
+                        <MentionRichText text={c.text ?? ""} />
                       </p>
                     )}
                   </div>

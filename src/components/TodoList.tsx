@@ -8,6 +8,7 @@ import {
   TodoKind,
   TODO_KIND_LABELS,
   addDays,
+  isClientFollowUpTodo,
   partitionOpenProjectTodos,
   todayDate,
 } from "@/lib/types";
@@ -258,6 +259,7 @@ function TodoItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
+  const nameLocked = isClientFollowUpTodo(todo);
 
   function commit() {
     setEditing(false);
@@ -282,7 +284,7 @@ function TodoItem({
           <Checkbox done={todo.done} />
         </button>
 
-        {editing ? (
+        {editing && !nameLocked ? (
           <textarea
             autoFocus
             value={draft}
@@ -301,6 +303,15 @@ function TodoItem({
             rows={3}
             className="min-w-0 flex-1 resize-y rounded border border-teal-accent bg-surface px-1.5 py-1 text-sm leading-relaxed text-ink outline-none"
           />
+        ) : nameLocked ? (
+          <span
+            title="Auto follow-up — complete or delete to clear; name is managed by the client reminder"
+            className={`min-w-0 flex-1 whitespace-pre-wrap rounded px-0.5 text-left text-sm leading-relaxed ${
+              todo.done ? "text-muted line-through decoration-muted/60" : "text-ink"
+            }`}
+          >
+            {todo.text}
+          </span>
         ) : (
           <button
             type="button"
