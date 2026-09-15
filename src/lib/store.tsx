@@ -967,6 +967,9 @@ function sanitizeTeamMembers(rows: TeamMember[]): TeamMember[] {
       id: m.id,
       name: m.name?.trim() ?? "",
       ...(m.email?.trim() ? { email: m.email.trim() } : {}),
+      ...(m.username?.trim() ? { username: m.username.trim() } : {}),
+      ...(m.isAdmin ? { isAdmin: true } : {}),
+      ...(m.isActive === false ? { isActive: false } : { isActive: true }),
     }))
     .filter((m) => m.id && m.name);
 }

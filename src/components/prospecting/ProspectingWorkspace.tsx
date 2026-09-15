@@ -26,6 +26,7 @@ import {
   WEEKDAY_FOCUS_COPY,
 } from "@/lib/prospecting-types";
 import { STAGE_LABELS, Stage } from "@/lib/types";
+import { assignableTeamMembers } from "@/lib/permissions";
 import {
   AddCompanyDialog,
   AddContactDialog,
@@ -147,6 +148,7 @@ export default function ProspectingWorkspace() {
     deleteCompany,
   } = useProspecting();
   const { teamMembers, currentUserId, projects } = useProjects();
+  const assignableMembers = assignableTeamMembers(teamMembers);
   const linkToColdLead = useLinkProspectToColdLead();
 
   const [view, setView] = useState<ProspectView>("my-work");
@@ -686,7 +688,7 @@ export default function ProspectingWorkspace() {
               className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
             >
               <option value="">All owners</option>
-              {teamMembers.map((m) => (
+              {assignableMembers.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>

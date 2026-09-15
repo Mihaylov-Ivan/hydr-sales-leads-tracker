@@ -36,10 +36,11 @@ Paste the printed `UPDATE` SQL into the Supabase SQL Editor for each user.
 ## Permission types
 
 - **sales** — Prospecting, Sales Projects, Metrics
-- **finance** — Expenses, Finance, CSV import/export
+- **technical_sales** — Sales Projects board + project Gantt/schedule (not income/expenses)
+- **finance** — Expenses, Finance, CSV; project contract/OPEX + Income & expenses
 - **warehouse** — Warehouse
 - **production** — Production
 - **all users** — own To-Dos page
-- **admin** — everything + Users admin (`/admin/users`)
+- **admin** — everything + Users admin (`/admin/users`); not shown in lead/owner assignment pickers
 
 Existing roster members (Andrew, Maria, Daniel, Irina) are seeded with **sales**. Admin is `username=admin` (`u-admin`).

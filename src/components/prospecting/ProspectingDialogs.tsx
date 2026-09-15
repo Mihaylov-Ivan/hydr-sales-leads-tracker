@@ -30,6 +30,7 @@ import {
   promoteDefaultStage,
 } from "@/lib/prospecting-types";
 import { CREATE_STAGES, STAGE_LABELS, Stage } from "@/lib/types";
+import { assignableTeamMembers } from "@/lib/permissions";
 import { useLinkProspectToColdLead } from "./ProspectSalesSync";
 
 const inputCls =
@@ -88,10 +89,11 @@ function ModalShell({
 export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
   const { addCompany } = useProspecting();
   const { teamMembers, currentUserId } = useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
   const ownerDefault =
-    currentUserId && teamMembers.some((m) => m.id === currentUserId)
+    currentUserId && assignable.some((m) => m.id === currentUserId)
       ? currentUserId
-      : (teamMembers[0]?.id ?? "");
+      : (assignable[0]?.id ?? "");
 
   const [name, setName] = useState("");
   const [country, setCountry] = useState("");
@@ -240,7 +242,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
           >
-            {teamMembers.map((m) => (
+            {assignable.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
@@ -333,10 +335,11 @@ export function AddContactDialog({
 }) {
   const { addContact } = useProspecting();
   const { teamMembers, currentUserId } = useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
   const ownerDefault =
-    currentUserId && teamMembers.some((m) => m.id === currentUserId)
+    currentUserId && assignable.some((m) => m.id === currentUserId)
       ? currentUserId
-      : company.ownerId || teamMembers[0]?.id || "";
+      : company.ownerId || assignable[0]?.id || "";
 
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
@@ -419,7 +422,7 @@ export function AddContactDialog({
             value={ownerId}
             onChange={(e) => setOwnerId(e.target.value)}
           >
-            {teamMembers.map((m) => (
+            {assignable.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
@@ -824,6 +827,7 @@ export function PromoteDialog({
   const { markPromoted } = useProspecting();
   const { addProject, addContact, projects, teamMembers, currentUserId } =
     useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
   const router = useRouter();
 
   const existingForClient = useMemo(
@@ -850,9 +854,9 @@ export function PromoteDialog({
   const [stage, setStage] = useState<Stage>(promoteDefaultStage(company));
   const [leadUserId, setLeadUserId] = useState(
     company.ownerId ||
-      (currentUserId && teamMembers.some((m) => m.id === currentUserId)
+      (currentUserId && assignable.some((m) => m.id === currentUserId)
         ? currentUserId
-        : teamMembers[0]?.id || ""),
+        : assignable[0]?.id || ""),
   );
   const [description, setDescription] = useState(
     [
@@ -985,7 +989,7 @@ export function PromoteDialog({
                   value={leadUserId}
                   onChange={(e) => setLeadUserId(e.target.value)}
                 >
-                  {teamMembers.map((m) => (
+                  {assignable.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.name}
                     </option>

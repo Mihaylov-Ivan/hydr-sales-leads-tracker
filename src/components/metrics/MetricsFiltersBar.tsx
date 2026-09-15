@@ -3,6 +3,7 @@
 import { MARKETS, SERIES, type TeamMember } from "@/lib/types";
 import { SIZE_BAND_LABELS } from "@/lib/metrics/config";
 import type { MetricsFilters, SizeBand, TargetOutcome } from "@/lib/metrics/types";
+import { assignableTeamMembers } from "@/lib/permissions";
 
 const selectCls =
   "rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-ink outline-none focus:border-teal-accent";
@@ -20,6 +21,7 @@ export default function MetricsFiltersBar({
   onChange,
   teamMembers,
 }: MetricsFiltersBarProps) {
+  const assignable = assignableTeamMembers(teamMembers);
   function patch(partial: Partial<MetricsFilters>) {
     onChange({ ...filters, ...partial });
   }
@@ -72,7 +74,7 @@ export default function MetricsFiltersBar({
             className={selectCls + " w-full"}
           >
             <option value="">All owners</option>
-            {teamMembers.map((m) => (
+            {assignable.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>

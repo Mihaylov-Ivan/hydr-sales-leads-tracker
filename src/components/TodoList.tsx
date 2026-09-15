@@ -11,6 +11,7 @@ import {
   partitionOpenProjectTodos,
   todayDate,
 } from "@/lib/types";
+import { assignableTeamMembers } from "@/lib/permissions";
 
 function Checkbox({ done }: { done: boolean }) {
   return (
@@ -373,6 +374,7 @@ export default function TodoList({
   todos: ProjectTodo[];
 }) {
   const { addTodo, toggleTodo, updateTodo, deleteTodo, teamMembers } = useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -388,7 +390,7 @@ export default function TodoList({
       <TodoItem
         key={t.id}
         todo={t}
-        teamMembers={teamMembers}
+        teamMembers={assignable}
         showAnswer={kind === "question"}
         highlight={highlight}
         onToggle={() => toggleTodo(projectId, t.id)}
@@ -485,7 +487,7 @@ export default function TodoList({
           className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
         >
           <option value="">Unassigned</option>
-          {teamMembers.map((member) => (
+          {assignable.map((member) => (
             <option key={member.id} value={member.id}>
               {member.name}
             </option>

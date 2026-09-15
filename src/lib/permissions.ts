@@ -1,11 +1,17 @@
 /** Permission types assignable to users (admin bypasses these). */
-export type PermissionType = "sales" | "finance" | "warehouse" | "production";
+export type PermissionType =
+  | "sales"
+  | "finance"
+  | "warehouse"
+  | "production"
+  | "technical_sales";
 
 export const PERMISSION_TYPES: PermissionType[] = [
   "sales",
   "finance",
   "warehouse",
   "production",
+  "technical_sales",
 ];
 
 export const PERMISSION_LABELS: Record<PermissionType, string> = {
@@ -13,6 +19,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   finance: "Finance",
   warehouse: "Warehouse",
   production: "Production",
+  technical_sales: "Technical sales",
 };
 
 export interface SessionUser {
@@ -28,7 +35,8 @@ export interface SessionUser {
 export type RouteAccess =
   | { kind: "any" }
   | { kind: "admin" }
-  | { kind: "permission"; permission: PermissionType };
+  | { kind: "permission"; permission: PermissionType }
+  | { kind: "anyOf"; permissions: PermissionType[] };
 
 export function hasPermission(
   user: Pick<SessionUser, "isAdmin" | "permissions"> | null | undefined,
@@ -47,12 +55,16 @@ export function canAccessRoute(
   if (user.isAdmin) return true;
   if (access.kind === "any") return true;
   if (access.kind === "admin") return false;
-  return user.permissions.includes(access.permission);
+  if (access.kind === "permission") {
+    return user.permissions.includes(access.permission);
+  }
+  return access.permissions.some((p) => user.permissions.includes(p));
 }
 
 /**
  * Map pathname → required access.
- * `/` and `/projects/*` are sales. `/todos` is any authenticated user.
+ * `/` and `/projects/*` are sales or technical_sales.
+ * `/todos` is any authenticated user.
  * Unknown app paths default to admin-only for safety.
  */
 export function accessForPath(pathname: string): RouteAccess {
@@ -69,15 +81,19 @@ export function accessForPath(pathname: string): RouteAccess {
   ) {
     return { kind: "admin" };
   }
+  if (pathname === "/prospecting" || pathname.startsWith("/prospecting/")) {
+    return { kind: "permission", permission: "sales" };
+  }
   if (
-    pathname === "/prospecting" ||
-    pathname.startsWith("/prospecting/") ||
     pathname === "/" ||
     pathname.startsWith("/projects/") ||
     pathname === "/metrics" ||
     pathname.startsWith("/metrics/")
   ) {
-    return { kind: "permission", permission: "sales" };
+    return {
+      kind: "anyOf",
+      permissions: ["sales", "technical_sales"],
+    };
   }
   if (
     pathname === "/expenses" ||
@@ -93,7 +109,6 @@ export function accessForPath(pathname: string): RouteAccess {
   if (pathname === "/production" || pathname.startsWith("/production/")) {
     return { kind: "permission", permission: "production" };
   }
-  // API routes are handled separately; treat other pages as admin.
   return { kind: "admin" };
 }
 
@@ -101,7 +116,13 @@ export function accessForPath(pathname: string): RouteAccess {
 export function defaultHomePath(
   user: Pick<SessionUser, "isAdmin" | "permissions">,
 ): string {
-  if (user.isAdmin || user.permissions.includes("sales")) return "/";
+  if (
+    user.isAdmin ||
+    user.permissions.includes("sales") ||
+    user.permissions.includes("technical_sales")
+  ) {
+    return "/";
+  }
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
@@ -116,7 +137,11 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/prospecting", label: "Prospecting", access: { kind: "permission", permission: "sales" } },
-  { href: "/", label: "Sales Projects", access: { kind: "permission", permission: "sales" } },
+  {
+    href: "/",
+    label: "Sales Projects",
+    access: { kind: "anyOf", permissions: ["sales", "technical_sales"] },
+  },
   { href: "/todos", label: "To-Dos", access: { kind: "any" } },
   { href: "/expenses", label: "Expenses", access: { kind: "permission", permission: "finance" } },
   { href: "/warehouse", label: "Warehouse", access: { kind: "permission", permission: "warehouse" } },
@@ -135,4 +160,17 @@ export function visibleNavItems(
 
 export function isPermissionType(value: string): value is PermissionType {
   return (PERMISSION_TYPES as string[]).includes(value);
+}
+
+/** Members who can be chosen as lead/owner/assignee (excludes the Admin account). */
+export function assignableTeamMembers<
+  T extends { id: string; isActive?: boolean; username?: string; name?: string },
+>(members: T[]): T[] {
+  return members.filter((m) => {
+    if (m.isActive === false) return false;
+    const username = m.username?.trim().toLowerCase() ?? "";
+    if (username === "admin" || m.id === "u-admin") return false;
+    if (m.name?.trim().toLowerCase() === "admin") return false;
+    return true;
+  });
 }

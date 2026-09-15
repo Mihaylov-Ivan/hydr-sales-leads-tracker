@@ -14,6 +14,8 @@ import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
 import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import MarketMultiSelect from "@/components/MarketMultiSelect";
+import { useAuth } from "@/lib/auth-context";
+import { assignableTeamMembers } from "@/lib/permissions";
 
 /** Renders AI bullet-point summaries as a list; falls back to a paragraph. */
 function SummaryText({ text }: { text: string }) {
@@ -173,6 +175,10 @@ export default function ProjectPage() {
     regenerateSummary,
     deleteProject,
   } = useProjects();
+  const { can } = useAuth();
+  const canViewGantt = can("technical_sales");
+  const canViewFinance = can("finance");
+  const leadOptions = assignableTeamMembers(teamMembers);
   const [text, setText] = useState("");
   const [stageChange, setStageChange] = useState<Stage | "">("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -344,61 +350,65 @@ export default function ProjectPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Contract value (€)
-          </p>
-          <div className="mt-1 text-sm font-medium text-deep">
-            <EditableText
-              type="number"
-              value={
-                project.financials.contractValue != null
-                  ? String(project.financials.contractValue)
-                  : ""
-              }
-              placeholder="Optional"
-              onSave={(v) => {
-                const t = v.trim().replace(/,/g, "");
-                if (!t) {
-                  updateFinancials(project.id, { contractValue: null });
-                  return;
+        {canViewFinance && (
+          <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Contract value (€)
+            </p>
+            <div className="mt-1 text-sm font-medium text-deep">
+              <EditableText
+                type="number"
+                value={
+                  project.financials.contractValue != null
+                    ? String(project.financials.contractValue)
+                    : ""
                 }
-                const n = Number(t);
-                if (Number.isFinite(n) && n >= 0) {
-                  updateFinancials(project.id, { contractValue: n });
-                }
-              }}
-            />
+                placeholder="Optional"
+                onSave={(v) => {
+                  const t = v.trim().replace(/,/g, "");
+                  if (!t) {
+                    updateFinancials(project.id, { contractValue: null });
+                    return;
+                  }
+                  const n = Number(t);
+                  if (Number.isFinite(n) && n >= 0) {
+                    updateFinancials(project.id, { contractValue: n });
+                  }
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Yearly OPEX income (€)
-          </p>
-          <div className="mt-1 text-sm font-medium text-deep">
-            <EditableText
-              type="number"
-              value={
-                project.financials.opexValue != null
-                  ? String(project.financials.opexValue)
-                  : ""
-              }
-              placeholder="Optional"
-              onSave={(v) => {
-                const t = v.trim().replace(/,/g, "");
-                if (!t) {
-                  updateFinancials(project.id, { opexValue: null });
-                  return;
+        {canViewFinance && (
+          <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Yearly OPEX income (€)
+            </p>
+            <div className="mt-1 text-sm font-medium text-deep">
+              <EditableText
+                type="number"
+                value={
+                  project.financials.opexValue != null
+                    ? String(project.financials.opexValue)
+                    : ""
                 }
-                const n = Number(t);
-                if (Number.isFinite(n) && n >= 0) {
-                  updateFinancials(project.id, { opexValue: n });
-                }
-              }}
-            />
+                placeholder="Optional"
+                onSave={(v) => {
+                  const t = v.trim().replace(/,/g, "");
+                  if (!t) {
+                    updateFinancials(project.id, { opexValue: null });
+                    return;
+                  }
+                  const n = Number(t);
+                  if (Number.isFinite(n) && n >= 0) {
+                    updateFinancials(project.id, { opexValue: n });
+                  }
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -422,7 +432,7 @@ export default function ProjectPage() {
             className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
           >
             <option value="">Unassigned</option>
-            {teamMembers.map((m) => (
+            {leadOptions.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
@@ -587,14 +597,18 @@ export default function ProjectPage() {
       {/* Client email follow-up (recurring our-action) */}
       <ClientFollowUp project={project} />
 
-      {/* Delivery Gantt: phases, milestones, and cash schedule */}
-      <ProjectGantt
-        projectId={project.id}
-        schedule={
-          project.schedule ?? { phases: [], activities: [], deadlines: [] }
-        }
-        financials={project.financials}
-      />
+      {/* Delivery Gantt + optional income/expenses */}
+      {(canViewGantt || canViewFinance) && (
+        <ProjectGantt
+          projectId={project.id}
+          schedule={
+            project.schedule ?? { phases: [], activities: [], deadlines: [] }
+          }
+          financials={canViewFinance ? project.financials : undefined}
+          showSchedule={canViewGantt}
+          showFinancials={canViewFinance}
+        />
+      )}
 
 
       {/* Questions and action items */}

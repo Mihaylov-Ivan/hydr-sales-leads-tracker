@@ -11,6 +11,7 @@ import {
   STAGE_LABELS,
   CREATE_STAGES,
 } from "@/lib/types";
+import { assignableTeamMembers } from "@/lib/permissions";
 
 const inputCls =
   "w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent";
@@ -19,6 +20,7 @@ const labelCls =
 
 export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const { addProject, teamMembers } = useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
   const router = useRouter();
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
@@ -158,7 +160,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
               onChange={(e) => setLeadUserId(e.target.value)}
             >
               <option value="">Unassigned</option>
-              {teamMembers.map((member) => (
+              {assignable.map((member) => (
                 <option key={member.id} value={member.id}>
                   {member.name}
                 </option>

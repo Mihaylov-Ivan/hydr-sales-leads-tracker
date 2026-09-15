@@ -348,6 +348,9 @@ export interface TeamMemberRow {
   name: string;
   email: string | null;
   created_at: string;
+  username?: string | null;
+  is_admin?: boolean | null;
+  is_active?: boolean | null;
 }
 
 export function teamMemberFromRow(row: TeamMemberRow): TeamMember {
@@ -355,6 +358,9 @@ export function teamMemberFromRow(row: TeamMemberRow): TeamMember {
     id: row.id,
     name: row.name,
     ...(row.email ? { email: row.email } : {}),
+    ...(row.username ? { username: row.username } : {}),
+    ...(row.is_admin ? { isAdmin: true } : {}),
+    ...(row.is_active === false ? { isActive: false } : { isActive: true }),
   };
 }
 

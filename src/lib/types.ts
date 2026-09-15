@@ -185,6 +185,11 @@ export interface TeamMember {
   id: string;
   name: string;
   email?: string;
+  username?: string;
+  /** From team_members.is_admin — excluded from assignment pickers */
+  isAdmin?: boolean;
+  /** From team_members.is_active — inactive users hidden from pickers */
+  isActive?: boolean;
 }
 
 /**

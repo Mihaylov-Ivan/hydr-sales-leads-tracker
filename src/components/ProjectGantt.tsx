@@ -1610,10 +1610,16 @@ export default function ProjectGantt({
   projectId,
   schedule,
   financials,
+  showSchedule = true,
+  showFinancials = true,
 }: {
   projectId: string;
   schedule: ProjectSchedule;
   financials?: ProjectFinancials;
+  /** When false, hide the Gantt / schedule UI. */
+  showSchedule?: boolean;
+  /** When false, hide Income & expenses under the schedule. */
+  showFinancials?: boolean;
 }) {
   const {
     deleteGanttPhase,
@@ -1654,6 +1660,16 @@ export default function ProjectGantt({
     setEditingPhaseId(null);
     setEditingActivityId(null);
     setEditingDeadlineId(null);
+  }
+
+  if (!showSchedule && !(showFinancials && financials)) {
+    return null;
+  }
+
+  if (!showSchedule && showFinancials && financials) {
+    return (
+      <GanttFinancials projectId={projectId} financials={financials} />
+    );
   }
 
   return (
@@ -1876,7 +1892,7 @@ export default function ProjectGantt({
             </div>
           )}
 
-          {financials && (
+          {showFinancials && financials && (
             <GanttFinancials
               projectId={projectId}
               financials={financials}
