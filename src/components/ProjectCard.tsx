@@ -2,20 +2,22 @@
 
 import Link from "next/link";
 import { useRef } from "react";
-import { Project, isEmailReminderDue, isProjectNextStepMissing } from "@/lib/types";
+import { Project, isUserEmailReminderDue, isProjectNextStepMissing } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import { useProjects } from "@/lib/store";
 
 export const PROJECT_DRAG_TYPE = "application/x-hydr-project-id";
 
 export default function ProjectCard({ project }: { project: Project }) {
-  const { teamMembers } = useProjects();
+  const { teamMembers, currentUserId, getProjectUserReminder } = useProjects();
   const showSummary = isProjectSummaryEnabled();
   const raw = showSummary
     ? (project.aiSummary ?? generateSummary(project))
     : "";
   const openTodos = project.todos.filter((t) => !t.done).length;
-  const emailDue = isEmailReminderDue(project);
+  const emailDue =
+    Boolean(currentUserId) &&
+    isUserEmailReminderDue(getProjectUserReminder(project.id, currentUserId));
   const nextStepMissing = isProjectNextStepMissing(project);
   // Flatten bullet-point summaries into a single line for the card preview
   const summary = raw

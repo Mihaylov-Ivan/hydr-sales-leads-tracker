@@ -1,11 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   Project,
-  emailReminderDeltaDays,
-  isEmailReminderDue,
-  lastContactDate,
-  nextEmailReminderDate,
+  userEmailReminderDeltaDays,
+  isUserEmailReminderDue,
+  lastContactDateForUserReminder,
+  nextEmailReminderDateForUser,
 } from "@/lib/types";
 import { useProjects } from "@/lib/store";
 
@@ -18,16 +19,31 @@ function formatDay(iso: string): string {
 }
 
 export default function ClientFollowUp({ project }: { project: Project }) {
-  const { updateProject, markClientContacted } = useProjects();
-  const enabled = project.emailReminderEnabled !== false;
-  const due = isEmailReminderDue(project);
-  const delta = emailReminderDeltaDays(project);
-  const last = lastContactDate(project);
-  const next = nextEmailReminderDate(project);
+  const {
+    markClientContacted,
+    getProjectUserReminder,
+    updateProjectUserReminder,
+    ensureProjectUserReminder,
+    currentUserId,
+  } = useProjects();
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    ensureProjectUserReminder(project.id);
+  }, [currentUserId, project.id, ensureProjectUserReminder]);
+
+  const reminder = getProjectUserReminder(project.id, currentUserId);
+  const enabled = reminder.emailReminderEnabled !== false;
+  const due = Boolean(currentUserId) && isUserEmailReminderDue(reminder);
+  const delta = userEmailReminderDeltaDays(reminder);
+  const last = lastContactDateForUserReminder(reminder);
+  const next = nextEmailReminderDateForUser(reminder);
 
   let statusText: string;
-  if (!enabled) {
-    statusText = "Reminders disabled";
+  if (!currentUserId) {
+    statusText = "Sign in to manage your reminders";
+  } else if (!enabled) {
+    statusText = "Your reminders disabled";
   } else if (due) {
     if (delta === 0) statusText = "Follow-up due today";
     else
@@ -66,7 +82,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-                Client follow-up
+                My client follow-up
               </h2>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
@@ -77,7 +93,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
                       : "bg-surface text-muted/70"
                 }`}
               >
-                {enabled ? "Our action" : "Paused"}
+                {enabled ? "Your reminder" : "Paused"}
               </span>
             </div>
             <p
@@ -89,17 +105,19 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             </p>
             <p className="mt-0.5 text-xs text-muted">
               {due ? `${statusText} · ` : ""}
-              Last contact {formatDay(last)}
+              Your last contact {formatDay(last)}
               {enabled && !due ? ` · due ${formatDay(next)}` : ""}
+              {" · each user has their own reminder settings on this project"}
             </p>
           </div>
         </div>
 
         <button
           type="button"
+          disabled={!currentUserId}
           onClick={() => markClientContacted(project.id)}
-          title="Set last contact to today and restart the reminder"
-          className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition hover:brightness-105 ${
+          title="Set your last contact to today and restart your reminder"
+          className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40 ${
             due
               ? "bg-olive text-olive-ink"
               : "border border-line bg-surface text-deep hover:border-teal-accent/40"
@@ -112,18 +130,19 @@ export default function ClientFollowUp({ project }: { project: Project }) {
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Last contact
+            Your last contact
           </span>
           <input
             type="date"
+            disabled={!currentUserId}
             value={last}
             onChange={(e) => {
               if (!e.target.value) return;
-              updateProject(project.id, {
+              updateProjectUserReminder(project.id, {
                 lastClientContactAt: e.target.value,
               });
             }}
-            className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+            className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -134,12 +153,12 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             type="number"
             min={1}
             step={1}
-            disabled={!enabled}
-            value={project.emailReminderDays}
+            disabled={!enabled || !currentUserId}
+            value={reminder.emailReminderDays}
             onChange={(e) => {
               const n = Number(e.target.value);
               if (!Number.isFinite(n) || n < 1) return;
-              updateProject(project.id, {
+              updateProjectUserReminder(project.id, {
                 emailReminderDays: Math.floor(n),
               });
             }}
@@ -148,18 +167,19 @@ export default function ClientFollowUp({ project }: { project: Project }) {
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Reminders
+            Your reminders
           </span>
           <button
             type="button"
             role="switch"
             aria-checked={enabled}
+            disabled={!currentUserId}
             onClick={() =>
-              updateProject(project.id, {
+              updateProjectUserReminder(project.id, {
                 emailReminderEnabled: !enabled,
               })
             }
-            className={`flex h-[38px] items-center justify-between rounded-lg border px-3 text-sm font-medium transition ${
+            className={`flex h-[38px] items-center justify-between rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
               enabled
                 ? "border-teal-accent/40 bg-teal-soft/60 text-teal-accent"
                 : "border-line bg-surface text-muted"

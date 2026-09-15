@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import {
   PersonalTodo,
   Project,
@@ -14,12 +15,13 @@ import {
   comparePersonalTodosByWorkWindowStart,
   compareTodosByDeadline,
   compareTodosByWorkWindowStart,
-  emailReminderDeltaDays,
-  isEmailReminderDue,
+  daysBetween,
+  isClientFollowUpTodo,
+  isUserEmailReminderDue,
+  nextEmailReminderDateForUser,
   isPersonalTodoOpen,
   isTodoInWorkWindow,
   isTodoWorkWindowUpcoming,
-  nextEmailReminderDate,
   personalTodoSortDate,
   projectTodoSortDate,
   todayDate,
@@ -501,7 +503,7 @@ function ContactItem({
   showProjectLink?: boolean;
   onProjectNavigate?: () => void;
 }) {
-  const delta = emailReminderDeltaDays(project);
+  const delta = daysBetween(todayDate(), dueDate);
   const status =
     delta < 0
       ? `${Math.abs(delta)}d overdue`
@@ -614,7 +616,12 @@ export default function OutstandingSidebar() {
     ready,
     markClientContacted,
     teamMembers,
+    currentUserId,
+    getProjectUserReminder,
+    projectUserReminders,
   } = useProjects();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user?.isAdmin);
   const [wider, setWider] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("by-project");
@@ -677,6 +684,9 @@ export default function OutstandingSidebar() {
     for (const project of projects) {
       for (const todo of project.todos) {
         if (todo.done) continue;
+        if (isClientFollowUpTodo(todo)) {
+          if (!isAdmin && todo.ownerUserId !== currentUserId) continue;
+        }
         const entry: TodoFlatEntry = {
           type: "todo",
           todo,
@@ -703,16 +713,35 @@ export default function OutstandingSidebar() {
     });
 
     return { active, upcoming, excludedIds };
-  }, [projects]);
+  }, [projects, currentUserId, isAdmin]);
 
   const groups = useMemo(() => {
     const list: Group[] = [];
     for (const project of projects) {
-      const todos = project.todos.filter(
-        (t) => !t.done && !projectWorkWindow.excludedIds.has(t.id),
+      const todos = project.todos.filter((t) => {
+        if (t.done || projectWorkWindow.excludedIds.has(t.id)) return false;
+        // Client follow-up reminders are only for the assigned lead (admin sees all).
+        if (isClientFollowUpTodo(t)) {
+          if (isAdmin) return true;
+          return Boolean(currentUserId && t.ownerUserId === currentUserId);
+        }
+        return true;
+      });
+      const emailDueForMe =
+        Boolean(currentUserId) &&
+        isUserEmailReminderDue(
+          getProjectUserReminder(project.id, currentUserId),
+        );
+      // Prefer the owned follow-up todo; only use synthetic contact when due for
+      // this user and no owned open follow-up todo is visible yet.
+      const hasVisibleFollowUpTodo = todos.some(
+        (t) =>
+          isClientFollowUpTodo(t) &&
+          (isAdmin || t.ownerUserId === currentUserId),
       );
-      const emailDue = isEmailReminderDue(project);
-      if (todos.length === 0 && !emailDue) continue;
+      const showSyntheticContact = emailDueForMe && !hasVisibleFollowUpTodo;
+
+      if (todos.length === 0 && !showSyntheticContact) continue;
 
       const entries: SidebarEntry[] = todos.map((todo) => ({
         type: "todo" as const,
@@ -720,10 +749,12 @@ export default function OutstandingSidebar() {
         sortDate: projectTodoSortDate(todo),
       }));
 
-      if (emailDue) {
+      if (showSyntheticContact) {
         entries.push({
           type: "contact",
-          sortDate: nextEmailReminderDate(project),
+          sortDate: nextEmailReminderDateForUser(
+            getProjectUserReminder(project.id, currentUserId),
+          ),
         });
       }
 
@@ -743,7 +774,14 @@ export default function OutstandingSidebar() {
       return a.project.name.localeCompare(b.project.name);
     });
     return list;
-  }, [projects, projectWorkWindow.excludedIds]);
+  }, [
+    projects,
+    projectWorkWindow.excludedIds,
+    currentUserId,
+    isAdmin,
+    getProjectUserReminder,
+    projectUserReminders,
+  ]);
 
   const flatByBucket = useMemo(() => {
     const flat: FlatEntry[] = [];

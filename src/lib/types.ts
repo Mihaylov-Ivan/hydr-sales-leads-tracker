@@ -1601,7 +1601,7 @@ export function phaseEndDate(phase: ProjectGanttPhase): string {
   return addDays(phase.startDate, Math.max(1, phase.durationDays) - 1);
 }
 
-/** Anchor date for the reminder clock */
+/** Anchor date for the reminder clock (legacy project-level) */
 export function lastContactDate(p: Project): string {
   return p.lastClientContactAt || p.createdAt.slice(0, 10);
 }
@@ -1617,6 +1617,56 @@ export function nextEmailReminderDate(p: Project): string {
 export function isEmailReminderDue(p: Project): boolean {
   if (p.emailReminderEnabled === false) return false;
   return todayDate() >= nextEmailReminderDate(p);
+}
+
+/** Per-user reminder settings for a single project */
+export interface ProjectUserReminder {
+  projectId: string;
+  userId: string;
+  emailReminderDays: number;
+  emailReminderEnabled: boolean;
+  lastClientContactAt: string; // YYYY-MM-DD
+}
+
+export function lastContactDateForUserReminder(
+  reminder: Pick<ProjectUserReminder, "lastClientContactAt">,
+): string {
+  return reminder.lastClientContactAt.slice(0, 10);
+}
+
+export function nextEmailReminderDateForUser(
+  reminder: ProjectUserReminder,
+): string {
+  return addDays(
+    lastContactDateForUserReminder(reminder),
+    reminder.emailReminderDays || DEFAULT_EMAIL_REMINDER_DAYS,
+  );
+}
+
+export function isUserEmailReminderDue(reminder: ProjectUserReminder): boolean {
+  if (reminder.emailReminderEnabled === false) return false;
+  return todayDate() >= nextEmailReminderDateForUser(reminder);
+}
+
+/** Positive = days until due; 0 = due today; negative = days overdue */
+export function userEmailReminderDeltaDays(
+  reminder: ProjectUserReminder,
+): number {
+  return daysBetween(todayDate(), nextEmailReminderDateForUser(reminder));
+}
+
+/** Stable text for the auto-created lead follow-up our-action */
+export function clientFollowUpTodoText(client: string): string {
+  const name = client.trim() || "client";
+  return `Follow up with ${name}`;
+}
+
+/** Detect auto-created client follow-up reminder todos */
+export function isClientFollowUpTodo(todo: ProjectTodo): boolean {
+  return (
+    todo.kind === "our-action" &&
+    /^Follow up with /i.test(todo.text.trim())
+  );
 }
 
 /**

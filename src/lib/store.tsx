@@ -68,6 +68,11 @@ import {
   addDays,
   phaseEndDate,
   ScheduleShiftUnit,
+  clientFollowUpTodoText,
+  isClientFollowUpTodo,
+  isUserEmailReminderDue,
+  nextEmailReminderDateForUser,
+  ProjectUserReminder,
 } from "./types";
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
@@ -192,6 +197,7 @@ const STORAGE_KEY = "hydrogenera-lead-tracker-v1";
 const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const PERSONAL_TODOS_STORAGE_KEY = "hydrogenera-personal-todos-v1";
+const PROJECT_USER_REMINDERS_KEY = "hydrogenera-project-user-reminders-v1";
 
 function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
   return {};
@@ -339,6 +345,7 @@ export interface TodoPatch {
   startDate?: string | null;
   endDate?: string | null;
   ownerUserId?: string | null;
+  done?: boolean;
 }
 
 export interface PersonalTodoInput {
@@ -562,8 +569,24 @@ interface ProjectsApi {
   addProject: (input: NewProjectInput) => string;
   addComment: (projectId: string, text: string, stageChange?: Stage) => void;
   updateProject: (projectId: string, patch: ProjectPatch) => void;
-  /** Mark client as contacted today — restarts the follow-up window */
+  /** Mark client as contacted today — restarts this user's follow-up window */
   markClientContacted: (projectId: string) => void;
+  /** Per-user reminder settings (project_id + user_id) */
+  projectUserReminders: ProjectUserReminder[];
+  getProjectUserReminder: (
+    projectId: string,
+    userId?: string | null,
+  ) => ProjectUserReminder;
+  updateProjectUserReminder: (
+    projectId: string,
+    patch: {
+      emailReminderDays?: number;
+      emailReminderEnabled?: boolean;
+      lastClientContactAt?: string;
+    },
+  ) => void;
+  /** Persist defaults for the current user if they have no prefs row yet */
+  ensureProjectUserReminder: (projectId: string) => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
@@ -1039,6 +1062,53 @@ async function loadRemoteTeamMembers(): Promise<TeamMember[]> {
   return loadLocalTeamMembers();
 }
 
+function loadLocalProjectUserReminders(): ProjectUserReminder[] {
+  try {
+    const raw = window.localStorage.getItem(PROJECT_USER_REMINDERS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ProjectUserReminder[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (r) =>
+          r &&
+          typeof r.projectId === "string" &&
+          typeof r.userId === "string" &&
+          typeof r.emailReminderDays === "number",
+      )
+      .map((r) => ({
+        projectId: r.projectId,
+        userId: r.userId,
+        emailReminderDays: Math.max(1, Math.floor(r.emailReminderDays)),
+        emailReminderEnabled: r.emailReminderEnabled !== false,
+        lastClientContactAt: (r.lastClientContactAt || todayDate()).slice(0, 10),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadRemoteProjectUserReminders(): Promise<ProjectUserReminder[]> {
+  const res = await supabase!.from("project_user_reminders").select("*");
+  if (res.error) throw new Error(res.error.message);
+  return ((res.data ?? []) as Array<{
+    project_id: string;
+    user_id: string;
+    email_reminder_days: number;
+    email_reminder_enabled: boolean;
+    last_client_contact_at: string;
+  }>).map((row) => ({
+    projectId: row.project_id,
+    userId: row.user_id,
+    emailReminderDays: Math.max(1, Math.floor(row.email_reminder_days || 7)),
+    emailReminderEnabled: row.email_reminder_enabled !== false,
+    lastClientContactAt: (row.last_client_contact_at || todayDate()).slice(
+      0,
+      10,
+    ),
+  }));
+}
+
 async function loadRemote(): Promise<Project[]> {
   const [
     projectsRes,
@@ -1183,6 +1253,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const { user: authUser, authEnabled, ready: authReady } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [personalTodos, setPersonalTodos] = useState<PersonalTodo[]>([]);
+  const [projectUserReminders, setProjectUserReminders] = useState<
+    ProjectUserReminder[]
+  >([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
   const [financeSettings, setFinanceSettings] = useState<CompanyFinanceSettings>(
@@ -1212,6 +1285,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   projectsRef.current = projects;
   const personalTodosRef = useRef<PersonalTodo[]>([]);
   personalTodosRef.current = personalTodos;
+  const projectUserRemindersRef = useRef<ProjectUserReminder[]>([]);
+  projectUserRemindersRef.current = projectUserReminders;
   const teamMembersRef = useRef<TeamMember[]>(teamMembers);
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
@@ -1277,6 +1352,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           setSupportsPersonalTodos(false);
         }
 
+        const remoteReminders = await loadRemoteProjectUserReminders().catch(
+          (e) => {
+            console.error("Failed to load project user reminders:", e);
+            return loadLocalProjectUserReminders();
+          },
+        );
+        setProjectUserReminders(remoteReminders);
+
         const remoteWh = await loadRemoteWarehouseState(
           wh.holdingProjectId,
         ).catch(() => null);
@@ -1310,6 +1393,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceImport(null);
         setPersonalTodos(loadLocalPersonalTodos());
         setSupportsPersonalTodos(false);
+        setProjectUserReminders(loadLocalProjectUserReminders());
         setReady(true);
       }
     }
@@ -1391,6 +1475,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       );
     }
   }, [personalTodos, ready, supportsPersonalTodos]);
+
+  useEffect(() => {
+    if (ready && !supabase) {
+      window.localStorage.setItem(
+        PROJECT_USER_REMINDERS_KEY,
+        JSON.stringify(projectUserReminders),
+      );
+    }
+  }, [projectUserReminders, ready]);
 
   useEffect(() => {
     if (ready && !supabase) {
@@ -2163,15 +2256,152 @@ if (supabase) {
     ],
   );
 
+  const getProjectUserReminder = useCallback(
+    (projectId: string, userId?: string | null): ProjectUserReminder => {
+      const uid = userId ?? currentUserIdRef.current;
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      const fallbackDate =
+        project?.lastClientContactAt ||
+        project?.createdAt.slice(0, 10) ||
+        todayDate();
+      if (!uid) {
+        return {
+          projectId,
+          userId: "",
+          emailReminderDays:
+            project?.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
+          emailReminderEnabled: project?.emailReminderEnabled !== false,
+          lastClientContactAt: fallbackDate,
+        };
+      }
+      const existing = projectUserRemindersRef.current.find(
+        (r) => r.projectId === projectId && r.userId === uid,
+      );
+      if (existing) return existing;
+      return {
+        projectId,
+        userId: uid,
+        emailReminderDays:
+          project?.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
+        emailReminderEnabled: project?.emailReminderEnabled !== false,
+        lastClientContactAt: fallbackDate,
+      };
+    },
+    [],
+  );
+
+  const persistProjectUserReminder = useCallback(
+    (reminder: ProjectUserReminder) => {
+      setProjectUserReminders((prev) => {
+        const idx = prev.findIndex(
+          (r) =>
+            r.projectId === reminder.projectId && r.userId === reminder.userId,
+        );
+        if (idx >= 0) {
+          const next = prev.slice();
+          next[idx] = reminder;
+          return next;
+        }
+        return [...prev, reminder];
+      });
+      if (supabase) {
+        void supabase
+          .from("project_user_reminders")
+          .upsert(
+            {
+              project_id: reminder.projectId,
+              user_id: reminder.userId,
+              email_reminder_days: reminder.emailReminderDays,
+              email_reminder_enabled: reminder.emailReminderEnabled,
+              last_client_contact_at: reminder.lastClientContactAt,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "project_id,user_id" },
+          )
+          .then(logDbError("project user reminder upsert"));
+      }
+    },
+    [],
+  );
+
+  const updateProjectUserReminder = useCallback(
+    (
+      projectId: string,
+      patch: {
+        emailReminderDays?: number;
+        emailReminderEnabled?: boolean;
+        lastClientContactAt?: string;
+      },
+    ) => {
+      const uid = currentUserIdRef.current;
+      if (!uid) return;
+      const current = getProjectUserReminder(projectId, uid);
+      const next: ProjectUserReminder = {
+        ...current,
+        userId: uid,
+        ...(patch.emailReminderDays !== undefined
+          ? {
+              emailReminderDays: Math.max(
+                1,
+                Math.floor(patch.emailReminderDays),
+              ),
+            }
+          : {}),
+        ...(patch.emailReminderEnabled !== undefined
+          ? { emailReminderEnabled: patch.emailReminderEnabled }
+          : {}),
+        ...(patch.lastClientContactAt !== undefined
+          ? { lastClientContactAt: patch.lastClientContactAt.slice(0, 10) }
+          : {}),
+      };
+      persistProjectUserReminder(next);
+    },
+    [getProjectUserReminder, persistProjectUserReminder],
+  );
+
+  const ensureProjectUserReminder = useCallback(
+    (projectId: string) => {
+      const uid = currentUserIdRef.current;
+      if (!uid) return;
+      const exists = projectUserRemindersRef.current.some(
+        (r) => r.projectId === projectId && r.userId === uid,
+      );
+      if (exists) return;
+      persistProjectUserReminder(getProjectUserReminder(projectId, uid));
+    },
+    [getProjectUserReminder, persistProjectUserReminder],
+  );
+
   const markClientContacted = useCallback(
     (projectId: string) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       if (!current) return;
+      const uid = currentUserIdRef.current;
       const lastClientContactAt = todayDate();
+      const now = new Date().toISOString();
+
+      if (uid) {
+        const reminder = getProjectUserReminder(projectId, uid);
+        persistProjectUserReminder({
+          ...reminder,
+          userId: uid,
+          lastClientContactAt,
+        });
+      }
+
+      const todos = current.todos.map((t) =>
+        !t.done &&
+        isClientFollowUpTodo(t) &&
+        (!uid || t.ownerUserId === uid)
+          ? { ...t, done: true, doneAt: now }
+          : t,
+      );
       const updated: Project = {
         ...current,
+        // Keep project-level last contact as a shared activity signal
         lastClientContactAt,
         lastMeaningfulActivityAt: lastClientContactAt,
+        todos,
       };
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
@@ -2186,9 +2416,18 @@ if (supabase) {
           .update(row)
           .eq("id", projectId)
           .then(logDbError("mark client contacted"));
+        for (const t of current.todos) {
+          if (t.done || !isClientFollowUpTodo(t)) continue;
+          if (uid && t.ownerUserId !== uid) continue;
+          void supabase
+            .from("project_todos")
+            .update({ done: true, done_at: now })
+            .eq("id", t.id)
+            .then(logDbError("complete follow-up todo"));
+        }
       }
     },
-    [supportsMetricsFields],
+    [getProjectUserReminder, persistProjectUserReminder, supportsMetricsFields],
   );
 
   const updateComment = useCallback(
@@ -2389,6 +2628,11 @@ if (supabase) {
             if (patch.ownerUserId === null) delete next.ownerUserId;
             else next.ownerUserId = patch.ownerUserId;
           }
+          if (patch.done !== undefined) {
+            next.done = patch.done;
+            if (patch.done) next.doneAt = new Date().toISOString();
+            else delete next.doneAt;
+          }
           return next;
         }),
       );
@@ -2404,10 +2648,11 @@ if (supabase) {
           dueDate: patch.dueDate ?? null,
           startDate: patch.startDate ?? null,
           endDate: patch.endDate ?? null,
+          done: patch.done ?? null,
         },
       });
       if (supabase) {
-        const row: Record<string, string | null> = {};
+        const row: Record<string, string | boolean | null> = {};
         if (patch.text !== undefined) row.text = patch.text;
         if (patch.answer !== undefined) row.answer = patch.answer;
         if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
@@ -2415,6 +2660,10 @@ if (supabase) {
         if (patch.endDate !== undefined) row.end_date = patch.endDate;
         if (supportsOwnershipFields && patch.ownerUserId !== undefined) {
           row.owner_user_id = patch.ownerUserId;
+        }
+        if (patch.done !== undefined) {
+          row.done = patch.done;
+          row.done_at = patch.done ? new Date().toISOString() : null;
         }
         void supabase
           .from("project_todos")
@@ -2425,6 +2674,87 @@ if (supabase) {
     },
     [mutateTodos, supportsOwnershipFields, recordChangeEvent],
   );
+
+  const syncClientFollowUpTodos = useCallback(() => {
+    const list = projectsRef.current;
+    const reminders = projectUserRemindersRef.current;
+
+    for (const project of list) {
+      if (project.isWarehouseHolding || project.stage === "cancelled") {
+        for (const t of project.todos) {
+          if (!t.done && isClientFollowUpTodo(t)) {
+            updateTodo(project.id, t.id, { done: true });
+          }
+        }
+        continue;
+      }
+
+      const openFollowUps = project.todos.filter(
+        (t) => !t.done && isClientFollowUpTodo(t),
+      );
+      const text = clientFollowUpTodoText(project.client);
+
+      // Users who have explicit reminder prefs for this project
+      const prefsForProject = reminders.filter(
+        (r) => r.projectId === project.id,
+      );
+
+      for (const reminder of prefsForProject) {
+        const due = isUserEmailReminderDue(reminder);
+        const shouldHaveTask =
+          due &&
+          reminder.emailReminderEnabled !== false &&
+          Boolean(reminder.userId);
+
+        const mine = openFollowUps.filter(
+          (t) => t.ownerUserId === reminder.userId,
+        );
+
+        if (!shouldHaveTask) {
+          for (const t of mine) {
+            updateTodo(project.id, t.id, { done: true });
+          }
+          continue;
+        }
+
+        const dueDate = nextEmailReminderDateForUser(reminder);
+        const existing = mine[0];
+        for (const t of mine.slice(1)) {
+          updateTodo(project.id, t.id, { done: true });
+        }
+
+        if (!existing) {
+          addTodo(project.id, "our-action", text, dueDate, reminder.userId);
+        } else {
+          const patch: TodoPatch = {};
+          if (existing.text !== text) patch.text = text;
+          if (existing.dueDate !== dueDate) patch.dueDate = dueDate;
+          if (Object.keys(patch).length > 0) {
+            updateTodo(project.id, existing.id, patch);
+          }
+        }
+      }
+
+      // Complete legacy/unowned follow-ups and ones with no rem prefs row
+      for (const t of openFollowUps) {
+        const hasPref = prefsForProject.some(
+          (r) => r.userId === (t.ownerUserId ?? ""),
+        );
+        if (!t.ownerUserId || !hasPref) {
+          updateTodo(project.id, t.id, { done: true });
+        }
+      }
+    }
+  }, [addTodo, updateTodo]);
+
+  // Keep per-user follow-up reminder todos in sync with each user's settings.
+  useEffect(() => {
+    if (!ready) return;
+    const t = window.setTimeout(() => {
+      syncClientFollowUpTodos();
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [ready, projects, projectUserReminders, syncClientFollowUpTodos]);
 
   const deleteTodo = useCallback(
     (projectId: string, todoId: string) => {
@@ -7060,6 +7390,10 @@ if (supabase) {
         addComment,
         updateProject,
         markClientContacted,
+        projectUserReminders,
+        getProjectUserReminder,
+        updateProjectUserReminder,
+        ensureProjectUserReminder,
         updateComment,
         deleteComment,
         regenerateSummary,
