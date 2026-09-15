@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
-import { useAuth } from "@/lib/auth-context";
+import { assignableTeamMembers } from "@/lib/permissions";
+import FilterMultiSelect from "@/components/FilterMultiSelect";
 import {
   PersonalTodo,
   Project,
@@ -27,13 +28,15 @@ import {
   todayDate,
 } from "@/lib/types";
 
-
 const EXPANDED_KEY = "hydr-outstanding-expanded";
 const SORT_KEY = "hydr-outstanding-sort";
 const SCOPE_KEY = "hydr-outstanding-scope";
+const OWNER_FILTER_KEY = "hydr-outstanding-owner";
 
 type SortMode = "by-project" | "by-deadline";
 type ScopeMode = "project" | "personal";
+/** `null` = default to logged-in user only. */
+type OwnerFilterIds = string[] | null;
 
 const KIND_SHORT: Record<TodoKind, string> = {
   question: "Q",
@@ -114,6 +117,35 @@ function readScopeMode(): ScopeMode {
   } catch {
     return "project";
   }
+}
+
+function readOwnerFilterIds(): OwnerFilterIds | "all" {
+  try {
+    const v = window.localStorage.getItem(OWNER_FILTER_KEY);
+    if (!v) return null;
+    if (v === "all") return "all";
+    if (v.startsWith("[")) {
+      const parsed = JSON.parse(v) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x): x is string => typeof x === "string");
+      }
+      return null;
+    }
+    // Legacy single-user filter
+    return [v];
+  } catch {
+    return null;
+  }
+}
+
+function todoMatchesOwnerFilter(
+  todo: { ownerUserId?: string },
+  selectedIds: Set<string>,
+  allSelected: boolean,
+): boolean {
+  if (allSelected) return true;
+  if (selectedIds.size === 0) return false;
+  return Boolean(todo.ownerUserId && selectedIds.has(todo.ownerUserId));
 }
 
 function DeadlineBadge({ date }: { date: string }) {
@@ -620,18 +652,25 @@ export default function OutstandingSidebar() {
     getProjectUserReminder,
     projectUserReminders,
   } = useProjects();
-  const { user } = useAuth();
-  const isAdmin = Boolean(user?.isAdmin);
   const [wider, setWider] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("by-project");
   const [scope, setScope] = useState<ScopeMode>("project");
+  const [ownerFilterIds, setOwnerFilterIds] = useState<OwnerFilterIds>(null);
+  const [pendingSelectAll, setPendingSelectAll] = useState(false);
   const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
     setWider(readExpanded());
     setSortMode(readSortMode());
     setScope(readScopeMode());
+    const stored = readOwnerFilterIds();
+    if (stored === "all") {
+      setPendingSelectAll(true);
+      setOwnerFilterIds([]);
+    } else {
+      setOwnerFilterIds(stored);
+    }
     setPrefsReady(true);
   }, []);
 
@@ -662,6 +701,48 @@ export default function OutstandingSidebar() {
     }
   }, [scope, prefsReady]);
 
+  const ownerFilterOptions = useMemo(() => {
+    const list = assignableTeamMembers(teamMembers);
+    if (currentUserId && !list.some((m) => m.id === currentUserId)) {
+      const me = teamMembers.find((m) => m.id === currentUserId);
+      if (me) return [me, ...list];
+    }
+    return list;
+  }, [teamMembers, currentUserId]);
+
+  useEffect(() => {
+    if (!pendingSelectAll || ownerFilterOptions.length === 0) return;
+    setOwnerFilterIds(ownerFilterOptions.map((m) => m.id));
+    setPendingSelectAll(false);
+  }, [pendingSelectAll, ownerFilterOptions]);
+
+  const selectedOwnerIds = useMemo(() => {
+    if (ownerFilterIds === null) {
+      return currentUserId ? new Set([currentUserId]) : new Set<string>();
+    }
+    return new Set(ownerFilterIds);
+  }, [ownerFilterIds, currentUserId]);
+
+  const allOwnersSelected =
+    ownerFilterOptions.length > 0 &&
+    ownerFilterOptions.every((m) => selectedOwnerIds.has(m.id));
+
+  useEffect(() => {
+    if (!prefsReady || ownerFilterIds === null) return;
+    try {
+      if (allOwnersSelected) {
+        window.localStorage.setItem(OWNER_FILTER_KEY, "all");
+      } else {
+        window.localStorage.setItem(
+          OWNER_FILTER_KEY,
+          JSON.stringify(ownerFilterIds),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [ownerFilterIds, prefsReady, allOwnersSelected]);
+
   useEffect(() => {
     if (!fullscreen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -684,8 +765,10 @@ export default function OutstandingSidebar() {
     for (const project of projects) {
       for (const todo of project.todos) {
         if (todo.done) continue;
-        if (isClientFollowUpTodo(todo)) {
-          if (!isAdmin && todo.ownerUserId !== currentUserId) continue;
+        if (
+          !todoMatchesOwnerFilter(todo, selectedOwnerIds, allOwnersSelected)
+        ) {
+          continue;
         }
         const entry: TodoFlatEntry = {
           type: "todo",
@@ -713,31 +796,29 @@ export default function OutstandingSidebar() {
     });
 
     return { active, upcoming, excludedIds };
-  }, [projects, currentUserId, isAdmin]);
+  }, [projects, selectedOwnerIds, allOwnersSelected]);
 
   const groups = useMemo(() => {
     const list: Group[] = [];
+    const showMyContact =
+      Boolean(currentUserId) &&
+      (allOwnersSelected || selectedOwnerIds.has(currentUserId!));
+
     for (const project of projects) {
       const todos = project.todos.filter((t) => {
         if (t.done || projectWorkWindow.excludedIds.has(t.id)) return false;
-        // Client follow-up reminders are only for the assigned lead (admin sees all).
-        if (isClientFollowUpTodo(t)) {
-          if (isAdmin) return true;
-          return Boolean(currentUserId && t.ownerUserId === currentUserId);
-        }
-        return true;
+        return todoMatchesOwnerFilter(t, selectedOwnerIds, allOwnersSelected);
       });
+
       const emailDueForMe =
-        Boolean(currentUserId) &&
+        showMyContact &&
         isUserEmailReminderDue(
           getProjectUserReminder(project.id, currentUserId),
         );
-      // Prefer the owned follow-up todo; only use synthetic contact when due for
-      // this user and no owned open follow-up todo is visible yet.
       const hasVisibleFollowUpTodo = todos.some(
         (t) =>
           isClientFollowUpTodo(t) &&
-          (isAdmin || t.ownerUserId === currentUserId),
+          (!currentUserId || t.ownerUserId === currentUserId),
       );
       const showSyntheticContact = emailDueForMe && !hasVisibleFollowUpTodo;
 
@@ -749,7 +830,7 @@ export default function OutstandingSidebar() {
         sortDate: projectTodoSortDate(todo),
       }));
 
-      if (showSyntheticContact) {
+      if (showSyntheticContact && currentUserId) {
         entries.push({
           type: "contact",
           sortDate: nextEmailReminderDateForUser(
@@ -778,7 +859,8 @@ export default function OutstandingSidebar() {
     projects,
     projectWorkWindow.excludedIds,
     currentUserId,
-    isAdmin,
+    selectedOwnerIds,
+    allOwnersSelected,
     getProjectUserReminder,
     projectUserReminders,
   ]);
@@ -851,14 +933,12 @@ export default function OutstandingSidebar() {
     return buckets;
   }, [openPersonal, personalWorkWindow.excludedIds]);
 
-  const projectTotalOpen = useMemo(
-    () =>
-      projects.reduce(
-        (n, p) => n + p.todos.filter((t) => !t.done).length,
-        0,
-      ),
-    [projects],
-  );
+  const projectTotalOpen = useMemo(() => {
+    let n =
+      projectWorkWindow.active.length + projectWorkWindow.upcoming.length;
+    for (const g of groups) n += g.entries.length;
+    return n;
+  }, [groups, projectWorkWindow]);
   const totalOpen =
     scope === "personal" ? openPersonal.length : projectTotalOpen;
 
@@ -1091,10 +1171,14 @@ export default function OutstandingSidebar() {
   function renderList(layout: "rail" | "fullscreen") {
     if (scope === "personal") return renderPersonalList(layout);
 
-    if (totalOpen === 0) {
+    if (projectTotalOpen === 0) {
       return (
         <p className="rounded-lg border border-dashed border-line px-3 py-8 text-center text-xs text-muted">
-          Nothing outstanding. Nice work.
+          {allOwnersSelected || selectedOwnerIds.size === 0
+            ? selectedOwnerIds.size === 0
+              ? "No users selected."
+              : "Nothing outstanding. Nice work."
+            : "No outstanding tasks for the selected users."}
         </p>
       );
     }
@@ -1182,6 +1266,45 @@ export default function OutstandingSidebar() {
             </section>
           );
         })}
+      </div>
+    );
+  }
+
+  function renderOwnerFilter(opts?: { compact?: boolean }) {
+    if (scope === "personal") return null;
+
+    return (
+      <div className={opts?.compact ? undefined : "mt-2 w-full"}>
+        <FilterMultiSelect
+          title="Users"
+          options={ownerFilterOptions.map((m) => ({
+            id: m.id,
+            label:
+              m.id === currentUserId ? `${m.name} (you)` : m.name,
+          }))}
+          selectedIds={selectedOwnerIds}
+          onToggle={(id) => {
+            setOwnerFilterIds((prev) => {
+              const base =
+                prev === null
+                  ? currentUserId
+                    ? [currentUserId]
+                    : []
+                  : prev;
+              return base.includes(id)
+                ? base.filter((x) => x !== id)
+                : [...base, id];
+            });
+          }}
+          onSelectAll={() =>
+            setOwnerFilterIds(ownerFilterOptions.map((m) => m.id))
+          }
+          onClear={() => setOwnerFilterIds([])}
+          allLabel="All users"
+          noneLabel="No users"
+          manyLabel={(n) => `${n} users`}
+          compact={opts?.compact}
+        />
       </div>
     );
   }
@@ -1301,6 +1424,7 @@ export default function OutstandingSidebar() {
               </div>
             </div>
             <div className="mt-2">{renderScopeToggle()}</div>
+            {renderOwnerFilter()}
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
@@ -1326,6 +1450,11 @@ export default function OutstandingSidebar() {
                   {totalOpen}
                 </span>
                 <div className="w-44 sm:w-52">{renderScopeToggle()}</div>
+                {scope === "project" && (
+                  <div className="w-44 sm:w-52">
+                    {renderOwnerFilter({ compact: true })}
+                  </div>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="w-56 sm:w-64">{renderSortToggle()}</div>
