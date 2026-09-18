@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
     const dir = process.env.FINANCIAL_CSV_EXPORT_DIR?.trim() || DEFAULT_EXPORT_DIR;
     await mkdir(dir, { recursive: true });
-    const filePath = path.join(dir, filename);
+    const filePath = path.join(/*turbopackIgnore: true*/ dir, filename);
     await writeFile(filePath, body.csv, "utf8");
 
     return NextResponse.json({ ok: true, path: filePath });

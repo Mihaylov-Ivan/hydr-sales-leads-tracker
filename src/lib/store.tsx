@@ -3810,6 +3810,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }),
       });
       if (supabase) {
+        const db = supabase;
         const waiter =
           projectInsertWaitersRef.current.get(projectId) ??
           Promise.resolve(true);
@@ -3821,7 +3822,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             );
             return;
           }
-          void supabase
+          void db
             .from("project_contacts")
             .insert({
               id: contact.id,

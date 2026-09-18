@@ -27,7 +27,7 @@ export default function SeriesMultiSelect({
   compact?: boolean;
 }) {
   const selectedIds = useMemo(
-    () => new Set(parseSeriesTags(value)),
+    () => new Set<string>(parseSeriesTags(value)),
     [value],
   );
 

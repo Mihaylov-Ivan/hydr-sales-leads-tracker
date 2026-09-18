@@ -19,8 +19,8 @@ function ensureWebSocketStub() {
       return false;
     }
   }
-  (globalThis as { WebSocket: typeof WebSocketStub }).WebSocket =
-    WebSocketStub as unknown as typeof WebSocketStub;
+  (globalThis as unknown as { WebSocket: typeof WebSocketStub }).WebSocket =
+    WebSocketStub;
 }
 
 /**
