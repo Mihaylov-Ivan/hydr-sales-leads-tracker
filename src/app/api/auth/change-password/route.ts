@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     const token = await createSessionToken(fresh);
     const response = NextResponse.json({ ok: true, user: fresh });
-    response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE));
+    response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE, request));
     return response;
   } catch (e) {
     console.error("change-password failed:", e);

@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
       user: found.user,
       home: defaultHomePath(found.user),
     });
-    response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE));
-    response.cookies.set(LEGACY_AUTH_COOKIE, "", cookieOptions(0));
+    response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE, request));
+    response.cookies.set(LEGACY_AUTH_COOKIE, "", cookieOptions(0, request));
     return response;
   } catch (e) {
     console.error("Login failed:", e);

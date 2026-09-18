@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         authEnabled: true,
         user: fresh,
       });
-      response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE));
+      response.cookies.set(AUTH_COOKIE, token, cookieOptions(AUTH_MAX_AGE, request));
       return response;
     } catch (e) {
       console.error("auth/me refresh failed:", e);

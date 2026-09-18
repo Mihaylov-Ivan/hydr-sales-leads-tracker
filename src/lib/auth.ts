@@ -163,10 +163,27 @@ export async function parseSessionToken(
   }
 }
 
-export function cookieOptions(maxAge: number) {
+type CookieRequest = {
+  nextUrl: { protocol: string };
+  headers: { get(name: string): string | null };
+};
+
+/** Secure cookies are ignored on http://192.168.x.x; localhost is special-cased. */
+export function cookieSecureFromRequest(request: CookieRequest): boolean {
+  const forwarded = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+  if (forwarded === "https") return true;
+  if (forwarded === "http") return false;
+  return request.nextUrl.protocol === "https:";
+}
+
+export function cookieOptions(maxAge: number, request: CookieRequest) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecureFromRequest(request),
     sameSite: "lax" as const,
     path: "/",
     maxAge,
