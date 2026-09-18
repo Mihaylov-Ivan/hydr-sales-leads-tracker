@@ -63,6 +63,7 @@ export default function LoginForm() {
   return (
     <div className="flex min-h-full flex-1 items-center justify-center px-4 py-16">
       <form
+        method="post"
         onSubmit={onSubmit}
         className="w-full max-w-sm rounded-2xl border border-line bg-panel p-6 shadow-sm"
       >
