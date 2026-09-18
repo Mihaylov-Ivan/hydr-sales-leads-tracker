@@ -4,6 +4,7 @@ import {
   isPermissionType,
 } from "@/lib/permissions";
 import { createServiceClient } from "@/lib/supabase-server";
+import { newId } from "@/lib/id";
 
 export interface AuthUserRow {
   id: string;
@@ -172,7 +173,7 @@ export async function createManagedUser(input: {
   permissions: PermissionType[];
 }): Promise<ManagedUser> {
   const db = createServiceClient();
-  const id = `u-${crypto.randomUUID()}`;
+  const id = `u-${newId()}`;
   const username = input.username.trim().toLowerCase();
   const name = input.name.trim();
   const email = input.email?.trim() || null;

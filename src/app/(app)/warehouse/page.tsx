@@ -1,5 +1,7 @@
 "use client";
 
+import { newId } from "@/lib/id";
+
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/lib/store";
@@ -162,7 +164,7 @@ type BomDraftLine = {
 
 function emptyBomDraftLine(): BomDraftLine {
   return {
-    key: crypto.randomUUID(),
+    key: newId(),
     componentName: "",
     componentGroup: "",
     componentItemId: "",
@@ -2980,7 +2982,7 @@ export default function WarehousePage() {
                         setBomDraftLines(
                           src.lines.length > 0
                             ? src.lines.map((l) => ({
-                                key: crypto.randomUUID(),
+                                key: newId(),
                                 componentName: l.componentName,
                                 componentGroup: l.componentGroup ?? "",
                                 componentItemId: l.componentItemId ?? "",

@@ -1,5 +1,6 @@
 import type { Project, ProjectExpenseItem, WarehouseLot, WarehouseState } from "./types";
 import { normalizeProjectExpense } from "./types";
+import { newId } from "@/lib/id";
 
 export type LinkProjectExpensesResult = {
   state: WarehouseState;
@@ -33,7 +34,7 @@ export function createMaterialsExpensePlaceholder(
 ): ProjectExpenseItem {
   const amount = opts?.amount != null && opts.amount > 0 ? opts.amount : 0;
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     amount,
     category: "materials",
     dueDate: opts?.dueDate ?? todayYmd(),

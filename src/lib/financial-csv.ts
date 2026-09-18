@@ -16,6 +16,7 @@
 import {
   sanitizeAppFinancials,
 } from "./finance-import";
+import { newId } from "@/lib/id";
 import {
   CompanyFinanceSettings,
   CompanyMonthlyExpense,
@@ -617,7 +618,7 @@ export function parseFinancialCsv(text: string):
       const dueDate = cell(row, "due_date");
       if (amount == null || !dueDate) continue;
       const payment: ProjectPayment = {
-        id: cell(row, "id") || crypto.randomUUID(),
+        id: cell(row, "id") || newId(),
         amount,
         dueDate,
         createdAt: cell(row, "created_at") || new Date().toISOString(),
@@ -658,7 +659,7 @@ export function parseFinancialCsv(text: string):
       }
       if (amount == null || !dueDate) continue;
       const expense: ProjectExpenseItem = {
-        id: cell(row, "id") || crypto.randomUUID(),
+        id: cell(row, "id") || newId(),
         amount,
         dueDate,
         createdAt: cell(row, "created_at") || new Date().toISOString(),
@@ -778,7 +779,7 @@ export function parseFinancialCsv(text: string):
       const date = cell(row, "due_date");
       if (!date || !isMilestoneKind(kindRaw)) continue;
       const milestone: ProjectMilestone = {
-        id: cell(row, "id") || crypto.randomUUID(),
+        id: cell(row, "id") || newId(),
         kind: kindRaw,
         date,
         createdAt: cell(row, "created_at") || new Date().toISOString(),

@@ -7,6 +7,7 @@ import {
 } from "./types";
 import { roundMoney } from "./warehouse";
 import { ProjectPartLine, ProjectWarehouseMetrics } from "./warehouse-metrics";
+import { newId } from "@/lib/id";
 
 export type BomWithLines = WarehouseBom & {
   lines: WarehouseBomLine[];
@@ -180,7 +181,7 @@ function normalizeBomLines(
     }
     position += 1;
     const line: WarehouseBomLine = {
-      id: crypto.randomUUID(),
+      id: newId(),
       bomId,
       position,
       componentName,
@@ -229,7 +230,7 @@ export function buildSavedBom(
   }
 
   const now = new Date().toISOString();
-  const id = existing?.id ?? crypto.randomUUID();
+  const id = existing?.id ?? newId();
   const linesResult = normalizeBomLines(id, input.lines, now);
   if ("error" in linesResult) return { ok: false, error: linesResult.error };
 

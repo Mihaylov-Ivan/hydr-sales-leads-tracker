@@ -8,6 +8,7 @@ import {
   WarehouseState,
 } from "./types";
 import { cloneLocation, locationsEqual } from "./warehouse";
+import { newId } from "@/lib/id";
 
 export type WarehouseSkladMap = {
   id: string;
@@ -145,7 +146,7 @@ export function buildDefaultSkladMaps(
     const projectId = resolveProjectIdForSklad(sourceSklad, projects);
     if (!projectId) continue;
     maps.push({
-      id: crypto.randomUUID(),
+      id: newId(),
       sourceSklad,
       projectId,
       site: "ELX",

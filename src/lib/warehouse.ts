@@ -19,6 +19,7 @@ import {
   amountExFromInc,
   emptyWarehouseState,
 } from "./types";
+import { newId } from "@/lib/id";
 
 const SITES = new Set<WarehouseSite>(["ELX", "MH", "Van"]);
 const SLOTS = new Set<WarehouseSlot>(["project", "spare", "buffer"]);
@@ -163,7 +164,7 @@ export function applyBalanceDelta(
     else next[idx] = { ...next[idx], qty };
   } else if (delta > 0) {
     next.push({
-      id: crypto.randomUUID(),
+      id: newId(),
       lotId,
       location: cloneLocation(loc),
       qty: delta,

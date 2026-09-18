@@ -7,6 +7,7 @@ import {
   addDays,
   todayDate,
 } from "./types";
+import { newId } from "@/lib/id";
 
 const BAR = "#5B9BD5";
 
@@ -175,10 +176,10 @@ export function buildStandardDeliverySchedule(input: {
   const siteDays = Math.max(1, Math.round(input.installationDays) || 1);
   const createdAt = new Date().toISOString();
 
-  const pInit = crypto.randomUUID();
-  const pEng = crypto.randomUUID();
-  const pProc = crypto.randomUUID();
-  const pSite = crypto.randomUUID();
+  const pInit = newId();
+  const pEng = newId();
+  const pProc = newId();
+  const pSite = newId();
 
   const engStart = startDate;
   const procStart = addCalendarMonths(engStart, 1);
@@ -240,7 +241,7 @@ export function buildStandardDeliverySchedule(input: {
       const rawDur = scaleDuration(spec.duration, refDays, phaseDays);
       const { startOffset, duration } = clampSpan(rawStart, rawDur, phaseDays);
       return {
-        id: crypto.randomUUID(),
+        id: newId(),
         phaseId,
         name: spec.name,
         wbs: spec.wbs,
@@ -267,7 +268,7 @@ export function buildStandardDeliverySchedule(input: {
         Math.max(0, phaseDays - 1),
       );
       return {
-        id: crypto.randomUUID(),
+        id: newId(),
         phaseId,
         name: spec.name,
         wbs: spec.wbs,
@@ -282,7 +283,7 @@ export function buildStandardDeliverySchedule(input: {
 
   const activities: ProjectGanttActivity[] = [
     {
-      id: crypto.randomUUID(),
+      id: newId(),
       phaseId: pEng,
       name: "Detailed Design",
       wbs: "2.1",
@@ -314,7 +315,7 @@ export function buildStandardDeliverySchedule(input: {
 
   const deadlines: ProjectGanttDeadline[] = [
     {
-      id: crypto.randomUUID(),
+      id: newId(),
       phaseId: pInit,
       name: "Contract Signed / Prepayment",
       wbs: "1.1",
@@ -322,7 +323,7 @@ export function buildStandardDeliverySchedule(input: {
       createdAt,
     },
     {
-      id: crypto.randomUUID(),
+      id: newId(),
       phaseId: pEng,
       name: "Design Approval",
       wbs: "2.3",

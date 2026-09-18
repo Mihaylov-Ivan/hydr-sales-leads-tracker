@@ -10,6 +10,7 @@ import {
   Stage,
 } from "./types";
 import { supabase } from "./supabase";
+import { newId } from "@/lib/id";
 
 /** Domains persisted to `app_change_events` today. */
 export const PERSISTED_CHANGE_DOMAINS: ReadonlySet<ChangeEventDomain> = new Set([
@@ -55,7 +56,7 @@ export type ChangeEventRow = {
 };
 
 export function createEventId(): string {
-  return crypto.randomUUID();
+  return newId();
 }
 
 export function formatValue(value: unknown): string {

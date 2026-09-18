@@ -10,6 +10,7 @@ import {
   amountIncFromEx,
 } from "./types";
 import { cloneLocation, roundMoney } from "./warehouse";
+import { newId } from "@/lib/id";
 
 export const SEBESTOYNOST_SEED_SOURCE = "sebestoynost-500kw-z-series";
 export const SEBESTOYNOST_PROJECT_NAME = "Example 500kW Z-Series";
@@ -171,7 +172,7 @@ export function applySebestoynostManufacturingSeed(args: {
     const existing = groupBySource.get(sourceKey);
     if (existing) return existing;
     const g: WarehouseGroup = {
-      id: crypto.randomUUID(),
+      id: newId(),
       name: displayGroupName(name),
       sourceKey,
       createdAt: now,
@@ -246,7 +247,7 @@ export function applySebestoynostManufacturingSeed(args: {
         } else {
           itemsCreated += 1;
           item = {
-            id: crypto.randomUUID(),
+            id: newId(),
             name,
             ...(raw.sku?.trim() ? { sku: raw.sku.trim() } : {}),
             unit: raw.unit?.trim() || "бр.",
@@ -264,7 +265,7 @@ export function applySebestoynostManufacturingSeed(args: {
         bomPosition += 1;
         const componentGroup = `${displayGroupName(mod.name)} / ${displayGroupName(grp.name)}`;
         bomLineDrafts.push({
-          id: crypto.randomUUID(),
+          id: newId(),
           bomId: "", // filled after BOM header
           position: bomPosition,
           componentName: item.name,
@@ -277,7 +278,7 @@ export function applySebestoynostManufacturingSeed(args: {
 
         if (!(qty > 0)) continue;
 
-        const lotId = crypto.randomUUID();
+        const lotId = newId();
         const lot: WarehouseLot = {
           id: lotId,
           itemId: item.id,
@@ -295,8 +296,8 @@ export function applySebestoynostManufacturingSeed(args: {
         lots.push(lot);
         lotsCreated += 1;
 
-        const receiveId = crypto.randomUUID();
-        const consumeId = crypto.randomUUID();
+        const receiveId = newId();
+        const consumeId = newId();
         const receiveMv: WarehouseMovement = {
           id: receiveId,
           lotId,
@@ -326,7 +327,7 @@ export function applySebestoynostManufacturingSeed(args: {
 
   // Upsert BOM recipe
   const existingBom = boms.find((b) => b.sourceKey === SEBESTOYNOST_BOM_SOURCE_KEY);
-  const bomId = existingBom?.id ?? crypto.randomUUID();
+  const bomId = existingBom?.id ?? newId();
   const bom: WarehouseBom = {
     id: bomId,
     name: "500kW Z-Series electrolyser (себестойност)",

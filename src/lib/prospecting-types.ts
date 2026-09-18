@@ -5,6 +5,7 @@ import {
   type SeriesTag,
   type Stage,
 } from "./types";
+import { newId } from "@/lib/id";
 
 /** Same market list as Sales Projects. */
 export type ProspectMarket = MarketTag;
@@ -486,7 +487,7 @@ export function createEmptyCompany(
   const now = new Date().toISOString();
   const market = normalizeProspectMarket(partial.market);
   return {
-    id: partial.id ?? crypto.randomUUID(),
+    id: partial.id ?? newId(),
     name: partial.name.trim(),
     country: partial.country?.trim() ?? "",
     city: partial.city?.trim() ?? "",
@@ -521,7 +522,7 @@ export function createEmptyContact(
 ): ProspectContact {
   const now = new Date().toISOString();
   return {
-    id: partial.id ?? crypto.randomUUID(),
+    id: partial.id ?? newId(),
     companyId: partial.companyId,
     name: partial.name.trim(),
     title: partial.title?.trim() ?? "",

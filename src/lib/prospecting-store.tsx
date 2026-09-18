@@ -1,5 +1,7 @@
 "use client";
 
+import { newId } from "@/lib/id";
+
 import React, {
   createContext,
   useCallback,
@@ -944,7 +946,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       }
 
       const activity: ProspectActivity = {
-        id: crypto.randomUUID(),
+        id: newId(),
         companyId: input.companyId,
         contactId: input.contactId,
         userId: input.userId,

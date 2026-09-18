@@ -1,5 +1,7 @@
 "use client";
 
+import { newId } from "@/lib/id";
+
 import {
   createContext,
   useCallback,
@@ -1933,7 +1935,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             const projectId = byId?.id ?? byName?.id;
             if (!projectId) return null;
             return {
-              id: m.id || crypto.randomUUID(),
+              id: m.id || newId(),
               sourceSklad: m.sourceSklad,
               projectId,
               site: m.site,
@@ -2003,7 +2005,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (actorId && input.recipientUserId === actorId) return;
 
       const notification: AppNotification = {
-        id: crypto.randomUUID(),
+        id: newId(),
         recipientUserId: input.recipientUserId,
         ...(actorId ? { actorUserId: actorId } : {}),
         type: input.type,
@@ -2137,7 +2139,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const email = input.email?.trim();
       if (!name) return;
       const member: TeamMember = {
-        id: crypto.randomUUID(),
+        id: newId(),
         name,
         ...(email ? { email } : {}),
       };
@@ -2222,14 +2224,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addProject = useCallback((input: NewProjectInput): string => {
-    const id = crypto.randomUUID();
+    const id = newId();
     const createdAt = new Date().toISOString();
     const description = input.baseDescription.trim();
     const authorInfo = resolveAuthor();
     // The summary entered at creation doubles as the first update in the timeline.
     const initialComment: ProjectComment | null = description
       ? {
-        id: crypto.randomUUID(),
+        id: newId(),
         text: description,
         author: authorInfo.author,
         ...(authorInfo.authorUserId
@@ -2359,7 +2361,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (!current) return;
       const authorInfo = resolveAuthor();
       const comment: ProjectComment = {
-        id: crypto.randomUUID(),
+        id: newId(),
         text,
         author: authorInfo.author,
         ...(authorInfo.authorUserId
@@ -2920,7 +2922,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     ) => {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo: ProjectTodo = {
-        id: crypto.randomUUID(),
+        id: newId(),
         kind,
         text,
         done: false,
@@ -3302,7 +3304,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         status,
       );
       const todo: PersonalTodo = {
-        id: crypto.randomUUID(),
+        id: newId(),
         title,
         ...(input.description?.trim()
           ? { description: input.description.trim() }
@@ -3667,7 +3669,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const trimmed = text.trim();
       if (!trimmed) return;
       const comment: PersonalTodoComment = {
-        id: crypto.randomUUID(),
+        id: newId(),
         text: trimmed,
         ...(currentUserIdRef.current
           ? { authorUserId: currentUserIdRef.current }
@@ -3773,7 +3775,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (!name && !email && !phone && !position) return;
       const project = projectsRef.current.find((p) => p.id === projectId);
       const contact: ProjectContact = {
-        id: crypto.randomUUID(),
+        id: newId(),
         ...(name ? { name } : {}),
         ...(email ? { email } : {}),
         ...(phone ? { phone } : {}),
@@ -3962,7 +3964,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
 
       const author = resolveAuthor();
-      const id = crypto.randomUUID();
+      const id = newId();
       const createdAt = new Date().toISOString();
       const safeName = file.name.replace(/[^\w.\- ()[\]]+/g, "_");
       const storagePath = `${projectId}/${id}/${safeName}`;
@@ -4312,7 +4314,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         : resolveLinkedDeadlineDate(input.milestoneId, current);
       const dueDate = linkedDate ?? input.dueDate;
       const payment: ProjectPayment = {
-        id: crypto.randomUUID(),
+        id: newId(),
         amount: input.amount,
         ...(input.percent != null ? { percent: input.percent } : {}),
         dueDate,
@@ -4384,7 +4386,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         const linkedDate = resolveLinkedDeadlineDate(d.milestoneId, current);
         const dueDate = linkedDate ?? d.dueDate;
         return {
-          id: crypto.randomUUID(),
+          id: newId(),
           amount: d.amount,
           percent: d.percent,
           dueDate,
@@ -4462,7 +4464,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const { drafts } = built;
       const createdAt = new Date().toISOString();
       const payments: ProjectPayment[] = drafts.incomes.map((d) => ({
-        id: crypto.randomUUID(),
+        id: newId(),
         amount: d.amount,
         dueDate: d.dueDate,
         label: d.label,
@@ -4470,7 +4472,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         createdAt,
       }));
       const expenses: ProjectExpenseItem[] = drafts.expenses.map((d) => ({
-        id: crypto.randomUUID(),
+        id: newId(),
         amount: d.amount,
         amountExVat: d.amountExVat,
         percent: d.percent,
@@ -4662,7 +4664,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const linkedDate = resolveLinkedDeadlineDate(input.milestoneId, current);
       const dueDate = linkedDate ?? input.dueDate;
       const expense: ProjectExpenseItem = {
-        id: crypto.randomUUID(),
+        id: newId(),
         amount: input.amount,
         category: input.category,
         ...(input.percent != null ? { percent: input.percent } : {}),
@@ -4744,7 +4746,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         const linkedDate = resolveLinkedDeadlineDate(d.milestoneId, current);
         const dueDate = linkedDate ?? d.dueDate;
         return {
-          id: crypto.randomUUID(),
+          id: newId(),
           amount: d.amount,
           amountExVat: d.amountExVat,
           percent: d.percent,
@@ -5129,7 +5131,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     (projectId: string, input: MilestoneInput) => {
       const current = projectsRef.current.find((p) => p.id === projectId);
       const milestone: ProjectMilestone = {
-        id: crypto.randomUUID(),
+        id: newId(),
         kind: input.kind,
         date: input.date,
         ...(input.note?.trim() ? { note: input.note.trim() } : {}),
@@ -5303,7 +5305,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         input.color ??
         GANTT_PHASE_COLORS[existing.length % GANTT_PHASE_COLORS.length];
       const phase: ProjectGanttPhase = {
-        id: crypto.randomUUID(),
+        id: newId(),
         name,
         startDate: input.startDate,
         durationDays,
@@ -5538,7 +5540,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         (a) => a.phaseId === input.phaseId,
       );
       const activity: ProjectGanttActivity = {
-        id: crypto.randomUUID(),
+        id: newId(),
         phaseId: input.phaseId,
         name,
         startDate: input.startDate,
@@ -5771,7 +5773,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const name = input.name.trim();
       if (!name || !input.phaseId || !input.date) return;
       const deadline: ProjectGanttDeadline = {
-        id: crypto.randomUUID(),
+        id: newId(),
         phaseId: input.phaseId,
         name,
         date: input.date,
@@ -6240,7 +6242,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       return named.id;
     }
 
-    const id = crypto.randomUUID();
+    const id = newId();
     const createdAt = new Date().toISOString();
     const project: Project = {
       id,
@@ -6366,7 +6368,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }));
         return input.id;
       }
-      const id = crypto.randomUUID();
+      const id = newId();
       const item: WarehouseItem = {
         id,
         name,
@@ -6440,7 +6442,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const id = crypto.randomUUID();
+      const id = newId();
       const group: WarehouseGroup = {
         id,
         name,
@@ -6638,7 +6640,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             } else {
               const template = fromExp;
               const created: ProjectExpenseItem = {
-                id: crypto.randomUUID(),
+                id: newId(),
                 amount: moveAmount,
                 ...(moveEx > 0 ? { amountExVat: moveEx } : {}),
                 dueDate: template?.dueDate ?? lot.receivedAt,
@@ -7298,7 +7300,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       );
       const totalInc = roundMoney(input.qty * input.unitCostIncVat);
       const totalEx = roundMoney(input.qty * unitEx);
-      const lotId = crypto.randomUUID();
+      const lotId = newId();
       const existingItem = warehouseRef.current.items.find((i) => i.id === itemId);
       const label =
         input.label?.trim() ||
@@ -7356,7 +7358,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           },
         });
       } else {
-        expenseId = crypto.randomUUID();
+        expenseId = newId();
         const expense: ProjectExpenseItem = {
           id: expenseId,
           amount: totalInc,
@@ -7430,13 +7432,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       };
       const destLoc: WarehouseLocation = cloneLocation(input.destination);
       const balance: WarehouseBalance = {
-        id: crypto.randomUUID(),
+        id: newId(),
         lotId,
         location: destLoc,
         qty: input.qty,
       };
       const movement: WarehouseMovement = {
-        id: crypto.randomUUID(),
+        id: newId(),
         lotId,
         action: "receive",
         qty: input.qty,
@@ -7534,7 +7536,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         );
         balances = applyBalanceDelta(balances, input.lotId, input.to, input.qty);
         const movement: WarehouseMovement = {
-          id: crypto.randomUUID(),
+          id: newId(),
           lotId: input.lotId,
           action: "transfer",
           qty: input.qty,
@@ -7612,7 +7614,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           -input.qty,
         );
         const movement: WarehouseMovement = {
-          id: crypto.randomUUID(),
+          id: newId(),
           lotId: input.lotId,
           action: "consume",
           qty: input.qty,
@@ -7676,7 +7678,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           delta,
         );
         const movement: WarehouseMovement = {
-          id: crypto.randomUUID(),
+          id: newId(),
           lotId: input.lotId,
           action: "adjust",
           qty: Math.abs(delta),
