@@ -607,6 +607,7 @@ interface ProjectsApi {
   unreadNotificationCount: number;
   markNotificationRead: (notificationId: string) => void;
   markAllNotificationsRead: () => void;
+  deleteNotification: (notificationId: string) => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
   regenerateSummary: (projectId: string) => void;
@@ -2111,6 +2112,17 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         .eq("recipient_user_id", uid)
         .is("read_at", null)
         .then(logDbError("notification mark all read"));
+    }
+  }, []);
+
+  const deleteNotification = useCallback((notificationId: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+    if (supabase) {
+      void supabase
+        .from("notifications")
+        .delete()
+        .eq("id", notificationId)
+        .then(logDbError("notification delete"));
     }
   }, []);
 
@@ -8033,6 +8045,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         unreadNotificationCount,
         markNotificationRead,
         markAllNotificationsRead,
+        deleteNotification,
         updateComment,
         deleteComment,
         regenerateSummary,

@@ -13,6 +13,8 @@ import {
   PROSPECT_MARKETS,
   PROSPECT_MARKET_LABELS,
   PROSPECT_MARKET_PRODUCT,
+  PROSPECT_PRIORITIES,
+  PROSPECT_PRIORITY_LABELS,
   PROSPECT_PRODUCTS,
   PROSPECT_PRODUCT_PURITY,
   PROSPECT_SOURCES,
@@ -22,6 +24,7 @@ import {
   ProspectCompany,
   ProspectContact,
   ProspectMarket,
+  ProspectPriority,
   ProspectProduct,
   ProspectQualification,
   ProspectSource,
@@ -61,23 +64,33 @@ function ModalShell({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-deep/40 p-4 backdrop-blur-sm sm:items-center">
-      <div
-        className={`my-6 w-full rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${wide ? "max-w-2xl" : "max-w-lg"
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-deep/40 p-3 backdrop-blur-sm sm:p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* items-start (not center) so tall forms stay reachable from the top */}
+      <div className="mx-auto flex min-h-full w-full max-w-2xl items-start justify-center py-2 sm:py-4">
+        <div
+          className={`w-full rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${
+            wide ? "max-w-2xl" : "max-w-lg"
           }`}
-      >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 className="text-lg font-bold text-deep">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-tint hover:text-deep"
-            aria-label="Close"
-          >
-            ✕
-          </button>
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <h2 className="text-lg font-bold text-deep">{title}</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-sm text-muted hover:bg-surface-tint hover:text-deep"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
       </div>
     </div>
   );
@@ -92,6 +105,14 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
       ? currentUserId
       : (assignable[0]?.id ?? "");
 
+  type DraftContact = {
+    key: string;
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+  };
+
   const [name, setName] = useState("");
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
@@ -103,10 +124,9 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
   const [source, setSource] = useState<ProspectSource>("email");
   const [ownerId, setOwnerId] = useState(ownerDefault);
   const [strategyWhy, setStrategyWhy] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactTitle, setContactTitle] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
+  const [draftContacts, setDraftContacts] = useState<DraftContact[]>([
+    { key: "c0", name: "", title: "", email: "", phone: "" },
+  ]);
   const [warning, setWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -115,9 +135,24 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
 
   const valid = name.trim().length > 0;
 
+  function updateDraft(key: string, patch: Partial<DraftContact>) {
+    setDraftContacts((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+    );
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) return;
+    const contacts = draftContacts
+      .filter((c) => c.name.trim())
+      .map((c, index) => ({
+        name: c.name,
+        title: c.title,
+        email: c.email,
+        phone: c.phone,
+        isPrimary: index === 0,
+      }));
     const result = addCompany({
       name,
       country,
@@ -129,17 +164,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
       priority: "medium",
       ownerId,
       strategyWhy,
-      ...(contactName.trim()
-        ? {
-          contact: {
-            name: contactName,
-            title: contactTitle,
-            email: contactEmail,
-            phone: contactPhone,
-            isPrimary: true,
-          },
-        }
-        : {}),
+      ...(contacts.length ? { contacts } : {}),
     });
     if (result.duplicateWarning) {
       setWarning(result.duplicateWarning);
@@ -257,44 +282,100 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
-          <p className="mb-2 text-xs font-semibold text-deep">
-            First contact (optional)
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className={labelCls}>Name</label>
-              <input
-                className={inputCls}
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Job title</label>
-              <input
-                className={inputCls}
-                value={contactTitle}
-                onChange={(e) => setContactTitle(e.target.value)}
-                placeholder="Plant Manager"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Email</label>
-              <input
-                className={inputCls}
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Phone</label>
-              <input
-                className={inputCls}
-                value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
-              />
-            </div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-deep">
+              Contacts (optional)
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setDraftContacts((prev) => [
+                  ...prev,
+                  {
+                    key: `c${Date.now()}-${prev.length}`,
+                    name: "",
+                    title: "",
+                    email: "",
+                    phone: "",
+                  },
+                ])
+              }
+              className="text-[10px] font-bold uppercase text-teal-accent hover:underline"
+            >
+              + Add contact
+            </button>
+          </div>
+          <div className="space-y-3">
+            {draftContacts.map((draft, index) => (
+              <div
+                key={draft.key}
+                className="rounded-xl border border-line bg-panel/60 p-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    Contact {index + 1}
+                    {index === 0 ? " · primary" : ""}
+                  </p>
+                  {draftContacts.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDraftContacts((prev) =>
+                          prev.filter((c) => c.key !== draft.key),
+                        )
+                      }
+                      className="text-[10px] font-semibold text-muted hover:text-amber-accent"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Name</label>
+                    <input
+                      className={inputCls}
+                      value={draft.name}
+                      onChange={(e) =>
+                        updateDraft(draft.key, { name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Job title</label>
+                    <input
+                      className={inputCls}
+                      value={draft.title}
+                      onChange={(e) =>
+                        updateDraft(draft.key, { title: e.target.value })
+                      }
+                      placeholder="Plant Manager"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Email</label>
+                    <input
+                      className={inputCls}
+                      type="email"
+                      value={draft.email}
+                      onChange={(e) =>
+                        updateDraft(draft.key, { email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Phone</label>
+                    <input
+                      className={inputCls}
+                      value={draft.phone}
+                      onChange={(e) =>
+                        updateDraft(draft.key, { phone: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -798,14 +879,13 @@ export function MarkEngagedDialog({
       : contact.ownerId || teamMembers[0]?.id || "";
 
   const [responseDate, setResponseDate] = useState(todayDateOnly());
-  const [result, setResult] = useState<OutreachResult>("communication-started");
+  const [result, setResult] = useState<OutreachResult>("positive");
   const [summary, setSummary] = useState("");
   const [openColdLead, setOpenColdLead] = useState(true);
 
   const createsColdLead =
     openColdLead &&
-    (result === "communication-started" ||
-      result === "positive" ||
+    (result === "positive" ||
       result === "requested-info" ||
       result === "requested-meeting" ||
       result === "requested-offer");
@@ -864,7 +944,11 @@ export function MarkEngagedDialog({
             <select
               className={selectCls}
               value={result}
-              onChange={(e) => setResult(e.target.value as OutreachResult)}
+              onChange={(e) => {
+                const next = e.target.value as OutreachResult;
+                setResult(next);
+                if (next === "negative") setOpenColdLead(false);
+              }}
             >
               {ENGAGED_RESULTS.map((r) => (
                 <option key={r} value={r}>
@@ -890,9 +974,7 @@ export function MarkEngagedDialog({
             type="checkbox"
             checked={openColdLead}
             onChange={(e) => setOpenColdLead(e.target.checked)}
-            disabled={
-              result === "negative" || result === "not-relevant"
-            }
+            disabled={result === "negative"}
           />
           Open cold lead on Sales Projects
         </label>
@@ -909,6 +991,346 @@ export function MarkEngagedDialog({
             className="rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink"
           >
             {createsColdLead ? "Save & create cold lead" : "Save engaged"}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** Edit company + selected contact fields at any time (incl. follow-up date). */
+export function EditProspectDialog({
+  company,
+  contact,
+  onClose,
+}: {
+  company: ProspectCompany;
+  contact: ProspectContact;
+  onClose: () => void;
+}) {
+  const { updateCompany, updateContact } = useProspecting();
+  const { teamMembers } = useProjects();
+  const assignable = assignableTeamMembers(teamMembers);
+
+  const [name, setName] = useState(company.name);
+  const [country, setCountry] = useState(company.country);
+  const [city, setCity] = useState(company.city);
+  const [siteName, setSiteName] = useState(company.siteName);
+  const [website, setWebsite] = useState(company.website);
+  const [market, setMarket] = useState<ProspectMarket>(company.market);
+  const [product, setProduct] = useState<ProspectProduct>(company.product);
+  const [source, setSource] = useState<ProspectSource>(company.source);
+  const [companyOwnerId, setCompanyOwnerId] = useState(company.ownerId);
+  const [strategyWhy, setStrategyWhy] = useState(company.strategyWhy);
+  const [companyNotes, setCompanyNotes] = useState(company.notes);
+  const [nextAction, setNextAction] = useState(company.nextAction);
+
+  const [contactName, setContactName] = useState(contact.name);
+  const [title, setTitle] = useState(contact.title);
+  const [email, setEmail] = useState(contact.email);
+  const [phone, setPhone] = useState(contact.phone);
+  const [linkedinUrl, setLinkedinUrl] = useState(contact.linkedinUrl);
+  const [contactOwnerId, setContactOwnerId] = useState(contact.ownerId);
+  const [priority, setPriority] = useState<ProspectPriority>(contact.priority);
+  const [isPrimary, setIsPrimary] = useState(contact.isPrimary);
+  const [nextFollowUpAt, setNextFollowUpAt] = useState(
+    contact.nextFollowUpAt ?? "",
+  );
+  const [followUpReason, setFollowUpReason] = useState(contact.followUpReason);
+  const [contactNotes, setContactNotes] = useState(contact.notes);
+
+  const valid = name.trim().length > 0 && contactName.trim().length > 0;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    const followUp = nextFollowUpAt.trim() || null;
+    updateCompany(company.id, {
+      name: name.trim(),
+      country: country.trim(),
+      city: city.trim(),
+      siteName: siteName.trim(),
+      website: website.trim(),
+      market,
+      product,
+      source,
+      ownerId: companyOwnerId,
+      strategyWhy: strategyWhy.trim(),
+      notes: companyNotes.trim(),
+      nextAction: nextAction.trim() || followUpReason.trim(),
+      nextActionAt: followUp,
+    });
+    updateContact(contact.id, {
+      name: contactName.trim(),
+      title: title.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      linkedinUrl: linkedinUrl.trim(),
+      ownerId: contactOwnerId,
+      priority,
+      isPrimary,
+      nextFollowUpAt: followUp,
+      followUpReason: followUpReason.trim(),
+      notes: contactNotes.trim(),
+    });
+    onClose();
+  }
+
+  return (
+    <ModalShell title="Edit prospect" onClose={onClose} wide>
+      <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <p className="text-xs font-semibold text-deep">Company</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Company name *</label>
+          <input
+            autoFocus
+            className={inputCls}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Country</label>
+          <input
+            className={inputCls}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>City / location</label>
+          <input
+            className={inputCls}
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Plant / site</label>
+          <input
+            className={inputCls}
+            value={siteName}
+            onChange={(e) => setSiteName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Website</label>
+          <input
+            className={inputCls}
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Market</label>
+          <select
+            className={selectCls}
+            value={market}
+            onChange={(e) => {
+              const next = e.target.value as ProspectMarket;
+              setMarket(next);
+              setProduct(PROSPECT_MARKET_PRODUCT[next]);
+            }}
+          >
+            {PROSPECT_MARKETS.map((m) => (
+              <option key={m} value={m}>
+                {PROSPECT_MARKET_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </div>        <div>
+          <label className={labelCls}>Product</label>
+          <select
+            className={selectCls}
+            value={product}
+            onChange={(e) => setProduct(e.target.value as ProspectProduct)}
+          >
+            {PROSPECT_PRODUCTS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Source</label>
+          <select
+            className={selectCls}
+            value={source}
+            onChange={(e) => setSource(e.target.value as ProspectSource)}
+          >
+            {PROSPECT_SOURCES.map((s) => (
+              <option key={s} value={s}>
+                {PROSPECT_SOURCE_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Company owner</label>
+          <select
+            className={selectCls}
+            value={companyOwnerId}
+            onChange={(e) => setCompanyOwnerId(e.target.value)}
+          >
+            {assignable.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Why contact them?</label>
+          <textarea
+            className={`${inputCls} min-h-[56px]`}
+            value={strategyWhy}
+            onChange={(e) => setStrategyWhy(e.target.value)}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Company notes</label>
+          <textarea
+            className={`${inputCls} min-h-[56px]`}
+            value={companyNotes}
+            onChange={(e) => setCompanyNotes(e.target.value)}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Next action (company)</label>
+          <input
+            className={inputCls}
+            value={nextAction}
+            onChange={(e) => setNextAction(e.target.value)}
+            placeholder="e.g. Send follow-up email"
+          />
+        </div>
+
+        <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
+          <p className="mb-2 text-xs font-semibold text-deep">
+            Contact — {contact.name}
+          </p>
+        </div>
+        <div>
+          <label className={labelCls}>Full name *</label>
+          <input
+            className={inputCls}
+            value={contactName}
+            onChange={(e) => setContactName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Job title</label>
+          <input
+            className={inputCls}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Email</label>
+          <input
+            className={inputCls}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Phone</label>
+          <input
+            className={inputCls}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>LinkedIn URL</label>
+          <input
+            className={inputCls}
+            value={linkedinUrl}
+            onChange={(e) => setLinkedinUrl(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Contact owner</label>
+          <select
+            className={selectCls}
+            value={contactOwnerId}
+            onChange={(e) => setContactOwnerId(e.target.value)}
+          >
+            {assignable.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Priority</label>
+          <select
+            className={selectCls}
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as ProspectPriority)}
+          >
+            {PROSPECT_PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {PROSPECT_PRIORITY_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelCls}>Follow-up date</label>
+          <input
+            type="date"
+            className={inputCls}
+            value={nextFollowUpAt}
+            onChange={(e) => setNextFollowUpAt(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Follow-up reason</label>
+          <input
+            className={inputCls}
+            value={followUpReason}
+            onChange={(e) => setFollowUpReason(e.target.value)}
+            placeholder="Why follow up"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Contact notes</label>
+          <textarea
+            className={`${inputCls} min-h-[56px]`}
+            value={contactNotes}
+            onChange={(e) => setContactNotes(e.target.value)}
+          />
+        </div>
+        <label className="sm:col-span-2 flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={isPrimary}
+            onChange={(e) => setIsPrimary(e.target.checked)}
+          />
+          Primary contact
+        </label>
+
+        <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-semibold text-muted"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!valid}
+            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+          >
+            Save changes
           </button>
         </div>
       </form>

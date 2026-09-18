@@ -41,6 +41,7 @@ export default function NotificationBell() {
     unreadNotificationCount,
     markNotificationRead,
     markAllNotificationsRead,
+    deleteNotification,
     currentUserId,
     teamMembers,
   } = useProjects();
@@ -104,7 +105,7 @@ export default function NotificationBell() {
   if (!currentUserId) return null;
 
   return (
-    <>
+    <div className="px-1.5 py-1">
       <button
         ref={btnRef}
         type="button"
@@ -176,16 +177,19 @@ export default function NotificationBell() {
                         </p>
                       </>
                     );
-                    const className = `block w-full px-3 py-2.5 text-left transition hover:bg-surface ${
-                      unreadItem ? "bg-teal-soft/20" : ""
-                    }`;
+                    const bodyClass = `min-w-0 flex-1 text-left transition`;
                     return (
-                      <li key={n.id}>
+                      <li
+                        key={n.id}
+                        className={`flex items-start gap-1 px-2 py-2 ${
+                          unreadItem ? "bg-teal-soft/20" : ""
+                        }`}
+                      >
                         {n.href ? (
                           <Link
                             href={n.href}
                             role="menuitem"
-                            className={className}
+                            className={`${bodyClass} rounded-md px-1 py-0.5 hover:bg-surface`}
                             onClick={() => {
                               markNotificationRead(n.id);
                               setOpen(false);
@@ -197,12 +201,42 @@ export default function NotificationBell() {
                           <button
                             type="button"
                             role="menuitem"
-                            className={className}
+                            className={`${bodyClass} rounded-md px-1 py-0.5 hover:bg-surface`}
                             onClick={() => markNotificationRead(n.id)}
                           >
                             {content}
                           </button>
                         )}
+                        <div className="flex shrink-0 flex-col gap-1 pt-0.5">
+                          {unreadItem && (
+                            <button
+                              type="button"
+                              title="Mark as read"
+                              aria-label="Mark as read"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                markNotificationRead(n.id);
+                              }}
+                              className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[10px] font-semibold uppercase text-teal-accent hover:border-teal-accent/40"
+                            >
+                              Read
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title="Delete notification"
+                            aria-label="Delete notification"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              deleteNotification(n.id);
+                            }}
+                            className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[10px] font-semibold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                          >
+                            Del
+                          </button>
+                        </div>
                       </li>
                     );
                   })}
@@ -212,6 +246,6 @@ export default function NotificationBell() {
           </div>,
           document.body,
         )}
-    </>
+    </div>
   );
 }

@@ -281,13 +281,11 @@ export const CONTACTED_OUTREACH_RESULT: OutreachResult = "outreach-sent";
 
 /** Results used on the Engaged form (Contacted → Engaged). */
 export const ENGAGED_RESULTS: OutreachResult[] = [
-  "communication-started",
   "positive",
   "requested-info",
   "requested-meeting",
   "requested-offer",
   "negative",
-  "not-relevant",
 ];
 
 export const OUTREACH_RESULTS: OutreachResult[] = [

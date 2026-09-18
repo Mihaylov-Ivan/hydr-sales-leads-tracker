@@ -356,7 +356,7 @@ export interface AddCompanyInput {
   strategyWhy?: string;
   strategyAngle?: string;
   strategyMessage?: string;
-  /** Optional first contact */
+  /** Optional first contact (legacy single-contact shape) */
   contact?: {
     name: string;
     title?: string;
@@ -365,6 +365,15 @@ export interface AddCompanyInput {
     linkedinUrl?: string;
     isPrimary?: boolean;
   };
+  /** Optional contacts to create with the company (preferred) */
+  contacts?: Array<{
+    name: string;
+    title?: string;
+    email?: string;
+    phone?: string;
+    linkedinUrl?: string;
+    isPrimary?: boolean;
+  }>;
 }
 
 export interface LogOutreachInput {
@@ -640,42 +649,67 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         strategyMessage: input.strategyMessage,
       });
 
-      let contact: ProspectContact | undefined;
-      let contactDup: ProspectContact | undefined;
-      if (input.contact?.name.trim()) {
-        contactDup = findDuplicateContact(
-          company.id,
-          input.contact.email,
-          input.contact.name,
-        );
-        contact = createEmptyContact({
-          companyId: company.id,
-          name: input.contact.name,
-          title: input.contact.title,
-          email: input.contact.email,
-          phone: input.contact.phone,
-          linkedinUrl: input.contact.linkedinUrl,
-          ownerId: input.ownerId,
-          source: input.source,
-          priority: input.priority,
-          isPrimary: input.contact.isPrimary ?? true,
-          status: "target-identified",
-        });
+      const draftContacts = (
+        input.contacts?.length
+          ? input.contacts
+          : input.contact?.name.trim()
+            ? [input.contact]
+            : []
+      ).filter((c) => c.name.trim());
+
+      const createdContacts: ProspectContact[] = draftContacts.map(
+        (draft, index) =>
+          createEmptyContact({
+            companyId: company.id,
+            name: draft.name,
+            title: draft.title,
+            email: draft.email,
+            phone: draft.phone,
+            linkedinUrl: draft.linkedinUrl,
+            ownerId: input.ownerId,
+            source: input.source,
+            priority: input.priority,
+            isPrimary: draft.isPrimary ?? index === 0,
+            status: "target-identified",
+          }),
+      );
+
+      // Only one primary per company
+      if (createdContacts.some((c) => c.isPrimary)) {
+        let sawPrimary = false;
+        for (const c of createdContacts) {
+          if (c.isPrimary && !sawPrimary) {
+            sawPrimary = true;
+          } else if (c.isPrimary) {
+            c.isPrimary = false;
+          }
+        }
+      } else if (createdContacts[0]) {
+        createdContacts[0].isPrimary = true;
       }
+
+      const contactDup = createdContacts
+        .map((c) => findDuplicateContact(company.id, c.email, c.name))
+        .find(Boolean);
 
       setState((prev) => ({
         ...prev,
         companies: [company, ...prev.companies],
-        contacts: contact ? [contact, ...prev.contacts] : prev.contacts,
+        contacts: [...createdContacts, ...prev.contacts],
       }));
-      // Company must exist in DB before contact (FK). Chain the upserts.
+      // Company must exist in DB before contacts (FK). Chain the upserts.
       void persistCompany(company, "upsert").then((ok) => {
-        if (contact && ok) void persistContact(contact, "upsert");
-        else if (contact && !ok) {
-          console.error(
-            "Supabase prospect contact upsert skipped: company insert failed",
-            company.id,
-          );
+        if (!ok) {
+          if (createdContacts.length) {
+            console.error(
+              "Supabase prospect contact upsert skipped: company insert failed",
+              company.id,
+            );
+          }
+          return;
+        }
+        for (const contact of createdContacts) {
+          void persistContact(contact, "upsert");
         }
       });
 
@@ -690,7 +724,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           source: company.source,
         },
       });
-      if (contact) {
+      for (const contact of createdContacts) {
         recordProspectChange({
           entityType: "prospect_contact",
           entityId: contact.id,
@@ -706,7 +740,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
 
       return {
         companyId: company.id,
-        ...(contact ? { contactId: contact.id } : {}),
+        ...(createdContacts[0] ? { contactId: createdContacts[0].id } : {}),
         ...(warnings.length
           ? { duplicateWarning: warnings.join(". ") }
           : {}),
@@ -796,7 +830,21 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       const now = new Date().toISOString();
       setState((prev) => ({
         ...prev,
-        contacts: [contact, ...prev.contacts],
+        contacts: [
+          contact,
+          ...prev.contacts.map((c) => {
+            if (
+              contact.isPrimary &&
+              c.companyId === companyId &&
+              c.isPrimary
+            ) {
+              const next = { ...c, isPrimary: false, updatedAt: now };
+              persistContact(next, "upsert");
+              return next;
+            }
+            return c;
+          }),
+        ],
         companies: prev.companies.map((c) =>
           c.id === companyId
             ? { ...c, lastActivityAt: now, updatedAt: now }
@@ -826,15 +874,28 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     (id: string, patch: Partial<ProspectContact>) => {
       const before = stateRef.current.contacts.find((c) => c.id === id);
       setState((prev) => {
+        const now = new Date().toISOString();
         const contacts = prev.contacts.map((c) => {
-          if (c.id !== id) return c;
-          const next: ProspectContact = {
-            ...c,
-            ...patch,
-            updatedAt: new Date().toISOString(),
-          };
-          persistContact(next, "upsert");
-          return next;
+          if (c.id === id) {
+            const next: ProspectContact = {
+              ...c,
+              ...patch,
+              updatedAt: now,
+            };
+            persistContact(next, "upsert");
+            return next;
+          }
+          if (
+            patch.isPrimary === true &&
+            before &&
+            c.companyId === before.companyId &&
+            c.isPrimary
+          ) {
+            const next = { ...c, isPrimary: false, updatedAt: now };
+            persistContact(next, "upsert");
+            return next;
+          }
+          return c;
         });
         return { ...prev, contacts };
       });

@@ -27,6 +27,7 @@ import { assignableTeamMembers } from "@/lib/permissions";
 import {
   AddCompanyDialog,
   AddContactDialog,
+  EditProspectDialog,
   MarkContactedDialog,
   MarkEngagedDialog,
   PrepareContactDialog,
@@ -35,6 +36,7 @@ import {
 type DialogState =
   | { type: "add-company" }
   | { type: "add-contact"; company: ProspectCompany }
+  | { type: "edit"; company: ProspectCompany; contact: ProspectContact }
   | { type: "prepare"; company: ProspectCompany; contact: ProspectContact }
   | { type: "mark-contacted"; company: ProspectCompany; contact: ProspectContact }
   | { type: "mark-engaged"; company: ProspectCompany; contact: ProspectContact }
@@ -768,6 +770,20 @@ export default function ProspectingWorkspace() {
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="flex flex-wrap gap-1">
+                                <button
+                                  type="button"
+                                  title="Edit"
+                                  onClick={() =>
+                                    setDialog({
+                                      type: "edit",
+                                      company,
+                                      contact,
+                                    })
+                                  }
+                                  className="rounded-md border border-line bg-panel px-2 py-1 text-[10px] font-bold uppercase text-deep hover:border-teal-accent/40"
+                                >
+                                  Edit
+                                </button>
                                 {(contact.status === "target-identified" ||
                                   contact.status === "contact-prepared") && (
                                   <>
@@ -843,7 +859,7 @@ export default function ProspectingWorkspace() {
             {selected && (
               <aside className="hidden w-[22rem] shrink-0 flex-col overflow-hidden rounded-xl border border-line bg-panel lg:flex">
                 <div className="border-b border-line px-4 py-3">
-                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="font-bold text-deep">
                         {selected.company.name}
@@ -855,14 +871,29 @@ export default function ProspectingWorkspace() {
                           : ""}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedContactId(null)}
-                      className="text-muted hover:text-deep"
-                      aria-label="Close detail"
-                    >
-                      ✕
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDialog({
+                            type: "edit",
+                            company: selected.company,
+                            contact: selected.contact,
+                          })
+                        }
+                        className="rounded-md px-2 py-1 text-[10px] font-bold uppercase text-teal-accent hover:bg-teal-soft"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedContactId(null)}
+                        className="text-muted hover:text-deep"
+                        aria-label="Close detail"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
@@ -974,6 +1005,14 @@ export default function ProspectingWorkspace() {
                           {selected.contact.phone || "—"}
                         </dd>
                       </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-muted">Follow-up</dt>
+                        <dd className="text-right text-ink">
+                          {selected.contact.nextFollowUpAt
+                            ? formatShortDate(selected.contact.nextFollowUpAt)
+                            : "—"}
+                        </dd>
+                      </div>
                       {(selected.contact.personalizationNote ||
                         selected.contact.notes) && (
                         <p className="mt-1 rounded-lg bg-surface-tint px-2.5 py-2 text-xs">
@@ -1052,6 +1091,19 @@ export default function ProspectingWorkspace() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 border-t border-line p-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDialog({
+                        type: "edit",
+                        company: selected.company,
+                        contact: selected.contact,
+                      })
+                    }
+                    className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-deep hover:border-teal-accent/40"
+                  >
+                    Edit
+                  </button>
                   {(selected.contact.status === "target-identified" ||
                     selected.contact.status === "contact-prepared") && (
                     <>
@@ -1137,6 +1189,14 @@ export default function ProspectingWorkspace() {
       {dialog?.type === "add-contact" && (
         <AddContactDialog
           company={dialog.company}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.type === "edit" && (
+        <EditProspectDialog
+          key={dialog.contact.id}
+          company={dialog.company}
+          contact={dialog.contact}
           onClose={() => setDialog(null)}
         />
       )}
