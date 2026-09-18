@@ -118,7 +118,7 @@ function formatDateTime(iso: string): string {
   });
 }
 
-/** Scrollable region that hands the wheel back to the page at its edges. */
+/** Scrollable region that keeps the wheel inside (no page scroll chaining). */
 function ChainScroll({
   className,
   children,
@@ -134,19 +134,16 @@ function ChainScroll({
 
     const onWheel = (e: WheelEvent) => {
       const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 1) return;
+
       const atTop = el.scrollTop <= 0;
       const atBottom = el.scrollTop >= maxScroll - 1;
       const scrollingUp = e.deltaY < 0;
       const scrollingDown = e.deltaY > 0;
 
-      // No overflow, or already at the edge in that direction → scroll the page
-      if (
-        maxScroll <= 1 ||
-        (scrollingUp && atTop) ||
-        (scrollingDown && atBottom)
-      ) {
+      // At an edge: absorb the wheel so the page behind does not jump.
+      if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
         e.preventDefault();
-        window.scrollBy({ top: e.deltaY });
       }
     };
 
@@ -696,7 +693,7 @@ export default function ProjectPage() {
             No updates yet. Post the first one above.
           </p>
         ) : (
-          <ChainScroll className="max-h-[28rem] overflow-y-auto pr-1">
+          <ChainScroll className="max-h-[28rem] overflow-y-auto overscroll-contain pr-1">
             <ol className="relative flex flex-col gap-4 border-l-2 border-line pl-5">
               {timeline.map((c) => (
                 <li key={c.id} className="relative">
