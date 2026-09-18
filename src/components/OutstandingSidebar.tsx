@@ -28,7 +28,6 @@ import {
   todayDate,
 } from "@/lib/types";
 
-const EXPANDED_KEY = "hydr-outstanding-expanded";
 const SORT_KEY = "hydr-outstanding-sort";
 const SCOPE_KEY = "hydr-outstanding-scope";
 const OWNER_FILTER_KEY = "hydr-outstanding-owner";
@@ -90,14 +89,6 @@ function urgencyBucket(sortDate: string): UrgencyBucket {
   if (sortDate < today) return "overdue";
   if (sortDate === today) return "today";
   return "upcoming";
-}
-
-function readExpanded(): boolean {
-  try {
-    return window.localStorage.getItem(EXPANDED_KEY) === "1";
-  } catch {
-    return false;
-  }
 }
 
 function readSortMode(): SortMode {
@@ -613,18 +604,6 @@ function compareSidebarEntries(a: SidebarEntry, b: SidebarEntry): number {
   return 0;
 }
 
-function WiderIcon({ active }: { active: boolean }) {
-  return active ? (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden>
-      <path d="M2 2h5v1.5H3.5V7H2V2Zm7 0h5v5h-1.5V3.5H9V2ZM2 9h1.5v3.5H7V14H2V9Zm12 0V14H9v-1.5h3.5V9H14Z" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden>
-      <path d="M1 1h6v1.5H2.5V7H1V1Zm8 0h6v6h-1.5V2.5H9V1ZM1 9h1.5v4.5H7V15H1V9Zm14 0V15H9v-1.5h4.5V9H15Z" />
-    </svg>
-  );
-}
-
 function FullscreenIcon() {
   return (
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden>
@@ -652,7 +631,6 @@ export default function OutstandingSidebar() {
     getProjectUserReminder,
     projectUserReminders,
   } = useProjects();
-  const [wider, setWider] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("by-project");
   const [scope, setScope] = useState<ScopeMode>("project");
@@ -661,7 +639,6 @@ export default function OutstandingSidebar() {
   const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
-    setWider(readExpanded());
     setSortMode(readSortMode());
     setScope(readScopeMode());
     const stored = readOwnerFilterIds();
@@ -673,15 +650,6 @@ export default function OutstandingSidebar() {
     }
     setPrefsReady(true);
   }, []);
-
-  useEffect(() => {
-    if (!prefsReady) return;
-    try {
-      window.localStorage.setItem(EXPANDED_KEY, wider ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [wider, prefsReady]);
 
   useEffect(() => {
     if (!prefsReady) return;
@@ -948,7 +916,7 @@ export default function OutstandingSidebar() {
     );
   }
 
-  const richChrome = wider || fullscreen;
+  const richChrome = fullscreen;
 
   const exitFullscreen = () => setFullscreen(false);
 
@@ -1383,13 +1351,9 @@ export default function OutstandingSidebar() {
 
   if (!ready) return null;
 
-  const widthClass = wider ? "lg:w-[26rem] xl:w-[30rem]" : "lg:w-72 xl:w-80";
-
   return (
     <>
-      <aside
-        className={`flex w-full shrink-0 flex-col lg:h-full ${widthClass}`}
-      >
+      <aside className="flex w-full shrink-0 flex-col lg:h-full lg:w-72 xl:w-80">
         <div className="flex max-h-[min(28rem,70dvh)] min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-sm lg:max-h-none">
           <header className="shrink-0 border-b border-line px-3 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
@@ -1401,27 +1365,15 @@ export default function OutstandingSidebar() {
                   {totalOpen}
                 </span>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setWider((v) => !v)}
-                  title={wider ? "Narrow sidebar" : "Widen sidebar"}
-                  aria-pressed={wider}
-                  className="hidden items-center gap-1 rounded-md border border-line px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent lg:inline-flex"
-                >
-                  <WiderIcon active={wider} />
-                  {wider ? "Narrow" : "Wider"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFullscreen(true)}
-                  title="Open full screen"
-                  className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
-                >
-                  <FullscreenIcon />
-                  Full screen
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setFullscreen(true)}
+                title="Open full screen"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-line px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted transition hover:border-teal-accent hover:text-teal-accent"
+              >
+                <FullscreenIcon />
+                Full screen
+              </button>
             </div>
             <div className="mt-2">{renderScopeToggle()}</div>
             {renderOwnerFilter()}
