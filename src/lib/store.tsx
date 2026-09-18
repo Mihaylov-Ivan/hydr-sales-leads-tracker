@@ -1561,9 +1561,11 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       setCurrentUserIdState(authUser.userId);
       return;
     }
-    if (!authEnabled) {
-      setCurrentUserIdState(teamMembers[0]?.id ?? null);
+    if (authEnabled) {
+      setCurrentUserIdState(null);
+      return;
     }
+    setCurrentUserIdState(teamMembers[0]?.id ?? null);
   }, [authReady, authEnabled, authUser?.userId, teamMembers]);
 
   useEffect(() => {

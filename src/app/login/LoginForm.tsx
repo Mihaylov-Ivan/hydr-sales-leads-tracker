@@ -3,18 +3,27 @@
 import { FormEvent, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { refresh } = useAuth();
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    // Uncontrolled fields + FormData so browser autofill (esp. on LAN/mobile)
+    // is not blocked by React state that never received onChange.
+    const form = new FormData(e.currentTarget);
+    const username = String(form.get("username") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    if (!username || !password) {
+      setError("Username and password are required.");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch("/api/auth/login", {
@@ -32,6 +41,9 @@ export default function LoginForm() {
         setError(data?.error ?? "Incorrect username or password.");
         return;
       }
+      // AuthProvider survives client navigations; reload session into context
+      // before leaving /login so the app doesn't render as logged-out.
+      await refresh();
       if (data?.user?.mustChangePassword) {
         router.replace("/change-password");
         router.refresh();
@@ -72,10 +84,10 @@ export default function LoginForm() {
         </label>
         <input
           type="text"
+          name="username"
           autoFocus
           autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          defaultValue=""
           className="mb-3 w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-teal-accent"
         />
 
@@ -84,9 +96,9 @@ export default function LoginForm() {
         </label>
         <input
           type="password"
+          name="password"
           autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          defaultValue=""
           className="mb-3 w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-teal-accent"
         />
 
@@ -98,7 +110,7 @@ export default function LoginForm() {
 
         <button
           type="submit"
-          disabled={!username.trim() || !password || submitting}
+          disabled={submitting}
           className="w-full rounded-lg bg-olive px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? "Signing in…" : "Sign in"}

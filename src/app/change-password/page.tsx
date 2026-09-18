@@ -3,10 +3,12 @@
 import { FormEvent, Suspense, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { defaultHomePath, type SessionUser } from "@/lib/permissions";
 
 function ChangePasswordForm() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -40,6 +42,7 @@ function ChangePasswordForm() {
         setError(data?.error ?? "Could not change password.");
         return;
       }
+      await refresh();
       const home = data?.user ? defaultHomePath(data.user) : "/";
       router.replace(home);
       router.refresh();
