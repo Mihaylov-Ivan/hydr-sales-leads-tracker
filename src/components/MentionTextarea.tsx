@@ -17,6 +17,7 @@ import {
   mentionHandle,
   mentionSuggestions,
 } from "@/lib/notifications";
+import { chainWheelToScrollParent } from "@/lib/scroll-chain";
 
 type MenuPos = { top: number; left: number; width: number };
 
@@ -130,6 +131,14 @@ export function MentionTextarea({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menu]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => chainWheelToScrollParent(el, e);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   function pick(member: TeamMember) {
     const { next, caret } = insertMention(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useState } from "react";
 import { useProjects } from "@/lib/store";
 import {
   ProjectTodo,
@@ -13,47 +13,7 @@ import {
   todayDate,
 } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
-
-/** Keep wheel scrolling inside the list so the page does not jump at the edges. */
-function ScrollContain({
-  className,
-  style,
-  children,
-}: {
-  className?: string;
-  style?: CSSProperties;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const onWheel = (e: WheelEvent) => {
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 1) return;
-
-      const atTop = el.scrollTop <= 0;
-      const atBottom = el.scrollTop >= maxScroll - 1;
-      const scrollingUp = e.deltaY < 0;
-      const scrollingDown = e.deltaY > 0;
-
-      if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
-        e.preventDefault();
-      }
-    };
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
-  return (
-    <div ref={ref} className={className} style={style}>
-      {children}
-    </div>
-  );
-}
+import ChainScroll, { ChainTextarea } from "@/components/ChainScroll";
 
 function Checkbox({ done }: { done: boolean }) {
   return (
@@ -223,7 +183,7 @@ function Answer({
 
   if (editing) {
     return (
-      <textarea
+      <ChainTextarea
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -326,7 +286,7 @@ function TodoItem({
         </button>
 
         {editing && !nameLocked ? (
-          <textarea
+          <ChainTextarea
             autoFocus
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -494,7 +454,7 @@ export default function TodoList({
       </div>
 
       <form onSubmit={submit} className="mb-2 flex flex-wrap gap-2">
-        <textarea
+        <ChainTextarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -561,8 +521,8 @@ export default function TodoList({
             : "Nothing here yet. Add the next step so it doesn't slip."}
         </p>
       ) : (
-        <ScrollContain
-          className="overflow-y-auto overscroll-contain pr-0.5"
+        <ChainScroll
+          className="overflow-y-auto pr-0.5"
           style={{ maxHeight: "calc(4 * 3.85rem)" }}
         >
           <ul className="flex flex-col">
@@ -608,7 +568,7 @@ export default function TodoList({
               )}
             {done.map((t) => renderTodoItem(t))}
           </ul>
-        </ScrollContain>
+        </ChainScroll>
       )}
     </section>
   );

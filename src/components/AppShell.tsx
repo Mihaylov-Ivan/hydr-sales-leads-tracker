@@ -43,7 +43,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 className={
                   lockBoard
                     ? "absolute inset-0 min-h-0 overflow-hidden"
-                    : "min-h-0 lg:absolute lg:inset-0 lg:overflow-y-auto lg:overscroll-contain lg:p-4 xl:p-6"
+                    : "min-h-0 lg:absolute lg:inset-0 lg:overflow-y-auto lg:p-4 xl:p-6"
                 }
               >
                 {children}

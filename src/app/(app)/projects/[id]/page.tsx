@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
@@ -18,6 +18,7 @@ import {
   MentionTextarea,
   MentionRichText,
 } from "@/components/MentionTextarea";
+import ChainScroll, { ChainTextarea } from "@/components/ChainScroll";
 import { useAuth } from "@/lib/auth-context";
 import { assignableTeamMembers } from "@/lib/permissions";
 
@@ -116,46 +117,6 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-/** Scrollable region that keeps the wheel inside (no page scroll chaining). */
-function ChainScroll({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const onWheel = (e: WheelEvent) => {
-      const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 1) return;
-
-      const atTop = el.scrollTop <= 0;
-      const atBottom = el.scrollTop >= maxScroll - 1;
-      const scrollingUp = e.deltaY < 0;
-      const scrollingDown = e.deltaY > 0;
-
-      // At an edge: absorb the wheel so the page behind does not jump.
-      if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
-        e.preventDefault();
-      }
-    };
-
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
-  return (
-    <div ref={ref} className={className}>
-      {children}
-    </div>
-  );
 }
 
 export default function ProjectPage() {
@@ -693,7 +654,7 @@ export default function ProjectPage() {
             No updates yet. Post the first one above.
           </p>
         ) : (
-          <ChainScroll className="max-h-[28rem] overflow-y-auto overscroll-contain pr-1">
+          <ChainScroll className="max-h-[28rem] overflow-y-auto pr-1">
             <ol className="relative flex flex-col gap-4 border-l-2 border-line pl-5">
               {timeline.map((c) => (
                 <li key={c.id} className="relative">
@@ -750,7 +711,7 @@ export default function ProjectPage() {
                     </div>
                     {editingCommentId === c.id ? (
                       <div className="flex flex-col gap-2">
-                        <textarea
+                        <ChainTextarea
                           autoFocus
                           value={commentDraft}
                           onChange={(e) => setCommentDraft(e.target.value)}
