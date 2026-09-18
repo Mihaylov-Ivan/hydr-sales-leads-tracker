@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useProjects } from "@/lib/store";
 import {
   ProjectTodo,
@@ -13,6 +13,47 @@ import {
   todayDate,
 } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
+
+/** Keep wheel scrolling inside the list so the page does not jump at the edges. */
+function ScrollContain({
+  className,
+  style,
+  children,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 1) return;
+
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop >= maxScroll - 1;
+      const scrollingUp = e.deltaY < 0;
+      const scrollingDown = e.deltaY > 0;
+
+      if ((scrollingUp && atTop) || (scrollingDown && atBottom)) {
+        e.preventDefault();
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  return (
+    <div ref={ref} className={className} style={style}>
+      {children}
+    </div>
+  );
+}
 
 function Checkbox({ done }: { done: boolean }) {
   return (
@@ -520,49 +561,54 @@ export default function TodoList({
             : "Nothing here yet. Add the next step so it doesn't slip."}
         </p>
       ) : (
-        <ul className="flex flex-col">
-          {active.length > 0 && (
-            <>
-              <li
-                className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-teal-accent"
-                aria-hidden
-              >
-                Working on now · {active.length}
-              </li>
-              {active.map((t) => renderTodoItem(t, true))}
-            </>
-          )}
-          {upcoming.length > 0 && (
-            <>
-              <li
-                className={`px-2 text-[10px] font-bold uppercase tracking-wide text-muted ${
-                  active.length > 0 ? "mt-3" : "pt-1"
-                }`}
-                aria-hidden
-              >
-                Coming up next · {upcoming.length}
-              </li>
-              {upcoming.map((t) => renderTodoItem(t))}
-            </>
-          )}
-          {rest.length > 0 && (active.length > 0 || upcoming.length > 0) && (
-            <li
-              className="mx-2 my-2 px-2 text-[10px] font-bold uppercase tracking-wide text-muted"
-              aria-hidden
-            >
-              Other open · {rest.length}
-            </li>
-          )}
-          {rest.map((t) => renderTodoItem(t))}
-          {(active.length > 0 || upcoming.length > 0 || rest.length > 0) &&
-            done.length > 0 && (
-              <li
-                className="mx-2 my-1.5 border-t border-dashed border-line"
-                aria-hidden
-              />
+        <ScrollContain
+          className="overflow-y-auto overscroll-contain pr-0.5"
+          style={{ maxHeight: "calc(4 * 3.85rem)" }}
+        >
+          <ul className="flex flex-col">
+            {active.length > 0 && (
+              <>
+                <li
+                  className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-teal-accent"
+                  aria-hidden
+                >
+                  Working on now · {active.length}
+                </li>
+                {active.map((t) => renderTodoItem(t, true))}
+              </>
             )}
-          {done.map((t) => renderTodoItem(t))}
-        </ul>
+            {upcoming.length > 0 && (
+              <>
+                <li
+                  className={`px-2 text-[10px] font-bold uppercase tracking-wide text-muted ${
+                    active.length > 0 ? "mt-3" : "pt-1"
+                  }`}
+                  aria-hidden
+                >
+                  Coming up next · {upcoming.length}
+                </li>
+                {upcoming.map((t) => renderTodoItem(t))}
+              </>
+            )}
+            {rest.length > 0 && (active.length > 0 || upcoming.length > 0) && (
+              <li
+                className="mx-2 my-2 px-2 text-[10px] font-bold uppercase tracking-wide text-muted"
+                aria-hidden
+              >
+                Other open · {rest.length}
+              </li>
+            )}
+            {rest.map((t) => renderTodoItem(t))}
+            {(active.length > 0 || upcoming.length > 0 || rest.length > 0) &&
+              done.length > 0 && (
+                <li
+                  className="mx-2 my-1.5 border-t border-dashed border-line"
+                  aria-hidden
+                />
+              )}
+            {done.map((t) => renderTodoItem(t))}
+          </ul>
+        </ScrollContain>
       )}
     </section>
   );
