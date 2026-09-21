@@ -2659,7 +2659,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
    */
   const advanceFollowUpReminderForTodo = useCallback(
     (projectId: string, todo: ProjectTodo) => {
-      if (!isClientFollowUpTodo(todo)) return;
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      if (!project || !isClientFollowUpTodo(todo, project.client)) return;
       const uid = todo.ownerUserId ?? currentUserIdRef.current;
       if (!uid) return;
       const reminder = getProjectUserReminder(projectId, uid);
@@ -2739,7 +2740,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
       const todos = current.todos.map((t) =>
         !t.done &&
-        isClientFollowUpTodo(t) &&
+        isClientFollowUpTodo(t, current.client) &&
         (!uid || t.ownerUserId === uid)
           ? { ...t, done: true, doneAt: now }
           : t,
@@ -2765,7 +2766,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .eq("id", projectId)
           .then(logDbError("mark client contacted"));
         for (const t of current.todos) {
-          if (t.done || !isClientFollowUpTodo(t)) continue;
+          if (t.done || !isClientFollowUpTodo(t, current.client)) continue;
           if (uid && t.ownerUserId !== uid) continue;
           void supabase
             .from("project_todos")
@@ -3195,7 +3196,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     for (const project of list) {
       if (project.isWarehouseHolding || project.stage === "cancelled") {
         for (const t of project.todos) {
-          if (!t.done && isClientFollowUpTodo(t)) {
+          if (!t.done && isClientFollowUpTodo(t, project.client)) {
             updateTodo(project.id, t.id, { done: true });
           }
         }
@@ -3203,7 +3204,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
 
       const openFollowUps = project.todos.filter(
-        (t) => !t.done && isClientFollowUpTodo(t),
+        (t) => !t.done && isClientFollowUpTodo(t, project.client),
       );
       const text = clientFollowUpTodoText(project.client);
 

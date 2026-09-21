@@ -236,6 +236,7 @@ function Answer({
 
 function TodoItem({
   todo,
+  client,
   teamMembers,
   showAnswer,
   highlight = false,
@@ -244,6 +245,7 @@ function TodoItem({
   onDelete,
 }: {
   todo: ProjectTodo;
+  client: string;
   teamMembers: TeamMember[];
   showAnswer: boolean;
   highlight?: boolean;
@@ -260,7 +262,7 @@ function TodoItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
-  const nameLocked = isClientFollowUpTodo(todo);
+  const nameLocked = isClientFollowUpTodo(todo, client);
 
   function commit() {
     setEditing(false);
@@ -378,10 +380,12 @@ const PLACEHOLDERS: Record<TodoKind, string> = {
 
 export default function TodoList({
   projectId,
+  client,
   kind,
   todos,
 }: {
   projectId: string;
+  client: string;
   kind: TodoKind;
   todos: ProjectTodo[];
 }) {
@@ -402,6 +406,7 @@ export default function TodoList({
       <TodoItem
         key={t.id}
         todo={t}
+        client={client}
         teamMembers={assignable}
         showAnswer={kind === "question"}
         highlight={highlight}

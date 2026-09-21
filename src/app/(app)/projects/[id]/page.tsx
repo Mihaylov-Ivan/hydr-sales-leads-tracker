@@ -582,16 +582,19 @@ export default function ProjectPage() {
       {/* Questions and action items */}
       <TodoList
         projectId={project.id}
+        client={project.client}
         kind="question"
         todos={project.todos.filter((t) => t.kind === "question")}
       />
       <TodoList
         projectId={project.id}
+        client={project.client}
         kind="our-action"
         todos={project.todos.filter((t) => t.kind === "our-action")}
       />
       <TodoList
         projectId={project.id}
+        client={project.client}
         kind="client-action"
         todos={project.todos.filter((t) => t.kind === "client-action")}
       />

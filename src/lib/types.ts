@@ -1661,11 +1661,19 @@ export function clientFollowUpTodoText(client: string): string {
   return `Follow up with ${name}`;
 }
 
-/** Detect auto-created client follow-up reminder todos */
-export function isClientFollowUpTodo(todo: ProjectTodo): boolean {
+/**
+ * Detect auto-created client follow-up reminder todos.
+ * Must match the exact sync-generated title for this project’s client —
+ * otherwise any user task starting with “Follow up with …” would be
+ * force-completed whenever the reminder is not due.
+ */
+export function isClientFollowUpTodo(
+  todo: ProjectTodo,
+  client: string,
+): boolean {
   return (
     todo.kind === "our-action" &&
-    /^Follow up with /i.test(todo.text.trim())
+    todo.text.trim() === clientFollowUpTodoText(client)
   );
 }
 

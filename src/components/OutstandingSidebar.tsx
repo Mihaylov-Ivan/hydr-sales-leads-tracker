@@ -785,7 +785,7 @@ export default function OutstandingSidebar() {
         );
       const hasVisibleFollowUpTodo = todos.some(
         (t) =>
-          isClientFollowUpTodo(t) &&
+          isClientFollowUpTodo(t, project.client) &&
           (!currentUserId || t.ownerUserId === currentUserId),
       );
       const showSyntheticContact = emailDueForMe && !hasVisibleFollowUpTodo;
