@@ -67,7 +67,9 @@ export default function ProjectCard({
           suppressClick.current = false;
         }
       }}
-      className={`group flex cursor-grab flex-col gap-2.5 rounded-xl border bg-panel p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
+      className={`group flex flex-col gap-2.5 rounded-xl border bg-panel p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        allowDrag ? "active:cursor-grabbing" : ""
+      } ${
         nextStepMissing
           ? "border-red-600 hover:border-red-500"
           : emailDue
