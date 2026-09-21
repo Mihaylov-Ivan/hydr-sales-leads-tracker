@@ -121,7 +121,7 @@ export default function NewPersonalTodoDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Window start
+                Time window start
               </span>
               <input
                 type="date"
@@ -132,7 +132,7 @@ export default function NewPersonalTodoDialog({
             </label>
             <label className="block">
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Window end
+                Time window end
               </span>
               <input
                 type="date"

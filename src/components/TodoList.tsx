@@ -472,30 +472,39 @@ export default function TodoList({
           placeholder={PLACEHOLDERS[kind]}
           className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
         />
-        <input
-          type="date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          title="Deadline (optional)"
-          aria-label="Deadline (optional)"
-          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
-        />
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          title="Start working on (optional)"
-          aria-label="Start working on (optional)"
-          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
-        />
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          title="Aim to finish by (optional)"
-          aria-label="Aim to finish by (optional)"
-          className="shrink-0 rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
-        />
+        <label className="flex shrink-0 flex-col gap-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Deadline
+          </span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+          />
+        </label>
+        <label className="flex shrink-0 flex-col gap-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Time window start
+          </span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+          />
+        </label>
+        <label className="flex shrink-0 flex-col gap-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Time window end
+          </span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+          />
+        </label>
         <select
           value={ownerUserId}
           onChange={(e) => setOwnerUserId(e.target.value)}
