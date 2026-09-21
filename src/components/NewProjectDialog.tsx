@@ -37,9 +37,7 @@ export default function NewProjectDialog({
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [series, setSeries] = useState<Series>("Z Series");
-  const [market, setMarket] = useState(
-    track === "eu" ? "Funding" : track === "rnd" ? "Clean H2" : "Clean H2",
-  );
+  const [market, setMarket] = useState<string>("Clean H2");
   const [sizeKw, setSizeKw] = useState("");
   const [stage, setStage] = useState<Stage>(defaultStageForTrack(track));
   const [leadUserId, setLeadUserId] = useState("");

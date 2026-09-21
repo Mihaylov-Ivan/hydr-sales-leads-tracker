@@ -213,7 +213,6 @@ export function seriesIncludesTag(
 export type MarketTag =
   | "Cement"
   | "Power Plants"
-  | "Funding"
   | "Clean H2"
   | "Burner Optimisation"
   | "Tenders";
@@ -222,7 +221,6 @@ export type MarketTag =
 export const MARKETS: MarketTag[] = [
   "Cement",
   "Power Plants",
-  "Funding",
   "Clean H2",
   "Burner Optimisation",
   "Tenders",
@@ -240,7 +238,7 @@ export function isMarketTag(value: string): value is MarketTag {
   return MARKET_TAG_SET.has(value);
 }
 
-/** Split a stored market string into known tags (unknown fragments dropped). */
+/** Split a stored market string into known tags (unknown / legacy Funding dropped). */
 export function parseMarketTags(market: string | null | undefined): MarketTag[] {
   if (!market || !market.trim()) return ["Clean H2"];
   const parts = market
@@ -250,6 +248,8 @@ export function parseMarketTags(market: string | null | undefined): MarketTag[] 
   const tags: MarketTag[] = [];
   const seen = new Set<MarketTag>();
   for (const part of parts) {
+    // Funding moved to the EU Projects & RnD page — ignore if still stored.
+    if (part === "Funding") continue;
     if (!isMarketTag(part) || seen.has(part)) continue;
     seen.add(part);
     tags.push(part);

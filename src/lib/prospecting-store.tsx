@@ -17,6 +17,7 @@ import {
   recordPersistedChange,
   type RecordChangeInput,
 } from "./change-history";
+import { isMarketTag } from "./types";
 import {
   createEmptyCompany,
   createEmptyContact,
@@ -32,10 +33,10 @@ import {
   ProspectPriority,
   ProspectSource,
   ProspectStatus,
+  ProspectSystem,
   OutreachChannel,
   OutreachResult,
   ProspectQualification,
-  ProspectProduct,
   startOfMonth,
   startOfWeekMonday,
   statusAfterOutreachResult,
@@ -43,6 +44,8 @@ import {
   normalizeProspectMarket,
   normalizeProspectSource,
   normalizeProspectStatus,
+  normalizeProspectSystem,
+  DEFAULT_PROSPECT_SYSTEM,
 } from "./prospecting-types";
 
 const STORAGE_KEY = "hydrogenera-prospecting-v1";
@@ -61,16 +64,22 @@ function sanitizeState(raw: unknown): ProspectingState {
   if (!raw || typeof raw !== "object") return base;
   const o = raw as Partial<ProspectingState>;
   const companies = (Array.isArray(o.companies) ? o.companies : []).map(
-    (c) => ({
-      ...c,
-      market: normalizeProspectMarket(c.market),
-      source: normalizeProspectSource(c.source),
-      status: normalizeProspectStatus(c.status),
-      sizeKw:
-        typeof c.sizeKw === "number" && Number.isFinite(c.sizeKw) && c.sizeKw > 0
-          ? c.sizeKw
-          : 0,
-    }),
+    (c) => {
+      const raw = c as ProspectCompany & { product?: string };
+      return {
+        ...raw,
+        market: normalizeProspectMarket(raw.market),
+        system: normalizeProspectSystem(raw.system ?? raw.product),
+        source: normalizeProspectSource(raw.source),
+        status: normalizeProspectStatus(raw.status),
+        sizeKw:
+          typeof raw.sizeKw === "number" &&
+          Number.isFinite(raw.sizeKw) &&
+          raw.sizeKw > 0
+            ? raw.sizeKw
+            : 0,
+      };
+    },
   );
   const contacts = (Array.isArray(o.contacts) ? o.contacts : []).map((c) => ({
     ...c,
@@ -80,8 +89,15 @@ function sanitizeState(raw: unknown): ProspectingState {
   const rawAlloc = o.targets?.marketAllocation ?? {};
   const marketAllocation = { ...DEFAULT_PROSPECTING_TARGETS.marketAllocation };
   for (const [key, value] of Object.entries(rawAlloc)) {
-    const market = normalizeProspectMarket(key);
-    marketAllocation[market] = Number(value) || marketAllocation[market] || 0;
+    const n = Number(value) || 0;
+    if (key === "Funding") {
+      marketAllocation["Clean H2"] =
+        (marketAllocation["Clean H2"] ?? 0) + n;
+      continue;
+    }
+    if (isMarketTag(key)) {
+      marketAllocation[key] = n || marketAllocation[key] || 0;
+    }
   }
   return {
     companies,
@@ -148,9 +164,15 @@ async function loadRemote(): Promise<ProspectingState | null> {
         ...DEFAULT_PROSPECTING_TARGETS.marketAllocation,
       };
       for (const [key, value] of Object.entries(rawAlloc)) {
-        const market = normalizeProspectMarket(key);
-        marketAllocation[market] =
-          Number(value) || marketAllocation[market] || 0;
+        const n = Number(value) || 0;
+        if (key === "Funding") {
+          marketAllocation["Clean H2"] =
+            (marketAllocation["Clean H2"] ?? 0) + n;
+          continue;
+        }
+        if (isMarketTag(key)) {
+          marketAllocation[key] = n || marketAllocation[key] || 0;
+        }
       }
       targets = {
         monthlyContactTarget: Number(t.monthly_contact_target) || 80,
@@ -176,7 +198,7 @@ function companyFromRow(row: Record<string, unknown>): ProspectCompany {
     website: String(row.website ?? ""),
     industry: String(row.industry ?? ""),
     market: normalizeProspectMarket(String(row.market ?? "")),
-    product: (row.product as ProspectProduct) ?? "E-Series",
+    system: normalizeProspectSystem(String(row.product ?? DEFAULT_PROSPECT_SYSTEM)),
     source: normalizeProspectSource(String(row.source ?? "email")),
     priority: (row.priority as ProspectPriority) ?? "medium",
     ownerId: String(row.owner_id ?? ""),
@@ -279,7 +301,7 @@ function companyToRow(c: ProspectCompany) {
     website: c.website,
     industry: c.industry,
     market: c.market,
-    product: c.product,
+    product: c.system,
     source: c.source,
     priority: c.priority,
     owner_id: c.ownerId || null,
@@ -360,7 +382,7 @@ export interface AddCompanyInput {
   website?: string;
   industry?: string;
   market: ProspectMarket;
-  product?: ProspectProduct;
+  system?: ProspectSystem;
   source?: ProspectSource;
   priority?: ProspectPriority;
   ownerId: string;
@@ -686,7 +708,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         website: input.website,
         industry: input.industry,
         market: input.market,
-        product: input.product,
+        system: input.system,
         source: input.source,
         priority: input.priority,
         ownerId: input.ownerId,

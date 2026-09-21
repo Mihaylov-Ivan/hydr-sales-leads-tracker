@@ -8,13 +8,12 @@ import {
   PROSPECT_MARKET_LABELS,
   PROSPECT_MARKETS,
   PROSPECT_PRIORITY_LABELS,
-  PROSPECT_PRODUCT_PURITY,
   PROSPECT_SOURCE_LABELS,
   PROSPECT_SOURCES,
   PROSPECT_VIEW_LABELS,
   ProspectCompany,
   ProspectContact,
-  ProspectMarket,
+  ProspectMarketTag,
   ProspectSource,
   ProspectView,
   ProspectWorkRow,
@@ -22,7 +21,7 @@ import {
   weekdayFocus,
   WEEKDAY_FOCUS_COPY,
 } from "@/lib/prospecting-types";
-import { STAGE_LABELS, Stage } from "@/lib/types";
+import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
 import {
   AddCompanyDialog,
@@ -116,7 +115,7 @@ export default function ProspectingWorkspace() {
 
   const [view, setView] = useState<ProspectView>("prepare");
   const [search, setSearch] = useState("");
-  const [filterMarket, setFilterMarket] = useState<ProspectMarket | "">("");
+  const [filterMarket, setFilterMarket] = useState<ProspectMarketTag | "">("");
   const [filterSource, setFilterSource] = useState<ProspectSource | "">("");
   const [filterOwner, setFilterOwner] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
@@ -215,7 +214,9 @@ export default function ProspectingWorkspace() {
           return false;
         }
       }
-      if (filterMarket && company.market !== filterMarket) return false;
+      if (filterMarket && !marketIncludesTag(company.market, filterMarket)) {
+        return false;
+      }
       if (filterSource && company.source !== filterSource) return false;
       if (filterOwner && contact.ownerId !== filterOwner) return false;
 
@@ -228,7 +229,8 @@ export default function ProspectingWorkspace() {
         contact.name,
         contact.title,
         contact.email,
-        PROSPECT_MARKET_LABELS[company.market],
+        company.market,
+        company.system,
         PROSPECT_SOURCE_LABELS[company.source],
       ]
         .join(" ")
@@ -299,7 +301,7 @@ export default function ProspectingWorkspace() {
     const byMarket = PROSPECT_MARKETS.map((market) => {
       const mContacts = contacts.filter((c) => {
         const co = companyById.get(c.companyId);
-        return co?.market === market;
+        return co ? marketIncludesTag(co.market, market) : false;
       });
       const engaged = mContacts.filter(
         (c) =>
@@ -602,7 +604,7 @@ export default function ProspectingWorkspace() {
             <select
               value={filterMarket}
               onChange={(e) =>
-                setFilterMarket(e.target.value as ProspectMarket | "")
+                setFilterMarket(e.target.value as ProspectMarketTag | "")
               }
               className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
             >
@@ -764,10 +766,10 @@ export default function ProspectingWorkspace() {
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="text-xs text-ink">
-                                {PROSPECT_MARKET_LABELS[company.market]}
+                                {company.market}
                               </div>
                               <div className="text-[10px] text-muted">
-                                {company.product} ·{" "}
+                                {company.system} ·{" "}
                                 {PROSPECT_PRIORITY_LABELS[contact.priority]}
                               </div>
                             </td>
@@ -908,8 +910,10 @@ export default function ProspectingWorkspace() {
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
-                      {selected.company.product} ·{" "}
-                      {PROSPECT_PRODUCT_PURITY[selected.company.product]}
+                      {selected.company.market}
+                    </span>
+                    <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
+                      {selected.company.system}
                     </span>
                     <span className="rounded-md bg-surface-tint px-2 py-0.5 text-[10px] font-bold uppercase text-muted">
                       {PROSPECT_PRIORITY_LABELS[selected.contact.priority]}
@@ -926,7 +930,13 @@ export default function ProspectingWorkspace() {
                       <div className="flex justify-between gap-2">
                         <dt className="text-muted">Market</dt>
                         <dd className="text-right text-ink">
-                          {PROSPECT_MARKET_LABELS[selected.company.market]}
+                          {selected.company.market}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-muted">System</dt>
+                        <dd className="text-right text-ink">
+                          {selected.company.system}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-2">

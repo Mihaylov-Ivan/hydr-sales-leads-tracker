@@ -4,30 +4,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import { useProspecting } from "@/lib/prospecting-store";
+import MarketMultiSelect from "@/components/MarketMultiSelect";
+import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import {
   ENGAGED_RESULTS,
   OUTREACH_CHANNEL_LABELS,
   OUTREACH_RESULTS,
   OUTREACH_RESULT_LABELS,
   PROSPECTING_CHANNELS,
-  PROSPECT_MARKETS,
-  PROSPECT_MARKET_LABELS,
-  PROSPECT_MARKET_PRODUCT,
   PROSPECT_PRIORITIES,
   PROSPECT_PRIORITY_LABELS,
-  PROSPECT_PRODUCTS,
-  PROSPECT_PRODUCT_PURITY,
   PROSPECT_SOURCES,
   PROSPECT_SOURCE_LABELS,
-  PROSPECT_TO_PROJECT_MARKET,
-  PROSPECT_TO_PROJECT_SERIES,
   ProspectCompany,
   ProspectContact,
   ProspectMarket,
   ProspectPriority,
-  ProspectProduct,
   ProspectQualification,
   ProspectSource,
+  ProspectSystem,
   OutreachChannel,
   OutreachResult,
   YesNoUnknown,
@@ -104,9 +99,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
   const [city, setCity] = useState("");
   const [siteName, setSiteName] = useState("");
   const [market, setMarket] = useState<ProspectMarket>("Burner Optimisation");
-  const [product, setProduct] = useState<ProspectProduct>(
-    PROSPECT_MARKET_PRODUCT["Burner Optimisation"],
-  );
+  const [system, setSystem] = useState<ProspectSystem>("E Series");
   const [source, setSource] = useState<ProspectSource>("email");
   const [ownerId, setOwnerId] = useState(ownerDefault);
   const [sizeKw, setSizeKw] = useState("");
@@ -115,10 +108,6 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
     { key: "c0", name: "", title: "", email: "", phone: "" },
   ]);
   const [warning, setWarning] = useState<string | null>(null);
-
-  useEffect(() => {
-    setProduct(PROSPECT_MARKET_PRODUCT[market]);
-  }, [market]);
 
   useEffect(() => {
     if (!ownerId && ownerDefault) setOwnerId(ownerDefault);
@@ -157,7 +146,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
       city,
       siteName,
       market,
-      product,
+      system,
       source,
       priority: "medium",
       ownerId,
@@ -216,33 +205,11 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <label className={labelCls}>Market *</label>
-          <select
-            className={selectCls}
-            value={market}
-            onChange={(e) => setMarket(e.target.value as ProspectMarket)}
-          >
-            {PROSPECT_MARKETS.map((m) => (
-              <option key={m} value={m}>
-                {PROSPECT_MARKET_LABELS[m]}
-              </option>
-            ))}
-          </select>
+          <MarketMultiSelect value={market} onChange={setMarket} />
         </div>
         <div>
-          <label className={labelCls}>
-            Product ({PROSPECT_PRODUCT_PURITY[product]} H₂)
-          </label>
-          <select
-            className={selectCls}
-            value={product}
-            onChange={(e) => setProduct(e.target.value as ProspectProduct)}
-          >
-            {PROSPECT_PRODUCTS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <label className={labelCls}>System</label>
+          <SeriesMultiSelect value={system} onChange={setSystem} />
         </div>
         <div>
           <label className={labelCls}>System size (kW)</label>
@@ -897,9 +864,7 @@ export function MarkContactedDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!followUpAt) return;
-    const text =
-      summary.trim() ||
-      `${OUTREACH_CHANNEL_LABELS[channel]} outreach to ${contact.name}`;
+    const text = summary.trim();
 
     markContacted({
       companyId: company.id,
@@ -914,7 +879,7 @@ export function MarkContactedDialog({
       title: `Follow up: ${contact.name} @ ${company.name}`,
       description: [
         `Channel: ${OUTREACH_CHANNEL_LABELS[channel]}`,
-        text,
+        text || undefined,
         `Prospecting contact follow-up for ${company.name}.`,
       ]
         .filter(Boolean)
@@ -952,14 +917,13 @@ export function MarkContactedDialog({
           </select>
         </div>
         <div>
-          <label className={labelCls}>Summary</label>
+          <label className={labelCls}>Summary (optional)</label>
           <textarea
             autoFocus
-            required
             className={`${inputCls} min-h-[72px]`}
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            placeholder="What did you send / say?"
+            placeholder="What did you send / say? (optional)"
           />
         </div>
         <div>
@@ -1029,9 +993,7 @@ export function MarkEngagedDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const text =
-      summary.trim() ||
-      `Client response — ${OUTREACH_RESULT_LABELS[result]}`;
+    const text = summary.trim();
 
     logEngagement({
       companyId: company.id,
@@ -1096,14 +1058,13 @@ export function MarkEngagedDialog({
           </div>
         </div>
         <div>
-          <label className={labelCls}>Summary</label>
+          <label className={labelCls}>Summary (optional)</label>
           <textarea
             autoFocus
-            required
             className={`${inputCls} min-h-[72px]`}
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            placeholder="What did they say / ask for?"
+            placeholder="What did they say / ask for? (optional)"
           />
         </div>
         <label className="flex items-center gap-2 text-sm text-ink">
@@ -1164,7 +1125,7 @@ export function EditProspectDialog({
   const [siteName, setSiteName] = useState(company.siteName);
   const [website, setWebsite] = useState(company.website);
   const [market, setMarket] = useState<ProspectMarket>(company.market);
-  const [product, setProduct] = useState<ProspectProduct>(company.product);
+  const [system, setSystem] = useState<ProspectSystem>(company.system);
   const [source, setSource] = useState<ProspectSource>(company.source);
   const [sizeKw, setSizeKw] = useState(
     company.sizeKw > 0 ? String(company.sizeKw) : "",
@@ -1209,7 +1170,7 @@ export function EditProspectDialog({
       siteName: siteName.trim(),
       website: website.trim(),
       market,
-      product,
+      system,
       source,
       ownerId: companyOwnerId,
       strategyWhy: strategyWhy.trim(),
@@ -1318,34 +1279,11 @@ export function EditProspectDialog({
         </div>
         <div>
           <label className={labelCls}>Market</label>
-          <select
-            className={selectCls}
-            value={market}
-            onChange={(e) => {
-              const next = e.target.value as ProspectMarket;
-              setMarket(next);
-              setProduct(PROSPECT_MARKET_PRODUCT[next]);
-            }}
-          >
-            {PROSPECT_MARKETS.map((m) => (
-              <option key={m} value={m}>
-                {PROSPECT_MARKET_LABELS[m]}
-              </option>
-            ))}
-          </select>
-        </div>        <div>
-          <label className={labelCls}>Product</label>
-          <select
-            className={selectCls}
-            value={product}
-            onChange={(e) => setProduct(e.target.value as ProspectProduct)}
-          >
-            {PROSPECT_PRODUCTS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <MarketMultiSelect value={market} onChange={setMarket} />
+        </div>
+        <div>
+          <label className={labelCls}>System</label>
+          <SeriesMultiSelect value={system} onChange={setSystem} />
         </div>
         <div>
           <label className={labelCls}>Source</label>
@@ -1713,7 +1651,7 @@ export function QualifyDialog({
       budgetKnown,
       fundingNeeded,
       decisionMakerIdentified,
-      product: company.product,
+      system: company.system,
       estimatedValue: estimatedValue ? Number(estimatedValue) : null,
       confidence: confidence ? Number(confidence) : null,
       notes: notes.trim(),
@@ -1883,8 +1821,8 @@ export function PromoteDialog({
         client: company.name,
         country: company.country || "—",
         city: company.city,
-      series: PROSPECT_TO_PROJECT_SERIES[company.product],
-      market: PROSPECT_TO_PROJECT_MARKET[company.market],
+      series: company.system,
+      market: company.market,
       sizeKw: company.sizeKw > 0 ? company.sizeKw : 0,
       stage,
         baseDescription: description.trim(),
@@ -2013,8 +1951,7 @@ export function PromoteDialog({
               />
             </div>
             <p className="text-xs text-muted">
-              Maps to {PROSPECT_TO_PROJECT_MARKET[company.market]} ·{" "}
-              {PROSPECT_TO_PROJECT_SERIES[company.product]} ·{" "}
+              Maps to {company.market} · {company.system} ·{" "}
               {contacts.length} contact
               {contacts.length === 1 ? "" : "s"} will be copied.
             </p>

@@ -1,66 +1,64 @@
 import {
+  formatMarketTags,
+  formatSeriesTags,
   isMarketTag,
+  isSeriesTag,
   MARKETS,
+  parseMarketTags,
+  parseSeriesTags,
+  SERIES,
+  type Market,
   type MarketTag,
+  type Series,
   type SeriesTag,
   type Stage,
 } from "./types";
 import { newId } from "@/lib/id";
 
-/** Same market list as Sales Projects. */
-export type ProspectMarket = MarketTag;
+/** Same market tags as Sales Projects (multi-select; stored as "Tag + Tag"). */
+export type ProspectMarketTag = MarketTag;
+export type ProspectMarket = Market;
 
-export const PROSPECT_MARKETS: ProspectMarket[] = [...MARKETS];
+export const PROSPECT_MARKETS: ProspectMarketTag[] = [...MARKETS];
 
-export const PROSPECT_MARKET_LABELS: Record<ProspectMarket, string> =
+export const PROSPECT_MARKET_LABELS: Record<ProspectMarketTag, string> =
   Object.fromEntries(MARKETS.map((m) => [m, m])) as Record<
-    ProspectMarket,
+    ProspectMarketTag,
     string
   >;
 
-export type ProspectProduct = "E-Series" | "Z-Series";
+/** Same system tags as Sales Projects (multi-select; stored as "Tag + Tag"). */
+export type ProspectSystem = Series;
 
-export const PROSPECT_PRODUCTS: ProspectProduct[] = ["E-Series", "Z-Series"];
+export const PROSPECT_SYSTEMS: SeriesTag[] = [...SERIES];
 
-/** Default product by Sales Projects market. */
-export const PROSPECT_MARKET_PRODUCT: Record<ProspectMarket, ProspectProduct> = {
-  Cement: "E-Series",
-  "Burner Optimisation": "E-Series",
-  "Power Plants": "Z-Series",
-  "Clean H2": "Z-Series",
-  Funding: "Z-Series",
-  Tenders: "Z-Series",
-};
-
-export const PROSPECT_PRODUCT_PURITY: Record<ProspectProduct, string> = {
-  "E-Series": "99.9%",
-  "Z-Series": "99.999%",
-};
+/** Default system when none set. */
+export const DEFAULT_PROSPECT_SYSTEM: ProspectSystem = "Z Series";
 
 /** Markets are identical — pass through for Sales Project creation. */
 export function prospectMarketToProjectMarket(
   market: ProspectMarket | string,
-): MarketTag {
+): Market {
   return normalizeProspectMarket(market);
 }
 
-/** @deprecated use prospectMarketToProjectMarket — kept for call-site clarity */
-export const PROSPECT_TO_PROJECT_MARKET: Record<ProspectMarket, MarketTag> =
+/** Systems are identical — pass through for Sales Project creation. */
+export function prospectSystemToProjectSeries(
+  system: ProspectSystem | string,
+): Series {
+  return normalizeProspectSystem(system);
+}
+
+/** @deprecated use prospectMarketToProjectMarket */
+export const PROSPECT_TO_PROJECT_MARKET: Record<ProspectMarketTag, MarketTag> =
   Object.fromEntries(MARKETS.map((m) => [m, m])) as Record<
-    ProspectMarket,
+    ProspectMarketTag,
     MarketTag
   >;
 
-export const PROSPECT_TO_PROJECT_SERIES: Record<ProspectProduct, SeriesTag> = {
-  "E-Series": "E Series",
-  "Z-Series": "Z Series",
-};
-
-/** Map legacy prospecting market ids onto Sales Projects markets. */
-export function normalizeProspectMarket(
-  value: string | null | undefined,
-): ProspectMarket {
-  if (!value) return "Clean H2";
+/** Map a single legacy prospecting market id onto a Sales Projects market tag. */
+function mapLegacyMarketPart(value: string): MarketTag | null {
+  if (value === "Funding") return null;
   if (isMarketTag(value)) return value;
   switch (value) {
     case "cng-optimisation":
@@ -73,8 +71,66 @@ export function normalizeProspectMarket(
     case "h2-valleys":
       return "Clean H2";
     default:
-      return "Clean H2";
+      return null;
   }
+}
+
+/** Normalize stored market (single, multi, or legacy ids) onto Sales format. */
+export function normalizeProspectMarket(
+  value: string | null | undefined,
+): ProspectMarket {
+  if (!value) return "Clean H2";
+  const parts = value
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags: MarketTag[] = [];
+  const seen = new Set<MarketTag>();
+  for (const part of parts) {
+    const mapped = mapLegacyMarketPart(part);
+    if (!mapped || seen.has(mapped)) continue;
+    seen.add(mapped);
+    tags.push(mapped);
+  }
+  return formatMarketTags(tags.length > 0 ? tags : parseMarketTags(value));
+}
+
+/** Map legacy product labels onto Sales system tags. */
+function mapLegacySystemPart(value: string): SeriesTag | null {
+  if (isSeriesTag(value)) return value;
+  switch (value) {
+    case "E-Series":
+    case "E-Series ":
+    case "E series":
+      return "E Series";
+    case "Z-Series":
+    case "Z series":
+      return "Z Series";
+    default:
+      return null;
+  }
+}
+
+/** Normalize stored system/product onto Sales series format. */
+export function normalizeProspectSystem(
+  value: string | null | undefined,
+): ProspectSystem {
+  if (!value) return DEFAULT_PROSPECT_SYSTEM;
+  const parts = value
+    .split(/\s*\+\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const tags: SeriesTag[] = [];
+  const seen = new Set<SeriesTag>();
+  for (const part of parts) {
+    const mapped = mapLegacySystemPart(part);
+    if (!mapped || seen.has(mapped)) continue;
+    seen.add(mapped);
+    tags.push(mapped);
+  }
+  return formatSeriesTags(
+    tags.length > 0 ? tags : parseSeriesTags(value),
+  );
 }
 
 export type ProspectSource =
@@ -83,6 +139,7 @@ export type ProspectSource =
   | "referral"
   | "linkedin"
   | "in-person"
+  | "research"
   /** Legacy values kept for existing stored records */
   | "cold-outreach"
   | "personal-contact"
@@ -100,13 +157,14 @@ export type ProspectSource =
   | "website"
   | "other";
 
-/** Source options match Log outreach channel options. */
+/** Source options on Add company / filters. */
 export const PROSPECT_SOURCES: ProspectSource[] = [
   "email",
   "phone",
   "referral",
   "linkedin",
   "in-person",
+  "research",
 ];
 
 export const PROSPECT_SOURCE_LABELS: Record<ProspectSource, string> = {
@@ -115,6 +173,7 @@ export const PROSPECT_SOURCE_LABELS: Record<ProspectSource, string> = {
   referral: "Referral",
   linkedin: "LinkedIn",
   "in-person": "In-Person",
+  research: "Research",
   "cold-outreach": "Cold Outreach",
   "personal-contact": "Existing Personal Contact",
   "existing-client": "Existing Client / Cross-Sell",
@@ -139,7 +198,7 @@ export function normalizeProspectSource(
   if ((PROSPECT_SOURCES as string[]).includes(value)) {
     return value as ProspectSource;
   }
-  // Map common legacy sources onto the channel-aligned set
+  // Map common legacy sources onto the selectable set
   switch (value) {
     case "cold-outreach":
     case "website":
@@ -337,7 +396,10 @@ export type YesNoUnknown = "yes" | "no" | "unknown";
 
 export interface ProspectQualification {
   identifiedProject?: string;
-  product?: ProspectProduct;
+  /** Preferred system(s); same format as Sales Projects series. */
+  system?: ProspectSystem;
+  /** @deprecated legacy single product label */
+  product?: string;
   existingFuelOrH2Use?: string;
   energyOrH2Requirement?: string;
   existingEquipment?: string;
@@ -361,8 +423,10 @@ export interface ProspectCompany {
   siteName: string;
   website: string;
   industry: string;
+  /** Multi market, same storage as Sales Projects ("Tag + Tag"). */
   market: ProspectMarket;
-  product: ProspectProduct;
+  /** Multi system, same storage as Sales Projects series ("Tag + Tag"). */
+  system: ProspectSystem;
   source: ProspectSource;
   priority: ProspectPriority;
   ownerId: string;
@@ -436,8 +500,8 @@ export interface ProspectActivity {
 export interface ProspectingTargets {
   monthlyContactTarget: number;
   weeklyContactTarget: number;
-  /** Share 0–100 per market; should sum ~100 */
-  marketAllocation: Record<ProspectMarket, number>;
+  /** Share 0–100 per market tag; should sum ~100 */
+  marketAllocation: Record<ProspectMarketTag, number>;
 }
 
 export const DEFAULT_PROSPECTING_TARGETS: ProspectingTargets = {
@@ -447,8 +511,7 @@ export const DEFAULT_PROSPECTING_TARGETS: ProspectingTargets = {
     "Burner Optimisation": 30,
     Cement: 25,
     "Power Plants": 20,
-    "Clean H2": 15,
-    Funding: 5,
+    "Clean H2": 20,
     Tenders: 5,
   },
 };
@@ -502,7 +565,7 @@ export function createEmptyCompany(
     website: partial.website?.trim() ?? "",
     industry: partial.industry?.trim() ?? "",
     market,
-    product: partial.product ?? PROSPECT_MARKET_PRODUCT[market],
+    system: normalizeProspectSystem(partial.system ?? DEFAULT_PROSPECT_SYSTEM),
     source: normalizeProspectSource(partial.source ?? "email"),
     priority: partial.priority ?? "medium",
     ownerId: partial.ownerId,

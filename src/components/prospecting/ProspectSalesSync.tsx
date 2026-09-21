@@ -6,8 +6,6 @@ import { useProspecting } from "@/lib/prospecting-store";
 import {
   ProspectCompany,
   ProspectContact,
-  PROSPECT_TO_PROJECT_MARKET,
-  PROSPECT_TO_PROJECT_SERIES,
 } from "@/lib/prospecting-types";
 
 /**
@@ -109,8 +107,8 @@ export function useLinkProspectToColdLead() {
       client: company.name,
       country: company.country || "—",
       city: company.city,
-      series: PROSPECT_TO_PROJECT_SERIES[company.product],
-      market: PROSPECT_TO_PROJECT_MARKET[company.market],
+      series: company.system,
+      market: company.market,
       sizeKw: company.sizeKw > 0 ? company.sizeKw : 0,
       stage: "cold-lead",
       baseDescription: description,
