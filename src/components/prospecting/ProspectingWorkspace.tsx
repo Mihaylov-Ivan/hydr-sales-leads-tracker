@@ -755,7 +755,10 @@ export default function ProspectingWorkspace() {
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="font-medium text-ink">
-                                {contact.name}
+                                {contact.name.trim() ||
+                                  contact.email.trim() ||
+                                  contact.title.trim() ||
+                                  "Unnamed contact"}
                                 {contact.isPrimary && (
                                   <span className="ml-1 text-[10px] font-bold uppercase text-teal-accent">
                                     Primary
@@ -894,7 +897,10 @@ export default function ProspectingWorkspace() {
                         {selected.company.name}
                       </h3>
                       <p className="text-xs text-muted">
-                        {selected.contact.name}
+                        {selected.contact.name.trim() ||
+                          selected.contact.email.trim() ||
+                          selected.contact.title.trim() ||
+                          "Unnamed contact"}
                         {selected.contact.title
                           ? ` · ${selected.contact.title}`
                           : ""}

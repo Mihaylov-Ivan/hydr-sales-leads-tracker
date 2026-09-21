@@ -150,9 +150,15 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     if (!valid) return;
     const contacts = draftContacts
-      .filter((c) => c.name.trim())
+      .filter(
+        (c) =>
+          c.name.trim() ||
+          c.title.trim() ||
+          c.email.trim() ||
+          c.phone.trim(),
+      )
       .map((c, index) => ({
-        name: c.name,
+        name: c.name.trim(),
         title: c.title,
         email: c.email,
         phone: c.phone,
@@ -304,7 +310,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
         <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-deep">
-              Contacts
+              Contacts (optional — add as many as you need)
             </p>
             <button
               type="button"
@@ -359,6 +365,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
                       onChange={(e) =>
                         updateDraft(draft.key, { name: e.target.value })
                       }
+                      placeholder="Optional"
                     />
                   </div>
                   <div>
@@ -439,82 +446,120 @@ export function AddContactDialog({
       ? currentUserId
       : company.ownerId || assignable[0]?.id || "";
 
-  const [name, setName] = useState("");
-  const [title, setTitle] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [linkedinUrl, setLinkedinUrl] = useState("");
+  type DraftContact = {
+    key: string;
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+    linkedinUrl: string;
+    isPrimary: boolean;
+  };
+
   const [ownerId, setOwnerId] = useState(ownerDefault);
-  const [isPrimary, setIsPrimary] = useState(false);
+  const [draftContacts, setDraftContacts] = useState<DraftContact[]>([
+    {
+      key: "c0",
+      name: "",
+      title: "",
+      email: "",
+      phone: "",
+      linkedinUrl: "",
+      isPrimary: true,
+    },
+  ]);
   const [warning, setWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ownerId && ownerDefault) setOwnerId(ownerDefault);
+  }, [ownerDefault, ownerId]);
+
+  function updateDraft(key: string, patch: Partial<DraftContact>) {
+    setDraftContacts((prev) =>
+      prev.map((c) => {
+        if (c.key !== key) {
+          if (patch.isPrimary) return { ...c, isPrimary: false };
+          return c;
+        }
+        return { ...c, ...patch };
+      }),
+    );
+  }
+
+  const hasAnyContact = draftContacts.some(
+    (c) =>
+      c.name.trim() ||
+      c.title.trim() ||
+      c.email.trim() ||
+      c.phone.trim() ||
+      c.linkedinUrl.trim(),
+  );
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
-    const result = addContact(company.id, {
-      name,
-      title,
-      email,
-      phone,
-      linkedinUrl,
-      ownerId,
-      isPrimary,
-      source: company.source,
-      priority: company.priority,
+    if (!hasAnyContact) return;
+    const toCreate = draftContacts.filter(
+      (c) =>
+        c.name.trim() ||
+        c.title.trim() ||
+        c.email.trim() ||
+        c.phone.trim() ||
+        c.linkedinUrl.trim(),
+    );
+    let lastWarning: string | undefined;
+    toCreate.forEach((c, index) => {
+      const result = addContact(company.id, {
+        name: c.name.trim(),
+        title: c.title,
+        email: c.email,
+        phone: c.phone,
+        linkedinUrl: c.linkedinUrl,
+        ownerId,
+        isPrimary: c.isPrimary || (index === 0 && !toCreate.some((x) => x.isPrimary)),
+        source: company.source,
+        priority: company.priority,
+      });
+      if (result.duplicateWarning) lastWarning = result.duplicateWarning;
     });
-    if (result.duplicateWarning) setWarning(result.duplicateWarning);
+    if (lastWarning) {
+      setWarning(lastWarning);
+      setTimeout(onClose, 900);
+      return;
+    }
     onClose();
   }
 
   return (
-    <ModalShell title={`Add contact — ${company.name}`} onClose={onClose}>
+    <ModalShell title={`Add contact — ${company.name}`} onClose={onClose} wide>
       <form onSubmit={submit} className="grid gap-3">
-        <div>
-          <label className={labelCls}>Full name *</label>
-          <input
-            autoFocus
-            className={inputCls}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted">
+            Name is optional. Add one or more people for this company.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              setDraftContacts((prev) => [
+                ...prev,
+                {
+                  key: `c${Date.now()}-${prev.length}`,
+                  name: "",
+                  title: "",
+                  email: "",
+                  phone: "",
+                  linkedinUrl: "",
+                  isPrimary: false,
+                },
+              ])
+            }
+            className="shrink-0 text-[10px] font-bold uppercase text-teal-accent hover:underline"
+          >
+            + Add another
+          </button>
         </div>
+
         <div>
-          <label className={labelCls}>Job title</label>
-          <input
-            className={inputCls}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className={labelCls}>Email</label>
-            <input
-              className={inputCls}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={labelCls}>Phone</label>
-            <input
-              className={inputCls}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-        </div>
-        <div>
-          <label className={labelCls}>LinkedIn URL</label>
-          <input
-            className={inputCls}
-            value={linkedinUrl}
-            onChange={(e) => setLinkedinUrl(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Owner</label>
+          <label className={labelCls}>Owner (all new contacts)</label>
           <select
             className={selectCls}
             value={ownerId}
@@ -527,14 +572,100 @@ export function AddContactDialog({
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={isPrimary}
-            onChange={(e) => setIsPrimary(e.target.checked)}
-          />
-          Primary contact
-        </label>
+
+        <div className="space-y-3">
+          {draftContacts.map((draft, index) => (
+            <div
+              key={draft.key}
+              className="rounded-xl border border-line bg-panel/60 p-3"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Contact {index + 1}
+                </p>
+                {draftContacts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraftContacts((prev) =>
+                        prev.filter((c) => c.key !== draft.key),
+                      )
+                    }
+                    className="text-[10px] font-semibold text-muted hover:text-amber-accent"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={labelCls}>Name</label>
+                  <input
+                    autoFocus={index === 0}
+                    className={inputCls}
+                    value={draft.name}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { name: e.target.value })
+                    }
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Job title</label>
+                  <input
+                    className={inputCls}
+                    value={draft.title}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { title: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Email</label>
+                  <input
+                    className={inputCls}
+                    type="email"
+                    value={draft.email}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { email: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Phone</label>
+                  <input
+                    className={inputCls}
+                    value={draft.phone}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { phone: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>LinkedIn URL</label>
+                  <input
+                    className={inputCls}
+                    value={draft.linkedinUrl}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { linkedinUrl: e.target.value })
+                    }
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-ink sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={draft.isPrimary}
+                    onChange={(e) =>
+                      updateDraft(draft.key, { isPrimary: e.target.checked })
+                    }
+                  />
+                  Primary contact
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {warning && <p className="text-xs text-amber-accent">{warning}</p>}
         <div className="mt-2 flex justify-end gap-2">
           <button
@@ -546,10 +677,10 @@ export function AddContactDialog({
           </button>
           <button
             type="submit"
-            disabled={!name.trim()}
+            disabled={!hasAnyContact}
             className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
           >
-            Add contact
+            Save contacts
           </button>
         </div>
       </form>
@@ -1062,7 +1193,7 @@ export function EditProspectDialog({
   const [followUpReason, setFollowUpReason] = useState(contact.followUpReason);
   const [contactNotes, setContactNotes] = useState(contact.notes);
 
-  const valid = name.trim().length > 0 && contactName.trim().length > 0;
+  const valid = name.trim().length > 0;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1251,7 +1382,7 @@ export function EditProspectDialog({
           </p>
         </div>
         <div>
-          <label className={labelCls}>Full name *</label>
+          <label className={labelCls}>Full name</label>
           <input
             className={inputCls}
             value={contactName}

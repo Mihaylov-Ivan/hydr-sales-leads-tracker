@@ -369,7 +369,7 @@ export interface AddCompanyInput {
   sizeKw?: number;
   /** Optional first contact (legacy single-contact shape) */
   contact?: {
-    name: string;
+    name?: string;
     title?: string;
     email?: string;
     phone?: string;
@@ -378,7 +378,7 @@ export interface AddCompanyInput {
   };
   /** Optional contacts to create with the company (preferred) */
   contacts?: Array<{
-    name: string;
+    name?: string;
     title?: string;
     email?: string;
     phone?: string;
@@ -439,7 +439,7 @@ export interface ProspectingApi {
   deleteCompany: (id: string) => void;
   addContact: (
     companyId: string,
-    input: Partial<ProspectContact> & { name: string; ownerId: string },
+    input: Partial<ProspectContact> & { ownerId: string },
   ) => { contactId: string; duplicateWarning?: string };
   updateContact: (id: string, patch: Partial<ProspectContact>) => void;
   deleteContact: (id: string) => void;
@@ -615,7 +615,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     const extras = orphans.map((co) =>
       createEmptyContact({
         companyId: co.id,
-        name: "Contact TBD",
+        name: "",
         ownerId: co.ownerId,
         source: co.source,
         priority: co.priority,
@@ -698,19 +698,31 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       const draftContacts = (
         input.contacts?.length
           ? input.contacts
-          : input.contact?.name.trim()
+          : input.contact &&
+              ((input.contact.name ?? "").trim() ||
+                input.contact.title?.trim() ||
+                input.contact.email?.trim() ||
+                input.contact.phone?.trim() ||
+                input.contact.linkedinUrl?.trim())
             ? [input.contact]
             : []
-      ).filter((c) => c.name.trim());
+      ).filter(
+        (c) =>
+          (c.name ?? "").trim() ||
+          c.title?.trim() ||
+          c.email?.trim() ||
+          c.phone?.trim() ||
+          c.linkedinUrl?.trim(),
+      );
 
-      // The work queue is contact-centric — always create at least one contact
-      // so the company is visible after add (even when the form left contacts blank).
+      // Work queue is contact-centric — if none provided, keep a placeholder so
+      // the company still appears (name optional on real contacts).
       const createdContacts: ProspectContact[] = (
         draftContacts.length > 0
           ? draftContacts
           : [
               {
-                name: "Contact TBD",
+                name: "",
                 title: "",
                 email: "",
                 phone: "",
@@ -720,7 +732,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       ).map((draft, index) =>
         createEmptyContact({
           companyId: company.id,
-          name: draft.name,
+          name: draft.name ?? "",
           title: draft.title,
           email: draft.email,
           phone: draft.phone,
@@ -882,10 +894,14 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
   const addContact = useCallback(
     (
       companyId: string,
-      input: Partial<ProspectContact> & { name: string; ownerId: string },
+      input: Partial<ProspectContact> & { name?: string; ownerId: string },
     ) => {
       const dup = findDuplicateContact(companyId, input.email, input.name);
-      const contact = createEmptyContact({ ...input, companyId });
+      const contact = createEmptyContact({
+        ...input,
+        name: input.name ?? "",
+        companyId,
+      });
       const now = new Date().toISOString();
       setState((prev) => ({
         ...prev,
