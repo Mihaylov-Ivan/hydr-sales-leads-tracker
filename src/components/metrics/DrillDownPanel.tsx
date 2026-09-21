@@ -38,12 +38,6 @@ export default function DrillDownPanel({
 }: DrillDownPanelProps) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-deep/30 backdrop-blur-[1px]">
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default"
-        aria-label="Close drill-down"
-        onClick={onClose}
-      />
       <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-line bg-panel shadow-xl">
         <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-4">
           <div className="min-w-0">

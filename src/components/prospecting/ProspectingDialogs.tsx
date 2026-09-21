@@ -55,28 +55,14 @@ function ModalShell({
   children: React.ReactNode;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-deep/40 p-3 backdrop-blur-sm sm:p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-deep/40 p-3 backdrop-blur-sm sm:p-4">
       {/* items-start (not center) so tall forms stay reachable from the top */}
       <div className="mx-auto flex min-h-full w-full max-w-2xl items-start justify-center py-2 sm:py-4">
         <div
           className={`w-full rounded-2xl border border-line bg-surface p-5 shadow-2xl sm:p-6 ${
             wide ? "max-w-2xl" : "max-w-lg"
           }`}
-          onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="mb-4 flex items-start justify-between gap-3">
             <h2 className="text-lg font-bold text-deep">{title}</h2>

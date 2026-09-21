@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useProjects } from "@/lib/store";
 import { PersonalTodoStatus, PERSONAL_TODO_STATUS_LABELS } from "@/lib/types";
 
@@ -20,14 +20,6 @@ export default function NewPersonalTodoDialog({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const t = title.trim();
@@ -44,16 +36,12 @@ export default function NewPersonalTodoDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-deep/40 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-deep/40 p-4 backdrop-blur-sm">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="New personal task"
         className="w-full max-w-md rounded-xl border border-line bg-panel p-5 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-bold text-deep">New personal task</h2>
         <p className="mt-1 text-sm text-muted">

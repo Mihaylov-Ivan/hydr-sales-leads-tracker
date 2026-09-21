@@ -2268,20 +2268,12 @@ export default function WarehousePage() {
         selectedLot &&
         createPortal(
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6">
-            <div
-              className="absolute inset-0 bg-black/30"
-              aria-hidden
-              onMouseDown={(e) => {
-                e.preventDefault();
-                closeLotEditor();
-              }}
-            />
+            <div className="absolute inset-0 bg-black/30" aria-hidden />
             <div
               role="dialog"
               aria-modal="true"
               aria-label="Edit warehouse lot"
               className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-panel shadow-2xl"
-              onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
                 <div>

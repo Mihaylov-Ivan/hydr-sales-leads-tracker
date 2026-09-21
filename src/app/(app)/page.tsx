@@ -374,15 +374,6 @@ export default function Dashboard() {
     }
   }, [showCancelled, cancelledPrefReady]);
 
-  useEffect(() => {
-    if (!expandedStage) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setExpandedStage(null);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [expandedStage]);
-
   const countries = useMemo(
     () => [...new Set(projects.map((p) => p.country))].sort(),
     [projects],
@@ -751,14 +742,8 @@ export default function Dashboard() {
       </div>
 
       {expandedStage && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col bg-deep/40 p-3 backdrop-blur-sm sm:p-4"
-          onClick={() => setExpandedStage(null)}
-        >
-          <div
-            className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex flex-col bg-deep/40 p-3 backdrop-blur-sm sm:p-4">
+          <div className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col">
             <StageColumn
               stage={expandedStage}
               projects={

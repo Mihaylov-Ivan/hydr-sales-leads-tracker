@@ -343,15 +343,6 @@ export default function PersonalTodosPage() {
     }
   }, [showDone, donePrefReady]);
 
-  useEffect(() => {
-    if (!expandedStatus) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setExpandedStatus(null);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [expandedStatus]);
-
   const scopedTodos = useMemo(() => {
     if (user?.isAdmin) return personalTodos;
     if (!currentUserId) return [];
@@ -593,14 +584,8 @@ export default function PersonalTodosPage() {
       </div>
 
       {expandedStatus && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col bg-deep/40 p-3 backdrop-blur-sm sm:p-4"
-          onClick={() => setExpandedStatus(null)}
-        >
-          <div
-            className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex flex-col bg-deep/40 p-3 backdrop-blur-sm sm:p-4">
+          <div className="mx-auto flex h-full w-full max-w-[1800px] min-h-0 flex-col">
             <StatusColumn
               status={expandedStatus}
               todos={byStatus[expandedStatus]}
