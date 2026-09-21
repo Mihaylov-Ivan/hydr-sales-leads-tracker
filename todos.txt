@@ -16,5 +16,3 @@ Update the database schema if required, ensruing the update is only additive/reo
 - add MH as product category
 
 - Add to projects: Desmet with Stargate, EU funding, Polish tender from Jersey for H2 unloading and usage in a plant..., 
-
---
