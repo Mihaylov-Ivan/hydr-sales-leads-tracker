@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useProjects } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import {
   buildMonthlyPlan,
   estimateFixedMonthlyAverage,
@@ -187,6 +188,7 @@ export default function FinancePage() {
     applyFinanceImport,
     clearFinanceImport,
   } = useProjects();
+  const { canWrite } = useAuth();
 
   const [openingDraft, setOpeningDraft] = useState<string | null>(null);
   const [minWcDraft, setMinWcDraft] = useState<string | null>(null);
@@ -563,6 +565,11 @@ export default function FinancePage() {
           <h1 className="text-2xl font-bold tracking-tight text-deep">
             Financial plan
           </h1>
+          {!canWrite && (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted">
+              View only — changes are disabled for Viewer accounts.
+            </p>
+          )}
         </div>
         {currentClosing && (
           <div className="rounded-xl border border-line bg-surface px-4 py-3 text-right">
@@ -639,21 +646,25 @@ export default function FinancePage() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="hidden"
-              onChange={(e) => void onImportFiles(e.target.files)}
-            />
-            <button
-              type="button"
-              disabled={importBusy}
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-lg bg-olive px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-50"
-            >
-              {importBusy ? "Importing…" : "Upload Excel"}
-            </button>
+            {canWrite && (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(e) => void onImportFiles(e.target.files)}
+              />
+            )}
+            {canWrite && (
+              <button
+                type="button"
+                disabled={importBusy}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg bg-olive px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-olive-ink hover:brightness-105 disabled:opacity-50"
+              >
+                {importBusy ? "Importing…" : "Upload Excel"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -680,7 +691,7 @@ export default function FinancePage() {
             >
               Export data
             </button>
-            {financeImport && (
+            {canWrite && financeImport && (
               <button
                 type="button"
                 onClick={() => {

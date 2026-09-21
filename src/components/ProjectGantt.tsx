@@ -1613,6 +1613,7 @@ export default function ProjectGantt({
   showSchedule = true,
   showFinancials = true,
   expensesOnly = false,
+  readOnly = false,
 }: {
   projectId: string;
   schedule: ProjectSchedule;
@@ -1623,6 +1624,8 @@ export default function ProjectGantt({
   showFinancials?: boolean;
   /** RnD: expenses only in the financials panel. */
   expensesOnly?: boolean;
+  /** Viewers cannot edit schedule or financials. */
+  readOnly?: boolean;
 }) {
   const {
     deleteGanttPhase,
@@ -1675,6 +1678,7 @@ export default function ProjectGantt({
         projectId={projectId}
         financials={financials}
         expensesOnly={expensesOnly}
+        readOnly={readOnly}
       />
     );
   }
@@ -1740,6 +1744,8 @@ export default function ProjectGantt({
             >
               {showActual ? "Actuals on" : "Track actuals"}
             </button>
+            {!readOnly && (
+              <>
             <button
               type="button"
               onClick={() => {
@@ -1793,6 +1799,8 @@ export default function ProjectGantt({
             >
               Shift schedule
             </button>
+              </>
+            )}
           </div>
 
           <GanttChart
@@ -1904,10 +1912,11 @@ export default function ProjectGantt({
               projectId={projectId}
               financials={financials}
               expensesOnly={expensesOnly}
+              readOnly={readOnly}
             />
           )}
 
-          {phases.length > 0 && (
+          {!readOnly && phases.length > 0 && (
             <div className="mt-5">
               <button
                 type="button"

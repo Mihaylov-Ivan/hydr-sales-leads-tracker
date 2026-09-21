@@ -1071,11 +1071,13 @@ export default function GanttFinancials({
   projectId,
   financials: storedFinancials,
   expensesOnly = false,
+  readOnly = false,
 }: {
   projectId: string;
   financials: ProjectFinancials;
   /** RnD projects: track expenses only (no income / OPEX income). */
   expensesOnly?: boolean;
+  readOnly?: boolean;
 }) {
   const {
     financeImport,
@@ -1124,12 +1126,14 @@ export default function GanttFinancials({
     [project?.schedule],
   );
   const canGenerateIncomes =
+    !readOnly &&
     (financials.contractValue != null && financials.contractValue > 0) &&
     incomeAnchors.ok;
 
   const opexExpensePercent =
     financials.opexExpensePercent ?? DEFAULT_OPEX_EXPENSE_PERCENT;
   const canGenerateOpex =
+    !readOnly &&
     financials.opexValue != null &&
     financials.opexValue > 0 &&
     financials.systemLifetimeYears != null &&

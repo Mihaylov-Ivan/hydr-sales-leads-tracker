@@ -17,7 +17,7 @@ type MenuPos = { top: number; left: number };
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, logout, can } = useAuth();
+  const { user, logout, can, canWrite } = useAuth();
   const {
     ready,
     projects,
@@ -35,6 +35,7 @@ export default function Header() {
 
   const displayName = user?.name ?? "Account";
   const showFinanceCsv = can("finance");
+  const showFinanceCsvImport = showFinanceCsv && canWrite;
   const navItems = visibleNavItems(user);
 
   useLayoutEffect(() => {
@@ -157,13 +158,15 @@ export default function Header() {
         <div className="flex shrink-0 items-center gap-2">
           {showFinanceCsv && (
             <>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => void onImportCsv(e.target.files)}
-              />
+              {showFinanceCsvImport && (
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => void onImportCsv(e.target.files)}
+                />
+              )}
               <button
                 type="button"
                 disabled={!ready}
@@ -187,16 +190,18 @@ export default function Header() {
                 <span className="sm:hidden">CSV ↓</span>
                 <span className="hidden sm:inline">Download financial data</span>
               </button>
-              <button
-                type="button"
-                disabled={!ready}
-                onClick={() => fileRef.current?.click()}
-                title="Import financial data CSV"
-                className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
-              >
-                <span className="sm:hidden">CSV ↑</span>
-                <span className="hidden sm:inline">Import financial data</span>
-              </button>
+              {showFinanceCsvImport && (
+                <button
+                  type="button"
+                  disabled={!ready}
+                  onClick={() => fileRef.current?.click()}
+                  title="Import financial data CSV"
+                  className="shrink-0 rounded-lg border border-line bg-panel px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50 sm:px-3 sm:text-xs"
+                >
+                  <span className="sm:hidden">CSV ↑</span>
+                  <span className="hidden sm:inline">Import financial data</span>
+                </button>
+              )}
             </>
           )}
 

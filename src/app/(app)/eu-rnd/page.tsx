@@ -12,6 +12,7 @@ import {
 } from "@/lib/types";
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
+import { useAuth } from "@/lib/auth-context";
 
 const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
   "eu-application-prep": "border-t-teal-accent",
@@ -35,6 +36,7 @@ function StageColumn({
   onDrop,
   accentClass,
   headerExtra,
+  allowDrag = true,
 }: {
   stage: Stage;
   projects: ReturnType<typeof useProjects>["projects"];
@@ -44,6 +46,7 @@ function StageColumn({
   onDrop: (e: React.DragEvent) => void;
   accentClass: string;
   headerExtra?: React.ReactNode;
+  allowDrag?: boolean;
 }) {
   return (
     <section
@@ -85,7 +88,9 @@ function StageColumn({
         {projects.length === 0 ? (
           <p className="px-1 py-6 text-center text-xs text-muted">No projects</p>
         ) : (
-          projects.map((p) => <ProjectCard key={p.id} project={p} />)
+          projects.map((p) => (
+            <ProjectCard key={p.id} project={p} allowDrag={allowDrag} />
+          ))
         )}
       </div>
     </section>
@@ -94,6 +99,7 @@ function StageColumn({
 
 export default function EuRndPage() {
   const { projects, ready, updateProject } = useProjects();
+  const { canWrite } = useAuth();
   const [tab, setTab] = useState<BoardTab>("eu");
   const [showNew, setShowNew] = useState(false);
   const [search, setSearch] = useState("");
@@ -153,6 +159,7 @@ export default function EuRndPage() {
   }, [filtered, allStages, track]);
 
   function moveProjectToStage(projectId: string, stage: Stage) {
+    if (!canWrite) return;
     const project = projects.find((p) => p.id === projectId);
     if (!project || project.stage === stage) return;
     if (trackOfProject(project) !== track) return;
@@ -161,6 +168,13 @@ export default function EuRndPage() {
   }
 
   function columnDragHandlers(stage: Stage) {
+    if (!canWrite) {
+      return {
+        onDragOver: (e: React.DragEvent) => e.preventDefault(),
+        onDragLeave: () => {},
+        onDrop: (e: React.DragEvent) => e.preventDefault(),
+      };
+    }
     return {
       onDragOver: (e: React.DragEvent) => {
         e.preventDefault();
@@ -198,12 +212,18 @@ export default function EuRndPage() {
             Separate from Sales · financials and warehouse linked company-wide
           </p>
         </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
-        >
-          + New {tab === "eu" ? "EU" : "RnD"} Project
-        </button>
+        {canWrite ? (
+          <button
+            onClick={() => setShowNew(true)}
+            className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
+          >
+            + New {tab === "eu" ? "EU" : "RnD"} Project
+          </button>
+        ) : (
+          <span className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+            View only
+          </span>
+        )}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-3">
@@ -284,6 +304,7 @@ export default function EuRndPage() {
               projects={byStage.cancelled ?? []}
               isOver={dragOverStage === "cancelled"}
               accentClass={COLUMN_ACCENT.cancelled ?? "border-t-muted"}
+              allowDrag={canWrite}
               {...columnDragHandlers("cancelled")}
               headerExtra={
                 <button
@@ -310,6 +331,7 @@ export default function EuRndPage() {
                 projects={byStage[stage] ?? []}
                 isOver={dragOverStage === stage}
                 accentClass={COLUMN_ACCENT[stage] ?? "border-t-muted"}
+                allowDrag={canWrite}
                 {...columnDragHandlers(stage)}
               />
             </div>
@@ -317,7 +339,7 @@ export default function EuRndPage() {
         </div>
       </div>
 
-      {showNew && (
+      {canWrite && showNew && (
         <NewProjectDialog onClose={() => setShowNew(false)} track={tab} />
       )}
     </div>

@@ -286,6 +286,8 @@ export interface TeamMember {
   isAdmin?: boolean;
   /** From team_members.is_active — inactive users hidden from pickers */
   isActive?: boolean;
+  /** From user_permission_types — viewers cannot be assigned tasks/projects */
+  isViewer?: boolean;
 }
 
 /**

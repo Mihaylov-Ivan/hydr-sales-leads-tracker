@@ -5,6 +5,7 @@ import { newId } from "@/lib/id";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useProjects } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import {
   WarehouseLocation,
   WarehouseMaterialKind,
@@ -198,6 +199,7 @@ export default function WarehousePage() {
     manufacturingCostReferenceProjectId,
     setManufacturingCostReferenceProjectId,
   } = useProjects();
+  const { canWrite } = useAuth();
 
   const [selectedLotId, setSelectedLotId] = useState<string | null>(null);
   const [filterQ, setFilterQ] = useState("");
@@ -1313,12 +1315,17 @@ export default function WarehousePage() {
                 ? "Parts ordered, used, sent to Spares, and spare parts drawn into each project — with actual vs construction spend."
                 : "Compare manufacture material costs by series and system size from warehouse used-material history. Pick a reference project for the latest full BOM baseline."}
           </p>
+          {!canWrite && (
+            <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              View only — changes are disabled for Viewer accounts.
+            </p>
+          )}
           {importMsg && (
             <p className="mt-1 text-[11px] text-teal-accent">{importMsg}</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {pageTab === "manufacturing" && (
+          {canWrite && pageTab === "manufacturing" && (
             <button
               type="button"
               disabled={seedingBom}
@@ -1355,7 +1362,7 @@ export default function WarehousePage() {
               {seedingBom ? "Seeding…" : "Seed 500kW Z-Series BOM"}
             </button>
           )}
-          {pageTab === "stock" && (
+          {canWrite && pageTab === "stock" && (
             <button
               type="button"
               disabled={importing}
@@ -1384,7 +1391,7 @@ export default function WarehousePage() {
               {importing ? "Importing…" : "Import MoneyWorks"}
             </button>
           )}
-          {pageTab === "stock" && (
+          {canWrite && pageTab === "stock" && (
             <button
               type="button"
               disabled={mapping}

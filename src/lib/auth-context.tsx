@@ -9,7 +9,12 @@ import {
   useState,
 } from "react";
 import type { SessionUser } from "@/lib/permissions";
-import { hasPermission, type PermissionType } from "@/lib/permissions";
+import {
+  canWrite as userCanWrite,
+  hasPermission,
+  isViewerUser,
+  type PermissionType,
+} from "@/lib/permissions";
 
 interface AuthContextValue {
   ready: boolean;
@@ -18,6 +23,10 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
   can: (permission: PermissionType) => boolean;
+  /** True when the signed-in user has the Viewer permission (admins never). */
+  isViewer: boolean;
+  /** False for viewers — use to gate create/edit UI. */
+  canWrite: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -68,6 +77,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refresh,
       logout,
       can: (permission) => hasPermission(user, permission),
+      isViewer: isViewerUser(user),
+      canWrite: userCanWrite(user),
     }),
     [ready, authEnabled, user, refresh, logout],
   );

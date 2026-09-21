@@ -13,6 +13,7 @@ import React, {
 } from "react";
 import { supabase } from "./supabase";
 import { useAuth } from "./auth-context";
+import { guardWriteMethods, mutationAllowed } from "./viewer-write-guard";
 import {
   recordPersistedChange,
   type RecordChangeInput,
@@ -557,7 +558,7 @@ export interface ProspectingApi {
 const ProspectingContext = createContext<ProspectingApi | null>(null);
 
 export function ProspectingProvider({ children }: { children: React.ReactNode }) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, authEnabled } = useAuth();
   const [state, setState] = useState<ProspectingState>(emptyState);
   const [ready, setReady] = useState(false);
   const [usingRemote, setUsingRemote] = useState(false);
@@ -1733,37 +1734,64 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     };
   }, [state]);
 
+  const canMutateRef = useRef<() => boolean>(() => true);
+  canMutateRef.current = () => mutationAllowed(authEnabled, authUser);
+
   const api = useMemo<ProspectingApi>(
-    () => ({
-      ready,
-      usingRemote,
-      companies: state.companies,
-      contacts: state.contacts,
-      activities: state.activities,
-      targets: state.targets,
-      strategies: state.strategies,
-      kpis,
-      addCompany,
-      updateCompany,
-      deleteCompany,
-      addContact,
-      updateContact,
-      deleteContact,
-      logOutreach,
-      markContacted,
-      scheduleFollowUp,
-      markEngaged,
-      logEngagement,
-      markQualified,
-      markPromoted,
-      syncFromSalesProject,
-      updateTargets,
-      addStrategy,
-      updateStrategy,
-      deleteStrategy,
-      findDuplicateCompany,
-      findDuplicateContact,
-    }),
+    () =>
+      guardWriteMethods(
+        {
+          ready,
+          usingRemote,
+          companies: state.companies,
+          contacts: state.contacts,
+          activities: state.activities,
+          targets: state.targets,
+          strategies: state.strategies,
+          kpis,
+          addCompany,
+          updateCompany,
+          deleteCompany,
+          addContact,
+          updateContact,
+          deleteContact,
+          logOutreach,
+          markContacted,
+          scheduleFollowUp,
+          markEngaged,
+          logEngagement,
+          markQualified,
+          markPromoted,
+          syncFromSalesProject,
+          updateTargets,
+          addStrategy,
+          updateStrategy,
+          deleteStrategy,
+          findDuplicateCompany,
+          findDuplicateContact,
+        },
+        () => canMutateRef.current(),
+        [
+          "addCompany",
+          "updateCompany",
+          "deleteCompany",
+          "addContact",
+          "updateContact",
+          "deleteContact",
+          "logOutreach",
+          "markContacted",
+          "scheduleFollowUp",
+          "markEngaged",
+          "logEngagement",
+          "markQualified",
+          "markPromoted",
+          "syncFromSalesProject",
+          "updateTargets",
+          "addStrategy",
+          "updateStrategy",
+          "deleteStrategy",
+        ],
+      ),
     [
       ready,
       usingRemote,

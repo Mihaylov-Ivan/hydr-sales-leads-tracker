@@ -166,9 +166,11 @@ function FileRow({
 export default function FileAttachments({
   projectId,
   files,
+  readOnly = false,
 }: {
   projectId: string;
   files: ProjectFile[];
+  readOnly?: boolean;
 }) {
   const { addProjectFile } = useProjects();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -232,6 +234,8 @@ export default function FileAttachments({
         </p>
       </div>
 
+      {!readOnly && (
+      <>
       <div className="mb-3 grid gap-2 sm:grid-cols-[10rem_1fr]">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
@@ -322,11 +326,14 @@ export default function FileAttachments({
           {error}
         </p>
       )}
+      </>
+      )}
 
       {sorted.length === 0 ? (
         <p className="mt-4 text-sm text-muted/80">
-          No files yet. Upload an offer or financial model to keep it with the
-          project.
+          {readOnly
+            ? "No files attached."
+            : "No files yet. Upload an offer or financial model to keep it with the project."}
         </p>
       ) : (
         <ul className="mt-4 flex flex-col gap-2">

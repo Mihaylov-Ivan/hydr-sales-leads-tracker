@@ -142,9 +142,11 @@ const newContactInputCls =
 export default function ContactList({
   projectId,
   contacts,
+  readOnly = false,
 }: {
   projectId: string;
   contacts: ProjectContact[];
+  readOnly?: boolean;
 }) {
   const { addContact, updateContact, deleteContact } = useProjects();
   const [adding, setAdding] = useState(false);
@@ -181,7 +183,7 @@ export default function ContactList({
         {contacts.length > 0 && (
           <span className="text-xs font-semibold text-muted">{contacts.length}</span>
         )}
-        {!adding && (
+        {!adding && !readOnly && (
           <button
             type="button"
             onClick={() => setAdding(true)}

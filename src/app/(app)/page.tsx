@@ -119,6 +119,7 @@ function StageColumn({
   headerExtra,
   onExpand,
   expanded,
+  allowDrag = true,
 }: {
   stage: Stage;
   projects: ReturnType<typeof useProjects>["projects"];
@@ -131,6 +132,7 @@ function StageColumn({
   onExpand?: () => void;
   /** When true, column fills a fullscreen overlay (wider card grid). */
   expanded?: boolean;
+  allowDrag?: boolean;
 }) {
   const headerBg =
     isOver
@@ -202,7 +204,9 @@ function StageColumn({
             {isOver ? "Drop to move here" : "No projects here."}
           </p>
         ) : (
-          projects.map((p) => <ProjectCard key={p.id} project={p} />)
+          projects.map((p) => (
+            <ProjectCard key={p.id} project={p} allowDrag={allowDrag} />
+          ))
         )}
       </div>
     </section>
@@ -333,7 +337,7 @@ export default function Dashboard() {
     ready,
     updateProject,
   } = useProjects();
-  const { user } = useAuth();
+  const { user, canWrite } = useAuth();
   const [countryFilter, setCountryFilter] = useState("all");
   const [marketFilter, setMarketFilter] = useState<Set<MarketTag>>(
     () => new Set(MARKETS),
@@ -461,6 +465,7 @@ export default function Dashboard() {
   }, [keyDateFilterProjects, selectedKeyDateIds]);
 
   function moveProjectToStage(projectId: string, stage: Stage) {
+    if (!canWrite) return;
     const project = projects.find((p) => p.id === projectId);
     if (!project || project.stage === stage) return;
     updateProject(projectId, { stage });
@@ -468,6 +473,13 @@ export default function Dashboard() {
   }
 
   function columnDragHandlers(stage: Stage) {
+    if (!canWrite) {
+      return {
+        onDragOver: (e: React.DragEvent) => e.preventDefault(),
+        onDragLeave: () => {},
+        onDrop: (e: React.DragEvent) => e.preventDefault(),
+      };
+    }
     return {
       onDragOver: (e: React.DragEvent) => {
         e.preventDefault();
@@ -511,12 +523,19 @@ export default function Dashboard() {
               Manage Users
             </Link>
           )}
-          <button
-            onClick={() => setShowNew(true)}
-            className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
-          >
-            + New Project
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => setShowNew(true)}
+              className="rounded-lg bg-olive px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-105"
+            >
+              + New Project
+            </button>
+          )}
+          {!canWrite && (
+            <span className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              View only
+            </span>
+          )}
         </div>
       </div>
 
@@ -705,6 +724,7 @@ export default function Dashboard() {
               projects={byStage.cancelled}
               isOver={cancelledOver}
               accentClass={COLUMN_ACCENT.cancelled ?? "border-t-muted"}
+              allowDrag={canWrite}
               {...columnDragHandlers("cancelled")}
               onExpand={() => setExpandedStage("cancelled")}
               headerExtra={
@@ -733,6 +753,7 @@ export default function Dashboard() {
                 projects={byStage[stage]}
                 isOver={dragOverStage === stage}
                 accentClass={COLUMN_ACCENT[stage] ?? "border-t-muted"}
+                allowDrag={canWrite}
                 {...columnDragHandlers(stage)}
                 onExpand={() => setExpandedStage(stage)}
               />
@@ -751,6 +772,7 @@ export default function Dashboard() {
               }
               isOver={dragOverStage === expandedStage}
               accentClass={COLUMN_ACCENT[expandedStage] ?? "border-t-muted"}
+              allowDrag={canWrite}
               {...columnDragHandlers(expandedStage)}
               expanded
               onExpand={() => setExpandedStage(null)}
@@ -759,7 +781,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showNew && <NewProjectDialog onClose={() => setShowNew(false)} />}
+      {canWrite && showNew && (
+        <NewProjectDialog onClose={() => setShowNew(false)} />
+      )}
     </div>
   );
 }

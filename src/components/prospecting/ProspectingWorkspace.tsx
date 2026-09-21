@@ -21,6 +21,7 @@ import {
 } from "@/lib/prospecting-types";
 import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
+import { useAuth } from "@/lib/auth-context";
 import {
   AddCompanyDialog,
   AddContactDialog,
@@ -110,6 +111,7 @@ export default function ProspectingWorkspace() {
     deleteCompany,
   } = useProspecting();
   const { teamMembers, currentUserId, projects } = useProjects();
+  const { canWrite } = useAuth();
   const assignableMembers = assignableTeamMembers(teamMembers);
 
   const [view, setView] = useState<ProspectView>("prepare");
@@ -122,10 +124,16 @@ export default function ProspectingWorkspace() {
   );
   const [dialog, setDialog] = useState<DialogState>(null);
 
+  function openDialog(next: DialogState) {
+    if (!canWrite || !next) return;
+    setDialog(next);
+  }
+
   function handleDeleteContact(
     contact: ProspectContact,
     company: ProspectCompany,
   ) {
+    if (!canWrite) return;
     const siblings = contacts.filter((c) => c.companyId === company.id);
     const isLast = siblings.length <= 1;
     const msg = isLast
@@ -375,13 +383,19 @@ export default function ProspectingWorkspace() {
           </p>
         </div>
         <div className="shrink-0">
-          <button
-            type="button"
-            onClick={() => setDialog({ type: "add-company" })}
-            className="rounded-lg bg-teal-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm"
-          >
-            + Target company
-          </button>
+          {canWrite ? (
+            <button
+              type="button"
+              onClick={() => openDialog({ type: "add-company" })}
+              className="rounded-lg bg-teal-accent px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm"
+            >
+              + Target company
+            </button>
+          ) : (
+            <span className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              View only
+            </span>
+          )}
         </div>
       </div>
 
@@ -625,7 +639,7 @@ export default function ProspectingWorkspace() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setDialog({ type: "add-company" })
+                                  openDialog({ type: "add-company" })
                                 }
                                 className="mt-4 mb-2 rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase text-white"
                               >
@@ -745,7 +759,7 @@ export default function ProspectingWorkspace() {
                                   type="button"
                                   title="Edit"
                                   onClick={() =>
-                                    setDialog({
+                                    openDialog({
                                       type: "edit",
                                       company,
                                       contact,
@@ -760,7 +774,7 @@ export default function ProspectingWorkspace() {
                                     type="button"
                                     title="Mark contacted"
                                     onClick={() =>
-                                      setDialog({
+                                      openDialog({
                                         type: "mark-contacted",
                                         company,
                                         contact,
@@ -777,7 +791,7 @@ export default function ProspectingWorkspace() {
                                     type="button"
                                     title="Mark engaged"
                                     onClick={() =>
-                                      setDialog({
+                                      openDialog({
                                         type: "mark-engaged",
                                         company,
                                         contact,
@@ -832,7 +846,7 @@ export default function ProspectingWorkspace() {
                       <button
                         type="button"
                         onClick={() =>
-                          setDialog({
+                          openDialog({
                             type: "edit",
                             company: selected.company,
                             contact: selected.contact,
@@ -921,7 +935,7 @@ export default function ProspectingWorkspace() {
                       <button
                         type="button"
                         onClick={() =>
-                          setDialog({
+                          openDialog({
                             type: "add-contact",
                             company: selected.company,
                           })
@@ -1052,7 +1066,7 @@ export default function ProspectingWorkspace() {
                   <button
                     type="button"
                     onClick={() =>
-                      setDialog({
+                      openDialog({
                         type: "edit",
                         company: selected.company,
                         contact: selected.contact,
@@ -1066,7 +1080,7 @@ export default function ProspectingWorkspace() {
                     <button
                       type="button"
                       onClick={() =>
-                        setDialog({
+                        openDialog({
                           type: "mark-contacted",
                           company: selected.company,
                           contact: selected.contact,
@@ -1082,7 +1096,7 @@ export default function ProspectingWorkspace() {
                     <button
                       type="button"
                       onClick={() =>
-                        setDialog({
+                        openDialog({
                           type: "mark-engaged",
                           company: selected.company,
                           contact: selected.contact,

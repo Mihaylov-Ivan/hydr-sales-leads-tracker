@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import {
   findLinkableDeadline,
   projectLinkableDeadlines,
@@ -87,6 +88,7 @@ export default function ExpensesPage() {
     updateExpense,
     deleteExpense,
   } = useProjects();
+  const { canWrite } = useAuth();
 
   const [filterProjectIds, setFilterProjectIds] = useState<Set<string> | null>(
     null,
@@ -412,6 +414,11 @@ export default function ExpensesPage() {
           installation, maintenance &amp; admin use the with-VAT amount). VAT
           auto-calcs at 20%.
         </p>
+        {!canWrite && (
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            View only — changes are disabled for Viewer accounts.
+          </p>
+        )}
       </div>
 
       <section className="overflow-hidden rounded-xl border border-line bg-panel shadow-sm">
@@ -558,6 +565,7 @@ export default function ExpensesPage() {
             </thead>
             <tbody>
               {/* Add row */}
+              {canWrite && (
               <tr className="border-b border-line bg-teal-soft/20">
                 <td className="sticky left-0 z-10 bg-teal-soft/20 px-2 py-1.5">
                   <input
@@ -701,6 +709,7 @@ export default function ExpensesPage() {
                   </button>
                 </td>
               </tr>
+              )}
 
               {visibleRows.map((row) => {
                 const project = projects.find((p) => p.id === row.projectId);

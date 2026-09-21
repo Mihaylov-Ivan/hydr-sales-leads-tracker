@@ -8,7 +8,13 @@ import { useProjects } from "@/lib/store";
 
 export const PROJECT_DRAG_TYPE = "application/x-hydr-project-id";
 
-export default function ProjectCard({ project }: { project: Project }) {
+export default function ProjectCard({
+  project,
+  allowDrag = true,
+}: {
+  project: Project;
+  allowDrag?: boolean;
+}) {
   const { teamMembers, currentUserId, getProjectUserReminder } = useProjects();
   const showSummary = isProjectSummaryEnabled();
   const raw = showSummary
@@ -32,8 +38,12 @@ export default function ProjectCard({ project }: { project: Project }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      draggable
+      draggable={allowDrag}
       onDragStart={(e) => {
+        if (!allowDrag) {
+          e.preventDefault();
+          return;
+        }
         suppressClick.current = true;
         e.dataTransfer.setData(PROJECT_DRAG_TYPE, project.id);
         e.dataTransfer.setData("text/plain", project.id);

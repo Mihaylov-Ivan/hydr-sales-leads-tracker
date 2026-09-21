@@ -149,7 +149,7 @@ function StrategyForm({
 }
 
 export default function StrategySection() {
-  const { can } = useAuth();
+  const { can, canWrite } = useAuth();
   const {
     strategies,
     companies,
@@ -159,7 +159,7 @@ export default function StrategySection() {
     updateStrategy,
     deleteStrategy,
   } = useProspecting();
-  const canManage = can("sales_manager");
+  const canManage = can("sales_manager") && canWrite;
   const [expanded, setExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

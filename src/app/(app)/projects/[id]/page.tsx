@@ -49,6 +49,7 @@ function EditableText({
   suffix,
   placeholder,
   className = "",
+  readOnly = false,
 }: {
   value: string;
   onSave: (next: string) => void;
@@ -56,6 +57,7 @@ function EditableText({
   suffix?: string;
   placeholder?: string;
   className?: string;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -74,8 +76,18 @@ function EditableText({
     }
   }
 
-  if (!editing) {
+  if (readOnly || !editing) {
     const empty = !value.trim();
+    if (readOnly) {
+      return (
+        <span className={`${empty ? "text-muted/50" : ""} ${className}`}>
+          {empty ? (placeholder ?? "—") : value}
+          {suffix && !empty ? (
+            <span className="ml-1 text-muted">{suffix}</span>
+          ) : null}
+        </span>
+      );
+    }
     return (
       <button
         onClick={() => setEditing(true)}
@@ -137,7 +149,7 @@ export default function ProjectPage() {
     regenerateSummary,
     deleteProject,
   } = useProjects();
-  const { user, can } = useAuth();
+  const { user, can, canWrite } = useAuth();
   const leadOptions = assignableTeamMembers(teamMembers);
   const [text, setText] = useState("");
   const [stageChange, setStageChange] = useState<Stage | "">("");
@@ -189,7 +201,7 @@ export default function ProjectPage() {
     return (
       <div className="py-20 text-center">
         <p className="text-muted">You do not have access to this project.</p>
-        <Link href="/todos" className="mt-4 inline-block text-teal-accent hover:underline">
+        <Link href={boardHref} className="mt-4 inline-block text-teal-accent hover:underline">
           ← Back
         </Link>
       </div>
@@ -207,13 +219,14 @@ export default function ProjectPage() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!canWrite || !text.trim()) return;
     addComment(projectId, text.trim(), stageChange || undefined);
     setText("");
     setStageChange("");
   }
 
   function saveComment(commentId: string, draft = commentDraft) {
+    if (!canWrite) return;
     const next = draft.trim();
     if (next) updateComment(projectId, commentId, next);
     setEditingCommentId(null);
@@ -225,6 +238,7 @@ export default function ProjectPage() {
   }
 
   function handleDelete() {
+    if (!canWrite) return;
     deleteProject(projectId);
     router.push(boardHref);
   }
@@ -243,6 +257,7 @@ export default function ProjectPage() {
               value={project.name}
               onSave={(v) => updateProject(project.id, { name: v })}
               className="w-full text-2xl font-bold text-deep"
+              readOnly={!canWrite}
             />
           </h1>
           <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-muted">
@@ -252,6 +267,7 @@ export default function ProjectPage() {
                 if (v.trim()) updateProject(project.id, { client: v.trim() });
               }}
               className="text-sm text-muted"
+              readOnly={!canWrite}
             />
             <span>·</span>
             <span>
@@ -326,6 +342,7 @@ export default function ProjectPage() {
                   updateProject(project.id, { sizeKw: kw });
                 }
               }}
+              readOnly={!canWrite}
             />
           </div>
         </div>
@@ -339,12 +356,14 @@ export default function ProjectPage() {
               value={project.city}
               placeholder="City"
               onSave={(v) => updateProject(project.id, { city: v })}
+              readOnly={!canWrite}
             />
             <span className="text-muted">,</span>
             <EditableText
               value={project.country}
               placeholder="Country"
               onSave={(v) => updateProject(project.id, { country: v })}
+              readOnly={!canWrite}
             />
           </div>
         </div>
@@ -374,7 +393,8 @@ export default function ProjectPage() {
                     updateFinancials(project.id, { contractValue: n });
                   }
                 }}
-              />
+              readOnly={!canWrite}
+            />
             </div>
           </div>
         )}
@@ -404,7 +424,8 @@ export default function ProjectPage() {
                     updateFinancials(project.id, { opexValue: n });
                   }
                 }}
-              />
+              readOnly={!canWrite}
+            />
             </div>
           </div>
         )}
@@ -424,11 +445,12 @@ export default function ProjectPage() {
           </p>
           <select
             value={project.leadUserId ?? ""}
+            disabled={!canWrite}
             onChange={(e) =>
               updateProject(project.id, { leadUserId: e.target.value || undefined })
             }
             title="Click to assign the project lead"
-            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft"
+            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft disabled:cursor-default disabled:hover:bg-transparent"
           >
             <option value="">Unassigned</option>
             {leadOptions.map((m) => (
@@ -594,7 +616,9 @@ export default function ProjectPage() {
       )}
 
       {/* Per-user client follow-up reminder — sales track only */}
-      {projectTrack === "sales" && <ClientFollowUp project={project} />}
+      {projectTrack === "sales" && canWrite && (
+        <ClientFollowUp project={project} />
+      )}
 
       {/* Delivery Gantt + optional income/expenses */}
       {(canViewGantt || canViewFinance) && (
@@ -607,6 +631,7 @@ export default function ProjectPage() {
           showSchedule={canViewGantt}
           showFinancials={canViewFinance}
           expensesOnly={expensesOnly}
+          readOnly={!canWrite}
         />
       )}
 
@@ -617,6 +642,7 @@ export default function ProjectPage() {
         client={project.client}
         kind="question"
         todos={project.todos.filter((t) => t.kind === "question")}
+        readOnly={!canWrite}
       />
       <TodoList
         projectId={project.id}
@@ -626,15 +652,18 @@ export default function ProjectPage() {
           (t) =>
             t.kind === "our-action" && !isClientFollowUpTodo(t, project.client),
         )}
+        readOnly={!canWrite}
       />
       <TodoList
         projectId={project.id}
         client={project.client}
         kind="client-action"
         todos={project.todos.filter((t) => t.kind === "client-action")}
+        readOnly={!canWrite}
       />
 
       {/* New comment */}
+      {canWrite && (
       <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
@@ -681,6 +710,7 @@ export default function ProjectPage() {
           </div>
         </form>
       </section>
+      )}
 
       {/* Timeline */}
       <section>
@@ -689,7 +719,7 @@ export default function ProjectPage() {
         </h2>
         {timeline.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line py-10 text-center text-sm text-muted">
-            No updates yet. Post the first one above.
+            No updates yet{canWrite ? ". Post the first one above." : "."}
           </p>
         ) : (
           <ChainScroll className="max-h-[28rem] overflow-y-auto pr-1">
@@ -702,6 +732,7 @@ export default function ProjectPage() {
                       <span className="font-semibold text-deep">{c.author}</span>
                       <span>{formatDateTime(c.createdAt)}</span>
                       {c.stageChange && <StageBadge stage={c.stageChange} />}
+                      {canWrite && (
                       <span className="ml-auto flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
                         {deletingCommentId === c.id ? (
                           <>
@@ -746,6 +777,7 @@ export default function ProjectPage() {
                           </>
                         )}
                       </span>
+                      )}
                     </div>
                     {editingCommentId === c.id ? (
                       <div className="flex flex-col gap-2">
@@ -808,12 +840,21 @@ export default function ProjectPage() {
       </section>
 
       {/* Contacts */}
-      <ContactList projectId={project.id} contacts={project.contacts} />
+      <ContactList
+        projectId={project.id}
+        contacts={project.contacts}
+        readOnly={!canWrite}
+      />
 
       {/* Offers, models, and other attachments */}
-      <FileAttachments projectId={project.id} files={project.files ?? []} />
+      <FileAttachments
+        projectId={project.id}
+        files={project.files ?? []}
+        readOnly={!canWrite}
+      />
 
       {/* Danger zone */}
+      {canWrite && (
       <div className="flex justify-end border-t border-line pt-4">
         {confirmDelete ? (
           <div className="flex items-center gap-3 text-sm">
@@ -840,6 +881,7 @@ export default function ProjectPage() {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

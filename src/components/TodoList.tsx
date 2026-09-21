@@ -243,6 +243,7 @@ function TodoItem({
   onToggle,
   onPatch,
   onDelete,
+  readOnly = false,
 }: {
   todo: ProjectTodo;
   client: string;
@@ -259,6 +260,7 @@ function TodoItem({
     ownerUserId?: string | null;
   }) => void;
   onDelete: () => void;
+  readOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
@@ -281,13 +283,14 @@ function TodoItem({
         <button
           type="button"
           onClick={onToggle}
+          disabled={readOnly}
           aria-label={todo.done ? "Mark as not done" : "Mark as done"}
-          className="mt-0.5 cursor-pointer"
+          className={`mt-0.5 ${readOnly ? "cursor-default" : "cursor-pointer"}`}
         >
           <Checkbox done={todo.done} />
         </button>
 
-        {editing && !nameLocked ? (
+        {editing && !nameLocked && !readOnly ? (
           <ChainTextarea
             autoFocus
             value={draft}
@@ -306,9 +309,13 @@ function TodoItem({
             rows={3}
             className="min-w-0 flex-1 resize-y rounded border border-teal-accent bg-surface px-1.5 py-1 text-sm leading-relaxed text-ink outline-none"
           />
-        ) : nameLocked ? (
+        ) : nameLocked || readOnly ? (
           <span
-            title="Auto follow-up — complete or delete to clear; name is managed by the client reminder"
+            title={
+              nameLocked
+                ? "Auto follow-up — complete or delete to clear; name is managed by the client reminder"
+                : undefined
+            }
             className={`min-w-0 flex-1 whitespace-pre-wrap rounded px-0.5 text-left text-sm leading-relaxed ${
               todo.done ? "text-muted line-through decoration-muted/60" : "text-ink"
             }`}
@@ -328,44 +335,61 @@ function TodoItem({
           </button>
         )}
 
-        <DueDate todo={todo} onChange={(dueDate) => onPatch({ dueDate })} />
-        <select
-          value={todo.ownerUserId ?? ""}
-          onChange={(e) => onPatch({ ownerUserId: e.target.value || null })}
-          title="Responsible person"
-          aria-label="Responsible person"
-          className="mt-0.5 shrink-0 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-teal-accent"
-        >
-          <option value="">Unassigned</option>
-          {teamMembers.map((member) => (
-            <option key={member.id} value={member.id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
+        {!readOnly && (
+          <DueDate todo={todo} onChange={(dueDate) => onPatch({ dueDate })} />
+        )}
+        {readOnly ? (
+          <span className="mt-0.5 shrink-0 text-xs text-muted">
+            {teamMembers.find((m) => m.id === todo.ownerUserId)?.name ??
+              "Unassigned"}
+          </span>
+        ) : (
+          <select
+            value={todo.ownerUserId ?? ""}
+            onChange={(e) => onPatch({ ownerUserId: e.target.value || null })}
+            title="Responsible person"
+            aria-label="Responsible person"
+            className="mt-0.5 shrink-0 rounded border border-line bg-surface px-1.5 py-1 text-xs text-ink outline-none focus:border-teal-accent"
+          >
+            <option value="">Unassigned</option>
+            {teamMembers.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        )}
 
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label="Delete item"
-          title="Delete"
-          className="mt-0.5 rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
-        >
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
-            <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
-          </svg>
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete item"
+            title="Delete"
+            className="mt-0.5 rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
+              <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
+            </svg>
+          </button>
+        )}
       </div>
 
-      <WorkWindow
-        todo={todo}
-        onPatch={onPatch}
-        className="mt-1 pl-8 pr-8"
-      />
+      {!readOnly && (
+        <WorkWindow
+          todo={todo}
+          onPatch={onPatch}
+          className="mt-1 pl-8 pr-8"
+        />
+      )}
 
       {showAnswer && (
         <div className="mt-1 pl-8 pr-8">
-          <Answer todo={todo} onSave={(answer) => onPatch({ answer })} />
+          {readOnly ? (
+            <p className="text-sm text-muted">{todo.answer || "No answer yet."}</p>
+          ) : (
+            <Answer todo={todo} onSave={(answer) => onPatch({ answer })} />
+          )}
         </div>
       )}
     </li>
@@ -383,11 +407,13 @@ export default function TodoList({
   client,
   kind,
   todos,
+  readOnly = false,
 }: {
   projectId: string;
   client: string;
   kind: TodoKind;
   todos: ProjectTodo[];
+  readOnly?: boolean;
 }) {
   const { addTodo, toggleTodo, updateTodo, deleteTodo, teamMembers } = useProjects();
   const assignable = assignableTeamMembers(teamMembers);
@@ -410,9 +436,10 @@ export default function TodoList({
         teamMembers={assignable}
         showAnswer={kind === "question"}
         highlight={highlight}
-        onToggle={() => toggleTodo(projectId, t.id)}
-        onPatch={(patch) => updateTodo(projectId, t.id, patch)}
-        onDelete={() => deleteTodo(projectId, t.id)}
+        onToggle={readOnly ? () => {} : () => toggleTodo(projectId, t.id)}
+        onPatch={readOnly ? () => {} : (patch) => updateTodo(projectId, t.id, patch)}
+        onDelete={readOnly ? () => {} : () => deleteTodo(projectId, t.id)}
+        readOnly={readOnly}
       />
     );
   }
@@ -458,6 +485,7 @@ export default function TodoList({
         )}
       </div>
 
+      {!readOnly && (
       <form onSubmit={submit} className="mb-2 flex flex-wrap gap-2">
         <ChainTextarea
           value={text}
@@ -527,12 +555,17 @@ export default function TodoList({
           Add
         </button>
       </form>
+      )}
 
       {todos.length === 0 ? (
         <p className="px-2 py-3 text-sm text-muted/80">
           {kind === "question"
-            ? "No open questions. Add one so it doesn't get forgotten."
-            : "Nothing here yet. Add the next step so it doesn't slip."}
+            ? readOnly
+              ? "No open questions."
+              : "No open questions. Add one so it doesn't get forgotten."
+            : readOnly
+              ? "Nothing here yet."
+              : "Nothing here yet. Add the next step so it doesn't slip."}
         </p>
       ) : (
         <ChainScroll

@@ -212,6 +212,10 @@ function UserRow({
             Permission types
           </span>
           <PermissionChecks value={permissions} onChange={setPermissions} />
+          <p className="mt-1.5 text-[11px] text-muted">
+            Viewer is read-only: pair it with area permissions (Sales, Finance,
+            …). Viewers cannot own projects or be assigned tasks.
+          </p>
         </div>
       )}
 
@@ -396,6 +400,10 @@ export default function AdminUsersPage() {
                 value={permissions}
                 onChange={setPermissions}
               />
+              <p className="mt-1.5 text-[11px] text-muted">
+                Viewer is read-only: pair it with area permissions (Sales,
+                Finance, …). Viewers cannot own projects or be assigned tasks.
+              </p>
             </div>
           )}
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">

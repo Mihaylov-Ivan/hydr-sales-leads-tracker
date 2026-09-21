@@ -132,6 +132,7 @@ import {
 import { METRICS_SETTINGS_STORAGE_KEY } from "./metrics/config";
 import { purgeFinancialLocalStorage } from "./browser-storage";
 import { useAuth } from "./auth-context";
+import { guardWriteMethods, mutationAllowed } from "./viewer-write-guard";
 import {
   ensureProjectMetricsDefaults,
   initialMetricsFields,
@@ -1015,6 +1016,7 @@ function sanitizeTeamMembers(rows: TeamMember[]): TeamMember[] {
       ...(m.username?.trim() ? { username: m.username.trim() } : {}),
       ...(m.isAdmin ? { isAdmin: true } : {}),
       ...(m.isActive === false ? { isActive: false } : { isActive: true }),
+      ...(m.isViewer ? { isViewer: true } : {}),
     }))
     .filter((m) => m.id && m.name);
 }
@@ -1024,18 +1026,40 @@ function sanitizeTeamMembers(rows: TeamMember[]): TeamMember[] {
  * seed once from browser localStorage so existing name edits are not lost.
  */
 async function loadRemoteTeamMembers(): Promise<TeamMember[]> {
-  const res = await supabase!
-    .from("team_members")
-    .select("*")
-    .order("name", { ascending: true });
+  const [res, permsRes] = await Promise.all([
+    supabase!
+      .from("team_members")
+      .select("*")
+      .order("name", { ascending: true }),
+    supabase!
+      .from("user_permission_types")
+      .select("user_id, permission_type")
+      .eq("permission_type", "viewer"),
+  ]);
 
   if (res.error) {
     console.error("Supabase team members load failed:", res.error.message);
     return loadLocalTeamMembers();
   }
 
+  if (permsRes.error) {
+    console.error(
+      "Supabase viewer permissions load failed:",
+      permsRes.error.message,
+    );
+  }
+
+  const viewerIds = new Set(
+    (permsRes.data ?? [])
+      .map((row) => (row as { user_id: string }).user_id)
+      .filter(Boolean),
+  );
+
   const remote = sanitizeTeamMembers(
-    ((res.data ?? []) as TeamMemberRow[]).map(teamMemberFromRow),
+    ((res.data ?? []) as TeamMemberRow[]).map((row) => {
+      const member = teamMemberFromRow(row);
+      return viewerIds.has(member.id) ? { ...member, isViewer: true } : member;
+    }),
   );
 
   let migrated = false;
@@ -7952,9 +7976,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready]);
 
-  return (
-    <ProjectsContext.Provider
-      value={{
+  const canMutateRef = useRef<() => boolean>(() => true);
+  canMutateRef.current = () => mutationAllowed(authEnabled, authUser);
+
+  const projectsApi = {
         teamMembers,
         reloadTeamMembers,
         addTeamMember,
@@ -8054,8 +8079,90 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         deleteGanttDeadline,
         shiftProjectSchedule,
         replaceProjectSchedule,
-      }}
-    >
+  } satisfies ProjectsApi;
+
+  const guardedProjectsApi = guardWriteMethods(projectsApi, () => canMutateRef.current(), [
+    "addTeamMember",
+    "updateTeamMember",
+    "updateFinanceSettings",
+    "updateMetricsSettings",
+    "applyFinanceImport",
+    "clearFinanceImport",
+    "importFinancialCsvText",
+    "addProject",
+    "addComment",
+    "updateProject",
+    "markClientContacted",
+    "updateProjectUserReminder",
+    "ensureProjectUserReminder",
+    "updateComment",
+    "deleteComment",
+    "regenerateSummary",
+    "deleteProject",
+    "addTodo",
+    "toggleTodo",
+    "updateTodo",
+    "deleteTodo",
+    "addPersonalTodo",
+    "updatePersonalTodo",
+    "deletePersonalTodo",
+    "addPersonalTodoComment",
+    "updatePersonalTodoComment",
+    "deletePersonalTodoComment",
+    "reorderPersonalTodo",
+    "movePersonalTodo",
+    "addContact",
+    "updateContact",
+    "deleteContact",
+    "addProjectFile",
+    "updateProjectFile",
+    "deleteProjectFile",
+    "updateFinancials",
+    "addPayment",
+    "generateIncomesFromSchedule",
+    "generateOpexSchedule",
+    "updatePayment",
+    "deletePayment",
+    "addExpense",
+    "generateMaterialsExpensesFromIncomes",
+    "updateExpense",
+    "deleteExpense",
+    "ensureWarehouseHoldingProject",
+    "receiveStock",
+    "transferStock",
+    "consumeStock",
+    "adjustStock",
+    "updateWarehouseLot",
+    "deleteWarehouseLot",
+    "upsertWarehouseItem",
+    "upsertWarehouseGroup",
+    "deleteWarehouseGroup",
+    "importMoneyWorksWarehouse",
+    "applySystemSkladMapping",
+    "linkProjectWarehouseExpenses",
+    "saveWarehouseBom",
+    "duplicateWarehouseBom",
+    "deleteWarehouseBom",
+    "seedSebestoynostManufacturingBom",
+    "setManufacturingCostReferenceProjectId",
+    "addMilestone",
+    "updateMilestone",
+    "deleteMilestone",
+    "addGanttPhase",
+    "updateGanttPhase",
+    "deleteGanttPhase",
+    "addGanttActivity",
+    "updateGanttActivity",
+    "deleteGanttActivity",
+    "addGanttDeadline",
+    "updateGanttDeadline",
+    "deleteGanttDeadline",
+    "shiftProjectSchedule",
+    "replaceProjectSchedule",
+  ]);
+
+  return (
+    <ProjectsContext.Provider value={guardedProjectsApi}>
       {children}
     </ProjectsContext.Provider>
   );

@@ -6,7 +6,8 @@ export type PermissionType =
   | "production"
   | "technical_sales"
   | "eu_funding_rnd"
-  | "sales_manager";
+  | "sales_manager"
+  | "viewer";
 
 export const PERMISSION_TYPES: PermissionType[] = [
   "sales",
@@ -16,6 +17,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "technical_sales",
   "eu_funding_rnd",
   "sales_manager",
+  "viewer",
 ];
 
 export const PERMISSION_LABELS: Record<PermissionType, string> = {
@@ -26,7 +28,19 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   technical_sales: "Technical sales",
   eu_funding_rnd: "EU Funding and R&D",
   sales_manager: "Sales Manager",
+  viewer: "Viewer",
 };
+
+/** Area permissions that grant route access (viewer is not an area). */
+const AREA_PERMISSIONS: PermissionType[] = [
+  "sales",
+  "finance",
+  "warehouse",
+  "production",
+  "technical_sales",
+  "eu_funding_rnd",
+  "sales_manager",
+];
 
 export interface SessionUser {
   userId: string;
@@ -42,7 +56,9 @@ export type RouteAccess =
   | { kind: "any" }
   | { kind: "admin" }
   | { kind: "permission"; permission: PermissionType }
-  | { kind: "anyOf"; permissions: PermissionType[] };
+  | { kind: "anyOf"; permissions: PermissionType[] }
+  /** Authenticated non-viewer (and admin). Used for task-centric pages. */
+  | { kind: "nonViewer" };
 
 export function hasPermission(
   user: Pick<SessionUser, "isAdmin" | "permissions"> | null | undefined,
@@ -53,6 +69,22 @@ export function hasPermission(
   return user.permissions.includes(permission);
 }
 
+/** True when the user has viewer and is not an admin. */
+export function isViewerUser(
+  user: Pick<SessionUser, "isAdmin" | "permissions"> | null | undefined,
+): boolean {
+  if (!user || user.isAdmin) return false;
+  return user.permissions.includes("viewer");
+}
+
+/** False for viewers (admins always write). */
+export function canWrite(
+  user: Pick<SessionUser, "isAdmin" | "permissions"> | null | undefined,
+): boolean {
+  if (!user) return false;
+  return !isViewerUser(user);
+}
+
 export function canAccessRoute(
   user: Pick<SessionUser, "isAdmin" | "permissions"> | null | undefined,
   access: RouteAccess,
@@ -61,6 +93,7 @@ export function canAccessRoute(
   if (user.isAdmin) return true;
   if (access.kind === "any") return true;
   if (access.kind === "admin") return false;
+  if (access.kind === "nonViewer") return !isViewerUser(user);
   if (access.kind === "permission") {
     return user.permissions.includes(access.permission);
   }
@@ -71,12 +104,12 @@ export function canAccessRoute(
  * Map pathname → required access.
  * `/` and `/projects/*` are sales, technical_sales, or eu_funding_rnd
  * (project page further gates by track).
- * `/todos` is any authenticated user.
+ * `/todos` is any authenticated non-viewer.
  * Unknown app paths default to admin-only for safety.
  */
 export function accessForPath(pathname: string): RouteAccess {
   if (pathname === "/todos" || pathname.startsWith("/todos/")) {
-    return { kind: "any" };
+    return { kind: "nonViewer" };
   }
   if (pathname === "/change-password" || pathname.startsWith("/change-password/")) {
     return { kind: "any" };
@@ -142,6 +175,8 @@ export function defaultHomePath(
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
+  // Viewer-only (or no area perms): avoid /todos for viewers
+  if (isViewerUser(user)) return "/change-password";
   return "/todos";
 }
 
@@ -163,7 +198,7 @@ export const NAV_ITEMS: NavItem[] = [
     label: "EU Projects & RnD",
     access: { kind: "permission", permission: "eu_funding_rnd" },
   },
-  { href: "/todos", label: "To-Dos", access: { kind: "any" } },
+  { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
   { href: "/expenses", label: "Expenses", access: { kind: "permission", permission: "finance" } },
   { href: "/warehouse", label: "Warehouse", access: { kind: "permission", permission: "warehouse" } },
   { href: "/production", label: "Production", access: { kind: "permission", permission: "production" } },
@@ -184,12 +219,30 @@ export function isPermissionType(value: string): value is PermissionType {
   return (PERMISSION_TYPES as string[]).includes(value);
 }
 
-/** Members who can be chosen as lead/owner/assignee (excludes the Admin account). */
+export function hasAreaPermission(
+  user: Pick<SessionUser, "permissions"> | null | undefined,
+): boolean {
+  if (!user) return false;
+  return user.permissions.some((p) => AREA_PERMISSIONS.includes(p));
+}
+
+/** Members who can be chosen as lead/owner/assignee (excludes Admin and Viewers). */
 export function assignableTeamMembers<
-  T extends { id: string; isActive?: boolean; username?: string; name?: string },
+  T extends {
+    id: string;
+    isActive?: boolean;
+    username?: string;
+    name?: string;
+    isAdmin?: boolean;
+    isViewer?: boolean;
+    permissions?: PermissionType[];
+  },
 >(members: T[]): T[] {
   return members.filter((m) => {
     if (m.isActive === false) return false;
+    if (m.isAdmin) return false;
+    if (m.isViewer) return false;
+    if (m.permissions?.includes("viewer")) return false;
     const username = m.username?.trim().toLowerCase() ?? "";
     if (username === "admin" || m.id === "u-admin") return false;
     if (m.name?.trim().toLowerCase() === "admin") return false;

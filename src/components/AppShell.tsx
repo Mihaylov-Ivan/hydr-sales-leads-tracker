@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { ProjectsProvider } from "@/lib/store";
 import { ProspectingProvider } from "@/lib/prospecting-store";
 import Header from "@/components/Header";
@@ -10,6 +11,7 @@ import { ProspectSalesSync } from "@/components/prospecting/ProspectSalesSync";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { isViewer } = useAuth();
   // Board and personal to-dos stay viewport-locked; other pages scroll inside main.
   const lockBoard = pathname === "/" || pathname === "/todos";
   const outerScrollRef = useRef<HTMLDivElement>(null);
@@ -49,7 +51,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {children}
               </div>
             </main>
-            <OutstandingSidebar />
+            {!isViewer && <OutstandingSidebar />}
           </div>
         </div>
       </ProspectingProvider>
