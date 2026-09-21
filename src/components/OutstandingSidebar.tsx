@@ -554,7 +554,7 @@ function ContactItem({
           )}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="rounded bg-amber-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-accent">
-              Contact
+              Reminder
             </span>
             {status && (
               <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-accent">
@@ -733,6 +733,8 @@ export default function OutstandingSidebar() {
     for (const project of projects) {
       for (const todo of project.todos) {
         if (todo.done) continue;
+        // Follow-ups are reminder Contact rows, not action todos
+        if (isClientFollowUpTodo(todo, project.client)) continue;
         if (
           !todoMatchesOwnerFilter(todo, selectedOwnerIds, allOwnersSelected)
         ) {
@@ -775,6 +777,8 @@ export default function OutstandingSidebar() {
     for (const project of projects) {
       const todos = project.todos.filter((t) => {
         if (t.done || projectWorkWindow.excludedIds.has(t.id)) return false;
+        // Never list auto follow-ups as actions — they render as Contact reminders
+        if (isClientFollowUpTodo(t, project.client)) return false;
         return todoMatchesOwnerFilter(t, selectedOwnerIds, allOwnersSelected);
       });
 
@@ -783,12 +787,8 @@ export default function OutstandingSidebar() {
         isUserEmailReminderDue(
           getProjectUserReminder(project.id, currentUserId),
         );
-      const hasVisibleFollowUpTodo = todos.some(
-        (t) =>
-          isClientFollowUpTodo(t, project.client) &&
-          (!currentUserId || t.ownerUserId === currentUserId),
-      );
-      const showSyntheticContact = emailDueForMe && !hasVisibleFollowUpTodo;
+      // Always surface due follow-ups as Contact rows (separate from actions)
+      const showSyntheticContact = emailDueForMe;
 
       if (todos.length === 0 && !showSyntheticContact) continue;
 

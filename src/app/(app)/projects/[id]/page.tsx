@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Stage, STAGE_LABELS, stagesForTrack, trackOfProject } from "@/lib/types";
+import { Stage, STAGE_LABELS, stagesForTrack, trackOfProject, isClientFollowUpTodo } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
@@ -593,7 +593,7 @@ export default function ProjectPage() {
         </section>
       )}
 
-      {/* Client email follow-up (recurring our-action) — sales track only */}
+      {/* Per-user client follow-up reminder — sales track only */}
       {projectTrack === "sales" && <ClientFollowUp project={project} />}
 
       {/* Delivery Gantt + optional income/expenses */}
@@ -622,7 +622,10 @@ export default function ProjectPage() {
         projectId={project.id}
         client={project.client}
         kind="our-action"
-        todos={project.todos.filter((t) => t.kind === "our-action")}
+        todos={project.todos.filter(
+          (t) =>
+            t.kind === "our-action" && !isClientFollowUpTodo(t, project.client),
+        )}
       />
       <TodoList
         projectId={project.id}

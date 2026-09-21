@@ -72,10 +72,7 @@ import {
   addDays,
   phaseEndDate,
   ScheduleShiftUnit,
-  clientFollowUpTodoText,
   isClientFollowUpTodo,
-  isUserEmailReminderDue,
-  nextEmailReminderDateForUser,
   ProjectUserReminder,
 } from "./types";
 import {
@@ -2667,26 +2664,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  /**
-   * Completing or deleting an auto follow-up todo means the contact was handled
-   * for this cycle — snooze the per-user reminder so sync does not recreate it.
-   */
-  const advanceFollowUpReminderForTodo = useCallback(
-    (projectId: string, todo: ProjectTodo) => {
-      const project = projectsRef.current.find((p) => p.id === projectId);
-      if (!project || !isClientFollowUpTodo(todo, project.client)) return;
-      const uid = todo.ownerUserId ?? currentUserIdRef.current;
-      if (!uid) return;
-      const reminder = getProjectUserReminder(projectId, uid);
-      persistProjectUserReminder({
-        ...reminder,
-        userId: uid,
-        lastClientContactAt: todayDate(),
-      });
-    },
-    [getProjectUserReminder, persistProjectUserReminder],
-  );
-
   const updateProjectUserReminder = useCallback(
     (
       projectId: string,
@@ -2752,6 +2729,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
+      // Retire any leftover auto-created follow-up action todos for this user.
+      // Follow-ups live in project_user_reminders — not as our-action items.
       const todos = current.todos.map((t) =>
         !t.done &&
         isClientFollowUpTodo(t, current.client) &&
@@ -2786,7 +2765,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             .from("project_todos")
             .update({ done: true, done_at: now })
             .eq("id", t.id)
-            .then(logDbError("complete follow-up todo"));
+            .then(logDbError("complete leftover follow-up todo"));
         }
       }
     },
@@ -3037,8 +3016,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       mutateTodos(projectId, (todos) =>
         todos.map((t) => (t.id === todoId ? { ...t, done, doneAt } : t)),
       );
-      // Completing a managed follow-up snoozes the reminder so sync won't spawn a copy.
-      if (done) advanceFollowUpReminderForTodo(projectId, current);
       recordChangeEvent({
         domain: "crm",
         entityType: "todo",
@@ -3059,7 +3036,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo toggle"));
       }
     },
-    [mutateTodos, recordChangeEvent, advanceFollowUpReminderForTodo],
+    [mutateTodos, recordChangeEvent],
   );
 
   const updateTodo = useCallback(
@@ -3202,94 +3179,41 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     ],
   );
 
-  const syncClientFollowUpTodos = useCallback(() => {
+  /**
+   * Client follow-ups are per-user reminders (`project_user_reminders`), not
+   * our-action todos. Complete any leftover auto-created follow-up action
+   * rows so they disappear from Action Items / task lists.
+   */
+  const retireClientFollowUpTodos = useCallback(() => {
     const list = projectsRef.current;
-    const reminders = projectUserRemindersRef.current;
     suppressAssignmentNotifyRef.current = true;
     try {
-    for (const project of list) {
-      if (project.isWarehouseHolding || project.stage === "cancelled") {
+      for (const project of list) {
         for (const t of project.todos) {
           if (!t.done && isClientFollowUpTodo(t, project.client)) {
             updateTodo(project.id, t.id, { done: true });
           }
         }
-        continue;
       }
-
-      const openFollowUps = project.todos.filter(
-        (t) => !t.done && isClientFollowUpTodo(t, project.client),
-      );
-      const text = clientFollowUpTodoText(project.client);
-
-      // Users who have explicit reminder prefs for this project
-      const prefsForProject = reminders.filter(
-        (r) => r.projectId === project.id,
-      );
-
-      for (const reminder of prefsForProject) {
-        const due = isUserEmailReminderDue(reminder);
-        const shouldHaveTask =
-          due &&
-          reminder.emailReminderEnabled !== false &&
-          Boolean(reminder.userId);
-
-        const mine = openFollowUps.filter(
-          (t) => t.ownerUserId === reminder.userId,
-        );
-
-        if (!shouldHaveTask) {
-          for (const t of mine) {
-            updateTodo(project.id, t.id, { done: true });
-          }
-          continue;
-        }
-
-        const dueDate = nextEmailReminderDateForUser(reminder);
-        const existing = mine[0];
-        for (const t of mine.slice(1)) {
-          updateTodo(project.id, t.id, { done: true });
-        }
-
-        if (!existing) {
-          addTodo(project.id, "our-action", text, dueDate, reminder.userId);
-        } else if (existing.dueDate !== dueDate) {
-          // Only sync due date — never overwrite a user-edited title.
-          updateTodo(project.id, existing.id, { dueDate });
-        }
-      }
-
-      // Complete legacy/unowned follow-ups and ones with no rem prefs row
-      for (const t of openFollowUps) {
-        const hasPref = prefsForProject.some(
-          (r) => r.userId === (t.ownerUserId ?? ""),
-        );
-        if (!t.ownerUserId || !hasPref) {
-          updateTodo(project.id, t.id, { done: true });
-        }
-      }
-    }
     } finally {
       suppressAssignmentNotifyRef.current = false;
     }
-  }, [addTodo, updateTodo]);
+  }, [updateTodo]);
 
-  // Keep per-user follow-up reminder todos in sync with each user's settings.
+  // One-shot cleanup of legacy follow-up action mirrors (never recreates them).
   useEffect(() => {
     if (!ready) return;
     const t = window.setTimeout(() => {
-      syncClientFollowUpTodos();
+      retireClientFollowUpTodos();
     }, 300);
     return () => window.clearTimeout(t);
-  }, [ready, projects, projectUserReminders, syncClientFollowUpTodos]);
+  }, [ready, projects, retireClientFollowUpTodos]);
 
   const deleteTodo = useCallback(
     (projectId: string, todoId: string) => {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo = project?.todos.find((t) => t.id === todoId);
       mutateTodos(projectId, (todos) => todos.filter((t) => t.id !== todoId));
-      // Deleting a managed follow-up also snoozes the reminder (same as completing).
-      if (todo) advanceFollowUpReminderForTodo(projectId, todo);
       recordChangeEvent({
         domain: "crm",
         entityType: "todo",
@@ -3317,7 +3241,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("todo delete"));
       }
     },
-    [mutateTodos, recordChangeEvent, advanceFollowUpReminderForTodo],
+    [mutateTodos, recordChangeEvent],
   );
 
   const addPersonalTodo = useCallback(

@@ -1760,17 +1760,17 @@ export function userEmailReminderDeltaDays(
   return daysBetween(todayDate(), nextEmailReminderDateForUser(reminder));
 }
 
-/** Stable text for the auto-created lead follow-up our-action */
+/** Title used by legacy auto-created follow-up our-actions (retired). */
 export function clientFollowUpTodoText(client: string): string {
   const name = client.trim() || "client";
   return `Follow up with ${name}`;
 }
 
 /**
- * Detect auto-created client follow-up reminder todos.
- * Must match the exact sync-generated title for this project’s client —
- * otherwise any user task starting with “Follow up with …” would be
- * force-completed whenever the reminder is not due.
+ * Detect leftover auto-created client follow-up action todos.
+ * Follow-ups are now per-user reminders (`project_user_reminders`) shown as
+ * Contact rows — not mirrored into Action Items. This helper still identifies
+ * legacy rows so they can be retired / hidden from action lists.
  */
 export function isClientFollowUpTodo(
   todo: ProjectTodo,
