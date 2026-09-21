@@ -16,3 +16,4 @@ Register-ScheduledTask `
     -Settings $settings `
     -Description "Checks origin/main every 30 minutes and rebuilds/restarts the Hydr sales tracker when updated." `
     -Force
+    
