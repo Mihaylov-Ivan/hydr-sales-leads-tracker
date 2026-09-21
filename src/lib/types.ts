@@ -1,26 +1,60 @@
+/**
+ * Workspace for a project. Sales stays on the main Board;
+ * EU / RnD live on the EU Projects & RnD page.
+ */
+export type ProjectTrack = "sales" | "eu" | "rnd";
+
+export const PROJECT_TRACKS: ProjectTrack[] = ["sales", "eu", "rnd"];
+
+export const PROJECT_TRACK_LABELS: Record<ProjectTrack, string> = {
+  sales: "Sales",
+  eu: "EU Projects",
+  rnd: "RnD",
+};
+
 export type Stage =
   | "cold-lead"
   | "hot-lead"
   | "under-development"
   | "commissioned"
-  | "cancelled";
+  | "cancelled"
+  | "eu-application-prep"
+  | "eu-application-submitted"
+  | "eu-project-started"
+  | "rnd-execution";
 
 /**
- * Always-visible kanban columns.
- * "cancelled" stays collapsed by default on the board.
+ * Always-visible kanban columns on the Sales Board.
+ * "cancelled" stays collapsed by default.
  */
-export const BOARD_STAGES: Stage[] = [
+export const BOARD_STAGES = [
   "cold-lead",
   "hot-lead",
   "under-development",
   "commissioned",
-];
+] as const satisfies readonly Stage[];
 
-/** Stages selectable when creating a project (excludes cancelled). */
-export const CREATE_STAGES: Stage[] = [...BOARD_STAGES];
+/** Stages selectable when creating a sales project (excludes cancelled). */
+export const CREATE_STAGES = [...BOARD_STAGES];
 
-/** All valid stages (including collapsed / cancelled). */
-export const STAGES: Stage[] = [...CREATE_STAGES, "cancelled"];
+/** All sales stages (including cancelled). */
+export const STAGES = [...CREATE_STAGES, "cancelled"] as const;
+export type SalesStage = (typeof STAGES)[number];
+
+/** EU funding pipeline columns (cancelled collapsed). */
+export const EU_BOARD_STAGES = [
+  "eu-application-prep",
+  "eu-application-submitted",
+  "eu-project-started",
+] as const satisfies readonly Stage[];
+
+export const EU_CREATE_STAGES = [...EU_BOARD_STAGES];
+export const EU_STAGES = [...EU_CREATE_STAGES, "cancelled"] as const;
+
+/** RnD is execution-only (+ cancelled). */
+export const RND_BOARD_STAGES = ["rnd-execution"] as const satisfies readonly Stage[];
+export const RND_CREATE_STAGES = [...RND_BOARD_STAGES];
+export const RND_STAGES = [...RND_CREATE_STAGES, "cancelled"] as const;
 
 export const STAGE_LABELS: Record<Stage, string> = {
   "cold-lead": "Cold Lead",
@@ -28,21 +62,86 @@ export const STAGE_LABELS: Record<Stage, string> = {
   "under-development": "Under Development",
   commissioned: "Commissioned",
   cancelled: "Cancelled",
+  "eu-application-prep": "Application Preparation",
+  "eu-application-submitted": "Application Submitted",
+  "eu-project-started": "Project Started",
+  "rnd-execution": "Project Execution",
 };
 
-/** Map legacy stage ids (and unknown values) onto the current set. */
+const SALES_STAGE_SET = new Set<string>(STAGES);
+const EU_STAGE_SET = new Set<string>(EU_STAGES);
+const RND_STAGE_SET = new Set<string>(RND_STAGES);
+const ALL_STAGE_SET = new Set<string>([
+  ...STAGES,
+  ...EU_STAGES,
+  ...RND_STAGES,
+]);
+
+export function normalizeProjectTrack(
+  value: string | null | undefined,
+): ProjectTrack {
+  if (value === "eu" || value === "rnd" || value === "sales") return value;
+  return "sales";
+}
+
+export function defaultStageForTrack(track: ProjectTrack): Stage {
+  if (track === "eu") return "eu-application-prep";
+  if (track === "rnd") return "rnd-execution";
+  return "cold-lead";
+}
+
+export function boardStagesForTrack(track: ProjectTrack): readonly Stage[] {
+  if (track === "eu") return EU_BOARD_STAGES;
+  if (track === "rnd") return RND_BOARD_STAGES;
+  return BOARD_STAGES;
+}
+
+export function createStagesForTrack(track: ProjectTrack): readonly Stage[] {
+  if (track === "eu") return EU_CREATE_STAGES;
+  if (track === "rnd") return RND_CREATE_STAGES;
+  return CREATE_STAGES;
+}
+
+export function stagesForTrack(track: ProjectTrack): readonly Stage[] {
+  if (track === "eu") return EU_STAGES;
+  if (track === "rnd") return RND_STAGES;
+  return STAGES;
+}
+
+export function isStageForTrack(stage: Stage, track: ProjectTrack): boolean {
+  if (track === "eu") return EU_STAGE_SET.has(stage);
+  if (track === "rnd") return RND_STAGE_SET.has(stage);
+  return SALES_STAGE_SET.has(stage);
+}
+
+export function trackOfProject(p: {
+  track?: ProjectTrack | null;
+}): ProjectTrack {
+  return normalizeProjectTrack(p.track);
+}
+
+export function isSalesBoardProject(p: {
+  track?: ProjectTrack | null;
+  isWarehouseHolding?: boolean;
+}): boolean {
+  return !p.isWarehouseHolding && trackOfProject(p) === "sales";
+}
+
+/** Map legacy / unknown stage ids onto a valid Stage. */
 export function normalizeStage(value: string | null | undefined): Stage {
   if (value === "new-lead" || value === "to-contact") return "cold-lead";
-  if (
-    value === "cold-lead" ||
-    value === "hot-lead" ||
-    value === "under-development" ||
-    value === "commissioned" ||
-    value === "cancelled"
-  ) {
-    return value;
-  }
+  if (value && ALL_STAGE_SET.has(value)) return value as Stage;
   return "cold-lead";
+}
+
+/** Prefer a stage valid for the given track when normalizing. */
+export function normalizeStageForTrack(
+  value: string | null | undefined,
+  track: ProjectTrack,
+): Stage {
+  const stage = normalizeStage(value);
+  if (isStageForTrack(stage, track)) return stage;
+  return defaultStageForTrack(track);
 }
 
 export type SeriesTag =
@@ -1022,6 +1121,10 @@ export const DEFAULT_STAGE_PROBABILITIES: Record<
   "hot-lead": 40,
   "under-development": 100,
   commissioned: 100,
+  "eu-application-prep": 20,
+  "eu-application-submitted": 50,
+  "eu-project-started": 100,
+  "rnd-execution": 100,
 };
 
 /** Company overhead for one calendar month (fixed monthly outgoings). */
@@ -1463,6 +1566,11 @@ export interface Project {
   sizeKw: number;
   stage: Stage;
   /**
+   * Which board this project belongs to.
+   * Defaults to sales when unset (legacy rows).
+   */
+  track?: ProjectTrack;
+  /**
    * Internal holding project for spare/buffer stock expenses.
    * Hidden from the sales Board; visible in Warehouse / Expenses pickers.
    */
@@ -1681,6 +1789,7 @@ export function isClientFollowUpTodo(
  */
 export function isProjectNextStepMissing(p: Project): boolean {
   if (p.isWarehouseHolding || p.stage === "cancelled") return false;
+  if (trackOfProject(p) !== "sales") return false;
   const hasOpenTodo = (p.todos ?? []).some((t) => !t.done);
   const contactPlanned = p.emailReminderEnabled !== false;
   return !hasOpenTodo && !contactPlanned;

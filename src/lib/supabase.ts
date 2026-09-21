@@ -15,6 +15,7 @@ import {
   PersonalTodoComment,
   PersonalTodoStatus,
   ProjectTodo,
+  ProjectTrack,
   Series,
   Stage,
   TeamMember,
@@ -26,9 +27,12 @@ import {
   formatSeriesTags,
   formatMarketTags,
   normalizePersonalTodoStatus,
+  normalizeProjectTrack,
   normalizeStage,
+  normalizeStageForTrack,
   parseSeriesTags,
   parseMarketTags,
+  trackOfProject,
 } from "./types";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -69,6 +73,8 @@ export interface ProjectRow {
   cancellation_reason?: string | null;
   /** Warehouse holding project (migration-022); may be absent before migration */
   is_warehouse_holding?: boolean | null;
+  /** sales | eu | rnd (migration-044); may be absent before migration */
+  project_track?: string | null;
 }
 
 /** Shape of company_metrics_settings singleton (migration-015) */
@@ -408,6 +414,7 @@ export function projectFromRow(
 ): Project {
   const createdAt = row.created_at;
   const createdDate = createdAt.slice(0, 10);
+  const track: ProjectTrack = normalizeProjectTrack(row.project_track);
   return {
     id: row.id,
     name: row.name,
@@ -418,7 +425,8 @@ export function projectFromRow(
     // Rows created before the markets feature have no market column value
     market: formatMarketTags(parseMarketTags(row.market ?? "Clean H2")),
     sizeKw: row.size_kw,
-    stage: normalizeStage(row.stage),
+    stage: normalizeStageForTrack(row.stage, track),
+    ...(track !== "sales" ? { track } : {}),
     baseDescription: row.base_description,
     ...(row.ai_summary ? { aiSummary: row.ai_summary } : {}),
     lastClientContactAt:
@@ -458,6 +466,7 @@ export function projectFromRow(
 }
 
 export function projectToRow(p: Project): ProjectRow {
+  const track = trackOfProject(p);
   return {
     id: p.id,
     name: p.name,
@@ -483,6 +492,7 @@ export function projectToRow(p: Project): ProjectRow {
     last_meaningful_activity_at: p.lastMeaningfulActivityAt,
     cancellation_reason: p.cancellationReason ?? null,
     is_warehouse_holding: p.isWarehouseHolding === true,
+    project_track: track,
   };
 }
 

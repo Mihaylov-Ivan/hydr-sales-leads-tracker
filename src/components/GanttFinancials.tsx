@@ -1070,9 +1070,12 @@ function AddCashForm({
 export default function GanttFinancials({
   projectId,
   financials: storedFinancials,
+  expensesOnly = false,
 }: {
   projectId: string;
   financials: ProjectFinancials;
+  /** RnD projects: track expenses only (no income / OPEX income). */
+  expensesOnly?: boolean;
 }) {
   const {
     financeImport,
@@ -1184,11 +1187,12 @@ export default function GanttFinancials({
       >
         <span>
           <span className="block text-xs font-bold uppercase tracking-wide text-deep">
-            Income &amp; expenses
+            {expensesOnly ? "Expenses" : "Income & expenses"}
           </span>
           <span className="mt-0.5 block text-[11px] text-muted">
-            {payments.length} income · {expenses.length} expense
-            {expenses.length === 1 ? "" : "s"}
+            {expensesOnly
+              ? `${expenses.length} expense${expenses.length === 1 ? "" : "s"}`
+              : `${payments.length} income · ${expenses.length} expense${expenses.length === 1 ? "" : "s"}`}
           </span>
         </span>
         <span className="shrink-0 text-sm font-semibold text-muted" aria-hidden>
@@ -1199,8 +1203,9 @@ export default function GanttFinancials({
       {sectionOpen && (
         <>
       <p className="mb-4 mt-3 text-[11px] text-muted">
-        Expected dates feed the board cash chart whether or not cash has been
-        received. Set a received/paid date when it happens — or leave it empty.
+        {expensesOnly
+          ? "Expected expense dates feed company cashflow and warehouse-linked spend. Set a paid date when it happens — or leave it empty."
+          : "Expected dates feed the board cash chart whether or not cash has been received. Set a received/paid date when it happens — or leave it empty."}
       </p>
       {financeImport && (
         <p className="mb-3 text-[11px] text-muted">
@@ -1215,6 +1220,7 @@ export default function GanttFinancials({
         </p>
       )}
 
+      {!expensesOnly && (
       <div className="mb-5 rounded-lg border border-line bg-panel/60 p-3">
         <h4 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-deep">
           OPEX (yearly after installation)
@@ -1386,8 +1392,10 @@ export default function GanttFinancials({
           <p className="mt-1 text-[11px] text-green-accent">{opexGenerateOk}</p>
         )}
       </div>
+      )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className={`grid gap-5 ${expensesOnly ? "" : "lg:grid-cols-2"}`}>
+        {!expensesOnly && (
         <div>
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-olive">
             Income
@@ -1448,6 +1456,7 @@ export default function GanttFinancials({
             </ul>
           )}
         </div>
+        )}
         <div>
           <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-amber-accent">
             Expenses
@@ -1499,6 +1508,7 @@ export default function GanttFinancials({
               />
             </label>
           </div>
+          {!expensesOnly && (
           <div className="mb-3">
             <button
               type="button"
@@ -1527,6 +1537,7 @@ export default function GanttFinancials({
               </p>
             )}
           </div>
+          )}
           <AddCashForm
             kind="expense"
             projectId={projectId}

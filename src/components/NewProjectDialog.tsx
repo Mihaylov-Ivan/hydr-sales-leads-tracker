@@ -9,7 +9,10 @@ import {
   Series,
   Stage,
   STAGE_LABELS,
-  CREATE_STAGES,
+  ProjectTrack,
+  createStagesForTrack,
+  defaultStageForTrack,
+  PROJECT_TRACK_LABELS,
 } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
 
@@ -18,22 +21,43 @@ const inputCls =
 const labelCls =
   "mb-1 block text-xs font-semibold uppercase tracking-wide text-muted";
 
-export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
+export default function NewProjectDialog({
+  onClose,
+  track = "sales",
+}: {
+  onClose: () => void;
+  track?: ProjectTrack;
+}) {
   const { addProject, teamMembers } = useProjects();
   const assignable = assignableTeamMembers(teamMembers);
   const router = useRouter();
+  const createStages = createStagesForTrack(track);
   const [name, setName] = useState("");
   const [client, setClient] = useState("");
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [series, setSeries] = useState<Series>("Z Series");
-  const [market, setMarket] = useState("Clean H2");
+  const [market, setMarket] = useState(
+    track === "eu" ? "Funding" : track === "rnd" ? "Clean H2" : "Clean H2",
+  );
   const [sizeKw, setSizeKw] = useState("");
-  const [stage, setStage] = useState<Stage>("cold-lead");
+  const [stage, setStage] = useState<Stage>(defaultStageForTrack(track));
   const [leadUserId, setLeadUserId] = useState("");
   const [description, setDescription] = useState("");
 
   const valid = name.trim() && client.trim() && country.trim();
+  const title =
+    track === "eu"
+      ? "New EU Project"
+      : track === "rnd"
+        ? "New RnD Project"
+        : "New Project";
+  const clientPlaceholder =
+    track === "eu"
+      ? "Consortium lead / funding body"
+      : track === "rnd"
+        ? "Internal / partner"
+        : "Company name";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,6 +72,7 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
       market,
       sizeKw: Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
       stage,
+      track,
       baseDescription: description.trim(),
       leadUserId: leadUserId || undefined,
     });
@@ -61,7 +86,14 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
         onSubmit={submit}
         className="my-8 w-full max-w-lg rounded-2xl border border-line bg-surface p-6 shadow-2xl"
       >
-        <h2 className="mb-5 text-lg font-bold text-deep">New Project</h2>
+        <h2 className="mb-1 text-lg font-bold text-deep">{title}</h2>
+        {track !== "sales" && (
+          <p className="mb-5 text-xs text-muted">
+            {PROJECT_TRACK_LABELS[track]} · linked to company financials &amp;
+            warehouse
+          </p>
+        )}
+        {track === "sales" && <div className="mb-5" />}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -71,16 +103,24 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
               className={inputCls}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Varna Port Refuelling Station"
+              placeholder={
+                track === "eu"
+                  ? "e.g. Horizon Europe H2 Hub"
+                  : track === "rnd"
+                    ? "e.g. Stack durability test campaign"
+                    : "e.g. Varna Port Refuelling Station"
+              }
             />
           </div>
           <div className="sm:col-span-2">
-            <label className={labelCls}>Client *</label>
+            <label className={labelCls}>
+              {track === "eu" ? "Organisation / consortium *" : "Client *"}
+            </label>
             <input
               className={inputCls}
               value={client}
               onChange={(e) => setClient(e.target.value)}
-              placeholder="Company name"
+              placeholder={clientPlaceholder}
             />
           </div>
           <div>
@@ -120,25 +160,27 @@ export default function NewProjectDialog({ onClose }: { onClose: () => void }) {
             <label className={labelCls}>Market</label>
             <MarketMultiSelect value={market} onChange={setMarket} />
           </div>
-          <div className="sm:col-span-2">
-            <label className={labelCls}>Stage</label>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {CREATE_STAGES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setStage(s)}
-                  className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${
-                    stage === s
-                      ? "border-teal-accent bg-teal-soft text-teal-accent"
-                      : "border-line bg-panel text-muted hover:border-teal-accent/40"
-                  }`}
-                >
-                  {STAGE_LABELS[s]}
-                </button>
-              ))}
+          {createStages.length > 1 && (
+            <div className="sm:col-span-2">
+              <label className={labelCls}>Stage</label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {createStages.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStage(s)}
+                    className={`rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                      stage === s
+                        ? "border-teal-accent bg-teal-soft text-teal-accent"
+                        : "border-line bg-panel text-muted hover:border-teal-accent/40"
+                    }`}
+                  >
+                    {STAGE_LABELS[s]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="sm:col-span-2">
             <label className={labelCls}>Summary description</label>
             <textarea

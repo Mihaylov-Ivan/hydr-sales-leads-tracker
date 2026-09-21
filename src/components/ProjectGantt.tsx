@@ -1612,6 +1612,7 @@ export default function ProjectGantt({
   financials,
   showSchedule = true,
   showFinancials = true,
+  expensesOnly = false,
 }: {
   projectId: string;
   schedule: ProjectSchedule;
@@ -1620,6 +1621,8 @@ export default function ProjectGantt({
   showSchedule?: boolean;
   /** When false, hide Income & expenses under the schedule. */
   showFinancials?: boolean;
+  /** RnD: expenses only in the financials panel. */
+  expensesOnly?: boolean;
 }) {
   const {
     deleteGanttPhase,
@@ -1668,7 +1671,11 @@ export default function ProjectGantt({
 
   if (!showSchedule && showFinancials && financials) {
     return (
-      <GanttFinancials projectId={projectId} financials={financials} />
+      <GanttFinancials
+        projectId={projectId}
+        financials={financials}
+        expensesOnly={expensesOnly}
+      />
     );
   }
 
@@ -1896,6 +1903,7 @@ export default function ProjectGantt({
             <GanttFinancials
               projectId={projectId}
               financials={financials}
+              expensesOnly={expensesOnly}
             />
           )}
 

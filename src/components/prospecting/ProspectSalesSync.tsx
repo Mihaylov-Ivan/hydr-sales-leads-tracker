@@ -76,6 +76,7 @@ export function useLinkProspectToColdLead() {
     const match = projects.find(
       (p) =>
         !p.isWarehouseHolding &&
+        (p.track == null || p.track === "sales") &&
         p.stage !== "cancelled" &&
         p.client.trim().toLowerCase() === company.name.trim().toLowerCase(),
     );

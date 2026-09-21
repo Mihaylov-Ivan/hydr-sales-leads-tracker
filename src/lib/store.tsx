@@ -31,6 +31,7 @@ import {
   PersonalTodoComment,
   PersonalTodoStatus,
   ProjectTodo,
+  ProjectTrack,
   Stage,
   TeamMember,
   TodoKind,
@@ -64,6 +65,7 @@ import {
   normalizePersonalTodoStatus,
   comparePersonalTodos,
   normalizeStage,
+  normalizeProjectTrack,
   parseSeriesTags,
   parseMarketTags,
   todayDate,
@@ -320,6 +322,8 @@ export interface NewProjectInput {
   baseDescription: string;
   leadUserId?: string;
   lastMeaningfulActivityAt?: string;
+  /** Defaults to sales when omitted. */
+  track?: ProjectTrack;
 }
 
 export type ProjectPatch = Partial<
@@ -1341,6 +1345,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     useState(false);
   const [supportsGanttTables, setSupportsGanttTables] = useState(false);
   const [supportsWarehouseHolding, setSupportsWarehouseHolding] = useState(false);
+  const [supportsProjectTrack, setSupportsProjectTrack] = useState(false);
   const [supportsPersonalTodos, setSupportsPersonalTodos] = useState(false);
   const [summarizing, setSummarizing] = useState<Record<string, boolean>>({});
   const projectsRef = useRef<Project[]>([]);
@@ -1478,6 +1483,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("company_metrics_settings").select("id").limit(1),
         supabase.from("project_gantt_phases").select("id").limit(1),
         supabase.from("projects").select("is_warehouse_holding").limit(1),
+        supabase.from("projects").select("project_track").limit(1),
       ])
         .then(
           ([
@@ -1488,6 +1494,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             settingsTable,
             ganttTable,
             warehouseHoldingCol,
+            projectTrackCol,
           ]) => {
             setSupportsOwnershipFields(
               !projectsCols.error && !todosCols.error,
@@ -1497,6 +1504,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             setSupportsMetricsSettingsTable(!settingsTable.error);
             setSupportsGanttTables(!ganttTable.error);
             setSupportsWarehouseHolding(!warehouseHoldingCol.error);
+            setSupportsProjectTrack(!projectTrackCol.error);
           },
         )
         .catch(() => {
@@ -1506,6 +1514,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           setSupportsMetricsSettingsTable(false);
           setSupportsGanttTables(false);
           setSupportsWarehouseHolding(false);
+          setSupportsProjectTrack(false);
         });
     }
   }, []);
@@ -2240,6 +2249,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     const createdAt = new Date().toISOString();
     const description = input.baseDescription.trim();
     const authorInfo = resolveAuthor();
+    const track = normalizeProjectTrack(input.track);
     // The summary entered at creation doubles as the first update in the timeline.
     const initialComment: ProjectComment | null = description
       ? {
@@ -2257,9 +2267,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       series: formatSeriesTags(parseSeriesTags(input.series)),
       market: formatMarketTags(parseMarketTags(input.market)),
       id,
+      ...(track !== "sales" ? { track } : {}),
       lastClientContactAt: createdAt.slice(0, 10),
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
-      emailReminderEnabled: true,
+      emailReminderEnabled: track === "sales",
       ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
       ...initialMetricsFields({
         stage: input.stage,
@@ -2287,6 +2298,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           name: project.name,
           stage: project.stage,
           market: project.market,
+          track,
         },
       },
       undefined,
@@ -2325,6 +2337,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
               last_meaningful_activity_at: project.lastMeaningfulActivityAt,
             }
             : {}),
+          ...(supportsProjectTrack ? { project_track: track } : {}),
         })
         .then((res) => {
           logDbError("project insert")(res);
@@ -2357,6 +2370,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     supportsOwnershipFields,
     supportsCommentAuthorId,
     supportsMetricsFields,
+    supportsProjectTrack,
     resolveAuthor,
     recordChangeEvent,
   ]);

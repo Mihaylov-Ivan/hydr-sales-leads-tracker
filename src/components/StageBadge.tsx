@@ -6,6 +6,11 @@ const STYLES: Record<Stage, string> = {
   "under-development": "bg-olive/15 text-olive-ink border-olive/40",
   commissioned: "bg-green-accent/10 text-green-accent border-green-accent/40",
   cancelled: "bg-muted/10 text-muted border-line",
+  "eu-application-prep": "bg-teal-soft text-teal-accent border-teal-accent/40",
+  "eu-application-submitted":
+    "bg-amber-accent/10 text-amber-accent border-amber-accent/40",
+  "eu-project-started": "bg-green-accent/10 text-green-accent border-green-accent/40",
+  "rnd-execution": "bg-olive/15 text-olive-ink border-olive/40",
 };
 
 export default function StageBadge({ stage }: { stage: Stage }) {

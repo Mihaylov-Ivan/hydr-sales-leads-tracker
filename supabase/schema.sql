@@ -32,8 +32,15 @@ create table if not exists public.projects (
       'hot-lead',
       'under-development',
       'commissioned',
-      'cancelled'
+      'cancelled',
+      'eu-application-prep',
+      'eu-application-submitted',
+      'eu-project-started',
+      'rnd-execution'
     )),
+  -- Workspace: sales (Board) | eu | rnd (migration-044)
+  project_track text not null default 'sales'
+    check (project_track in ('sales', 'eu', 'rnd')),
   base_description text not null default '',
   ai_summary text,
   -- Ownership + client follow-up
@@ -60,7 +67,11 @@ create table if not exists public.project_comments (
       'hot-lead',
       'under-development',
       'commissioned',
-      'cancelled'
+      'cancelled',
+      'eu-application-prep',
+      'eu-application-submitted',
+      'eu-project-started',
+      'rnd-execution'
     )),
   created_at timestamptz not null default now()
 );

@@ -1517,6 +1517,7 @@ export function PromoteDialog({
       projects.filter(
         (p) =>
           !p.isWarehouseHolding &&
+          (p.track == null || p.track === "sales") &&
           p.client.trim().toLowerCase() === company.name.trim().toLowerCase(),
       ),
     [projects, company.name],

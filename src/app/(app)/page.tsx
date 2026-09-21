@@ -32,7 +32,7 @@ const SIZE_BUCKETS: { id: SizeBucket; label: string; match: (kw: number) => bool
   { id: "large", label: "> 1000 kW", match: (kw) => kw > 1000 },
 ];
 
-const COLUMN_ACCENT: Record<Stage, string> = {
+const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
   "cold-lead": "border-t-teal-accent",
   "hot-lead": "border-t-amber-accent",
   "under-development": "border-t-olive",
@@ -394,6 +394,7 @@ export default function Dashboard() {
     return projects.filter(
       (p) =>
         !p.isWarehouseHolding &&
+        (p.track == null || p.track === "sales") &&
         (countryFilter === "all" || p.country === countryFilter) &&
         MARKETS.some(
           (m) => marketFilter.has(m) && marketIncludesTag(p.market, m),
@@ -417,14 +418,18 @@ export default function Dashboard() {
   }
 
   const byStage = useMemo(() => {
-    const map: Record<Stage, typeof filtered> = {
+    const map: Record<(typeof STAGES)[number], typeof filtered> = {
       "cold-lead": [],
       "hot-lead": [],
       "under-development": [],
       commissioned: [],
       cancelled: [],
     };
-    for (const p of filtered) map[p.stage].push(p);
+    for (const p of filtered) {
+      if ((STAGES as readonly string[]).includes(p.stage)) {
+        map[p.stage as (typeof STAGES)[number]].push(p);
+      }
+    }
     for (const stage of STAGES) {
       map[stage].sort((a, b) => {
         const fa = isProjectNextStepMissing(a) ? 0 : 1;
@@ -708,7 +713,7 @@ export default function Dashboard() {
               stage="cancelled"
               projects={byStage.cancelled}
               isOver={cancelledOver}
-              accentClass={COLUMN_ACCENT.cancelled}
+              accentClass={COLUMN_ACCENT.cancelled ?? "border-t-muted"}
               {...columnDragHandlers("cancelled")}
               onExpand={() => setExpandedStage("cancelled")}
               headerExtra={
@@ -736,7 +741,7 @@ export default function Dashboard() {
                 stage={stage}
                 projects={byStage[stage]}
                 isOver={dragOverStage === stage}
-                accentClass={COLUMN_ACCENT[stage]}
+                accentClass={COLUMN_ACCENT[stage] ?? "border-t-muted"}
                 {...columnDragHandlers(stage)}
                 onExpand={() => setExpandedStage(stage)}
               />
@@ -756,9 +761,11 @@ export default function Dashboard() {
           >
             <StageColumn
               stage={expandedStage}
-              projects={byStage[expandedStage]}
+              projects={
+                byStage[expandedStage as (typeof STAGES)[number]] ?? []
+              }
               isOver={dragOverStage === expandedStage}
-              accentClass={COLUMN_ACCENT[expandedStage]}
+              accentClass={COLUMN_ACCENT[expandedStage] ?? "border-t-muted"}
               {...columnDragHandlers(expandedStage)}
               expanded
               onExpand={() => setExpandedStage(null)}

@@ -13,11 +13,21 @@ import {
 import { resolveLinkedDeadlineDate } from "./gantt-finance";
 
 export function isContracted(stage: Stage): boolean {
-  return stage === "under-development" || stage === "commissioned";
+  return (
+    stage === "under-development" ||
+    stage === "commissioned" ||
+    stage === "eu-project-started" ||
+    stage === "rnd-execution"
+  );
 }
 
 export function isPipeline(stage: Stage): boolean {
-  return stage === "cold-lead" || stage === "hot-lead";
+  return (
+    stage === "cold-lead" ||
+    stage === "hot-lead" ||
+    stage === "eu-application-prep" ||
+    stage === "eu-application-submitted"
+  );
 }
 
 export function probabilityFor(

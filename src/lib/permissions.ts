@@ -4,7 +4,8 @@ export type PermissionType =
   | "finance"
   | "warehouse"
   | "production"
-  | "technical_sales";
+  | "technical_sales"
+  | "eu_funding_rnd";
 
 export const PERMISSION_TYPES: PermissionType[] = [
   "sales",
@@ -12,6 +13,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "warehouse",
   "production",
   "technical_sales",
+  "eu_funding_rnd",
 ];
 
 export const PERMISSION_LABELS: Record<PermissionType, string> = {
@@ -20,6 +22,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   warehouse: "Warehouse",
   production: "Production",
   technical_sales: "Technical sales",
+  eu_funding_rnd: "EU Funding and R&D",
 };
 
 export interface SessionUser {
@@ -63,7 +66,8 @@ export function canAccessRoute(
 
 /**
  * Map pathname → required access.
- * `/` and `/projects/*` are sales or technical_sales.
+ * `/` and `/projects/*` are sales, technical_sales, or eu_funding_rnd
+ * (project page further gates by track).
  * `/todos` is any authenticated user.
  * Unknown app paths default to admin-only for safety.
  */
@@ -84,9 +88,17 @@ export function accessForPath(pathname: string): RouteAccess {
   if (pathname === "/prospecting" || pathname.startsWith("/prospecting/")) {
     return { kind: "permission", permission: "sales" };
   }
+  if (pathname === "/eu-rnd" || pathname.startsWith("/eu-rnd/")) {
+    return { kind: "permission", permission: "eu_funding_rnd" };
+  }
+  if (pathname.startsWith("/projects/")) {
+    return {
+      kind: "anyOf",
+      permissions: ["sales", "technical_sales", "eu_funding_rnd"],
+    };
+  }
   if (
     pathname === "/" ||
-    pathname.startsWith("/projects/") ||
     pathname === "/metrics" ||
     pathname.startsWith("/metrics/")
   ) {
@@ -123,6 +135,7 @@ export function defaultHomePath(
   ) {
     return "/";
   }
+  if (user.permissions.includes("eu_funding_rnd")) return "/eu-rnd";
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
@@ -141,6 +154,11 @@ export const NAV_ITEMS: NavItem[] = [
     href: "/",
     label: "Sales Projects",
     access: { kind: "anyOf", permissions: ["sales", "technical_sales"] },
+  },
+  {
+    href: "/eu-rnd",
+    label: "EU Projects & RnD",
+    access: { kind: "permission", permission: "eu_funding_rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "any" } },
   { href: "/expenses", label: "Expenses", access: { kind: "permission", permission: "finance" } },

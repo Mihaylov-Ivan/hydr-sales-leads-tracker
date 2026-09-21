@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Stage, STAGE_LABELS, STAGES } from "@/lib/types";
+import { Stage, STAGE_LABELS, stagesForTrack, trackOfProject } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
@@ -137,9 +137,7 @@ export default function ProjectPage() {
     regenerateSummary,
     deleteProject,
   } = useProjects();
-  const { can } = useAuth();
-  const canViewGantt = can("technical_sales");
-  const canViewFinance = can("finance");
+  const { user, can } = useAuth();
   const leadOptions = assignableTeamMembers(teamMembers);
   const [text, setText] = useState("");
   const [stageChange, setStageChange] = useState<Stage | "">("");
@@ -150,6 +148,29 @@ export default function ProjectPage() {
   const [pipelineOpen, setPipelineOpen] = useState(false);
 
   const project = useMemo(() => projects.find((p) => p.id === id), [projects, id]);
+  const projectTrack = project ? trackOfProject(project) : "sales";
+  const trackStages = stagesForTrack(projectTrack);
+  const isEuRndTrack = projectTrack === "eu" || projectTrack === "rnd";
+  const expensesOnly = projectTrack === "rnd";
+
+  const canAccessProject = useMemo(() => {
+    if (!project || !user) return false;
+    if (user.isAdmin) return true;
+    if (isEuRndTrack) {
+      return user.permissions.includes("eu_funding_rnd");
+    }
+    return (
+      user.permissions.includes("sales") ||
+      user.permissions.includes("technical_sales")
+    );
+  }, [project, user, isEuRndTrack]);
+
+  const canViewGantt =
+    can("technical_sales") || (isEuRndTrack && can("eu_funding_rnd"));
+  const canViewFinance =
+    can("finance") || (isEuRndTrack && can("eu_funding_rnd"));
+  const boardHref = isEuRndTrack ? "/eu-rnd" : "/";
+  const boardLabel = isEuRndTrack ? "EU Projects & RnD" : "All projects";
 
   if (!ready) {
     return <p className="py-20 text-center text-muted">Loading…</p>;
@@ -158,8 +179,18 @@ export default function ProjectPage() {
     return (
       <div className="py-20 text-center">
         <p className="text-muted">Project not found.</p>
-        <Link href="/" className="mt-4 inline-block text-teal-accent hover:underline">
-          ← Back to projects
+        <Link href={boardHref} className="mt-4 inline-block text-teal-accent hover:underline">
+          ← Back to {boardLabel}
+        </Link>
+      </div>
+    );
+  }
+  if (!canAccessProject) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-muted">You do not have access to this project.</p>
+        <Link href="/todos" className="mt-4 inline-block text-teal-accent hover:underline">
+          ← Back
         </Link>
       </div>
     );
@@ -195,13 +226,13 @@ export default function ProjectPage() {
 
   function handleDelete() {
     deleteProject(projectId);
-    router.push("/");
+    router.push(boardHref);
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/" className="text-sm text-muted hover:text-teal-accent">
-        ← All projects
+      <Link href={boardHref} className="text-sm text-muted hover:text-teal-accent">
+        ← {boardLabel}
       </Link>
 
       {/* Header */}
@@ -237,7 +268,7 @@ export default function ProjectPage() {
             className="absolute inset-0 cursor-pointer opacity-0"
             aria-label="Change project stage"
           >
-            {STAGES.map((s) => (
+            {trackStages.map((s) => (
               <option key={s} value={s}>
                 {STAGE_LABELS[s]}
               </option>
@@ -318,10 +349,10 @@ export default function ProjectPage() {
           </div>
         </div>
 
-        {canViewFinance && (
+        {canViewFinance && !expensesOnly && (
           <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-              Contract value (€)
+              {projectTrack === "eu" ? "Funding / grant value (€)" : "Contract value (€)"}
             </p>
             <div className="mt-1 text-sm font-medium text-deep">
               <EditableText
@@ -348,7 +379,7 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {canViewFinance && (
+        {canViewFinance && !expensesOnly && (
           <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Yearly OPEX income (€)
@@ -562,8 +593,8 @@ export default function ProjectPage() {
         </section>
       )}
 
-      {/* Client email follow-up (recurring our-action) */}
-      <ClientFollowUp project={project} />
+      {/* Client email follow-up (recurring our-action) — sales track only */}
+      {projectTrack === "sales" && <ClientFollowUp project={project} />}
 
       {/* Delivery Gantt + optional income/expenses */}
       {(canViewGantt || canViewFinance) && (
@@ -575,6 +606,7 @@ export default function ProjectPage() {
           financials={canViewFinance ? project.financials : undefined}
           showSchedule={canViewGantt}
           showFinancials={canViewFinance}
+          expensesOnly={expensesOnly}
         />
       )}
 
@@ -629,7 +661,7 @@ export default function ProjectPage() {
                 className="rounded-lg border border-line bg-surface px-3 py-1.5 text-sm text-ink outline-none focus:border-teal-accent"
               >
                 <option value="">Keep current ({STAGE_LABELS[project.stage]})</option>
-                {STAGES.filter((s) => s !== project.stage).map((s) => (
+                {trackStages.filter((s) => s !== project.stage).map((s) => (
                   <option key={s} value={s}>
                     → {STAGE_LABELS[s]}
                   </option>
