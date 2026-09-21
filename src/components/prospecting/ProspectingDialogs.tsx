@@ -1159,9 +1159,18 @@ export function EditProspectDialog({
   contact: ProspectContact;
   onClose: () => void;
 }) {
-  const { updateCompany, updateContact } = useProspecting();
-  const { teamMembers } = useProjects();
+  const { updateCompany, updateContact, addContact } = useProspecting();
+  const { teamMembers, currentUserId } = useProjects();
   const assignable = assignableTeamMembers(teamMembers);
+
+  type NewDraft = {
+    key: string;
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+    linkedinUrl: string;
+  };
 
   const [name, setName] = useState(company.name);
   const [country, setCountry] = useState(company.country);
@@ -1192,8 +1201,15 @@ export function EditProspectDialog({
   );
   const [followUpReason, setFollowUpReason] = useState(contact.followUpReason);
   const [contactNotes, setContactNotes] = useState(contact.notes);
+  const [newContacts, setNewContacts] = useState<NewDraft[]>([]);
 
   const valid = name.trim().length > 0;
+
+  function updateNewDraft(key: string, patch: Partial<NewDraft>) {
+    setNewContacts((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+    );
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1230,6 +1246,40 @@ export function EditProspectDialog({
       followUpReason: followUpReason.trim(),
       notes: contactNotes.trim(),
     });
+
+    const ownerForNew =
+      contactOwnerId ||
+      companyOwnerId ||
+      (currentUserId && assignable.some((m) => m.id === currentUserId)
+        ? currentUserId
+        : assignable[0]?.id) ||
+      "";
+
+    for (const draft of newContacts) {
+      if (
+        !(
+          draft.name.trim() ||
+          draft.title.trim() ||
+          draft.email.trim() ||
+          draft.phone.trim() ||
+          draft.linkedinUrl.trim()
+        )
+      ) {
+        continue;
+      }
+      addContact(company.id, {
+        name: draft.name.trim(),
+        title: draft.title,
+        email: draft.email,
+        phone: draft.phone,
+        linkedinUrl: draft.linkedinUrl,
+        ownerId: ownerForNew,
+        source,
+        priority: company.priority,
+        isPrimary: false,
+      });
+    }
+
     onClose();
   }
 
@@ -1484,6 +1534,120 @@ export function EditProspectDialog({
           />
           Primary contact
         </label>
+
+        <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-deep">
+              Add more contacts
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setNewContacts((prev) => [
+                  ...prev,
+                  {
+                    key: `n${Date.now()}-${prev.length}`,
+                    name: "",
+                    title: "",
+                    email: "",
+                    phone: "",
+                    linkedinUrl: "",
+                  },
+                ])
+              }
+              className="text-[10px] font-bold uppercase text-teal-accent hover:underline"
+            >
+              + Add contact
+            </button>
+          </div>
+          {newContacts.length === 0 ? (
+            <p className="text-xs text-muted">
+              Optional — add additional people for this company before saving.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {newContacts.map((draft, index) => (
+                <div
+                  key={draft.key}
+                  className="rounded-xl border border-line bg-panel/60 p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      New contact {index + 1}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNewContacts((prev) =>
+                          prev.filter((c) => c.key !== draft.key),
+                        )
+                      }
+                      className="text-[10px] font-semibold text-muted hover:text-amber-accent"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>Name</label>
+                      <input
+                        className={inputCls}
+                        value={draft.name}
+                        onChange={(e) =>
+                          updateNewDraft(draft.key, { name: e.target.value })
+                        }
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Job title</label>
+                      <input
+                        className={inputCls}
+                        value={draft.title}
+                        onChange={(e) =>
+                          updateNewDraft(draft.key, { title: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Email</label>
+                      <input
+                        className={inputCls}
+                        type="email"
+                        value={draft.email}
+                        onChange={(e) =>
+                          updateNewDraft(draft.key, { email: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Phone</label>
+                      <input
+                        className={inputCls}
+                        value={draft.phone}
+                        onChange={(e) =>
+                          updateNewDraft(draft.key, { phone: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>LinkedIn URL</label>
+                      <input
+                        className={inputCls}
+                        value={draft.linkedinUrl}
+                        onChange={(e) =>
+                          updateNewDraft(draft.key, {
+                            linkedinUrl: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
           <button
