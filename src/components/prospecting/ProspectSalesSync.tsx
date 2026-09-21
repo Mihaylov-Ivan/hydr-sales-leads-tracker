@@ -111,7 +111,7 @@ export function useLinkProspectToColdLead() {
       city: company.city,
       series: PROSPECT_TO_PROJECT_SERIES[company.product],
       market: PROSPECT_TO_PROJECT_MARKET[company.market],
-      sizeKw: 0,
+      sizeKw: company.sizeKw > 0 ? company.sizeKw : 0,
       stage: "cold-lead",
       baseDescription: description,
       leadUserId: company.ownerId || undefined,

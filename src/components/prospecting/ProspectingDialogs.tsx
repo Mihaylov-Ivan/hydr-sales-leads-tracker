@@ -123,6 +123,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
   );
   const [source, setSource] = useState<ProspectSource>("email");
   const [ownerId, setOwnerId] = useState(ownerDefault);
+  const [sizeKw, setSizeKw] = useState("");
   const [strategyWhy, setStrategyWhy] = useState("");
   const [draftContacts, setDraftContacts] = useState<DraftContact[]>([
     { key: "c0", name: "", title: "", email: "", phone: "" },
@@ -132,6 +133,10 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setProduct(PROSPECT_MARKET_PRODUCT[market]);
   }, [market]);
+
+  useEffect(() => {
+    if (!ownerId && ownerDefault) setOwnerId(ownerDefault);
+  }, [ownerDefault, ownerId]);
 
   const valid = name.trim().length > 0;
 
@@ -153,6 +158,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
         phone: c.phone,
         isPrimary: index === 0,
       }));
+    const parsedSize = Number(sizeKw);
     const result = addCompany({
       name,
       country,
@@ -164,6 +170,9 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
       priority: "medium",
       ownerId,
       strategyWhy,
+      ...(Number.isFinite(parsedSize) && parsedSize > 0
+        ? { sizeKw: parsedSize }
+        : {}),
       ...(contacts.length ? { contacts } : {}),
     });
     if (result.duplicateWarning) {
@@ -244,6 +253,17 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
           </select>
         </div>
         <div>
+          <label className={labelCls}>System size (kW)</label>
+          <input
+            className={inputCls}
+            type="number"
+            min={0}
+            value={sizeKw}
+            onChange={(e) => setSizeKw(e.target.value)}
+            placeholder="Optional"
+          />
+        </div>
+        <div>
           <label className={labelCls}>Source</label>
           <select
             className={selectCls}
@@ -284,7 +304,7 @@ export function AddCompanyDialog({ onClose }: { onClose: () => void }) {
         <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-deep">
-              Contacts (optional)
+              Contacts
             </p>
             <button
               type="button"
@@ -1020,6 +1040,9 @@ export function EditProspectDialog({
   const [market, setMarket] = useState<ProspectMarket>(company.market);
   const [product, setProduct] = useState<ProspectProduct>(company.product);
   const [source, setSource] = useState<ProspectSource>(company.source);
+  const [sizeKw, setSizeKw] = useState(
+    company.sizeKw > 0 ? String(company.sizeKw) : "",
+  );
   const [companyOwnerId, setCompanyOwnerId] = useState(company.ownerId);
   const [strategyWhy, setStrategyWhy] = useState(company.strategyWhy);
   const [companyNotes, setCompanyNotes] = useState(company.notes);
@@ -1045,6 +1068,7 @@ export function EditProspectDialog({
     e.preventDefault();
     if (!valid) return;
     const followUp = nextFollowUpAt.trim() || null;
+    const parsedSize = Number(sizeKw);
     updateCompany(company.id, {
       name: name.trim(),
       country: country.trim(),
@@ -1059,6 +1083,8 @@ export function EditProspectDialog({
       notes: companyNotes.trim(),
       nextAction: nextAction.trim() || followUpReason.trim(),
       nextActionAt: followUp,
+      sizeKw:
+        Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
     });
     updateContact(contact.id, {
       name: contactName.trim(),
@@ -1167,6 +1193,17 @@ export function EditProspectDialog({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className={labelCls}>System size (kW)</label>
+          <input
+            className={inputCls}
+            type="number"
+            min={0}
+            value={sizeKw}
+            onChange={(e) => setSizeKw(e.target.value)}
+            placeholder="Optional"
+          />
         </div>
         <div>
           <label className={labelCls}>Company owner</label>
@@ -1565,10 +1602,10 @@ export function PromoteDialog({
         client: company.name,
         country: company.country || "—",
         city: company.city,
-        series: PROSPECT_TO_PROJECT_SERIES[company.product],
-        market: PROSPECT_TO_PROJECT_MARKET[company.market],
-        sizeKw: 0,
-        stage,
+      series: PROSPECT_TO_PROJECT_SERIES[company.product],
+      market: PROSPECT_TO_PROJECT_MARKET[company.market],
+      sizeKw: company.sizeKw > 0 ? company.sizeKw : 0,
+      stage,
         baseDescription: description.trim(),
         leadUserId: leadUserId || undefined,
       });

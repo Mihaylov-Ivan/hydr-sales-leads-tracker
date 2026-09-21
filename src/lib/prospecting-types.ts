@@ -364,6 +364,8 @@ export interface ProspectCompany {
   strategyWhy: string;
   strategyAngle: string;
   strategyMessage: string;
+  /** Optional estimated system size in kW (maps to Sales Project sizeKw on promote). */
+  sizeKw: number;
   potentialValue: number | null;
   existingRelationship: string;
   nextAction: string;
@@ -502,6 +504,12 @@ export function createEmptyCompany(
     strategyWhy: partial.strategyWhy?.trim() ?? "",
     strategyAngle: partial.strategyAngle?.trim() ?? "",
     strategyMessage: partial.strategyMessage?.trim() ?? "",
+    sizeKw:
+      typeof partial.sizeKw === "number" &&
+      Number.isFinite(partial.sizeKw) &&
+      partial.sizeKw > 0
+        ? partial.sizeKw
+        : 0,
     potentialValue: partial.potentialValue ?? null,
     existingRelationship: partial.existingRelationship?.trim() ?? "",
     nextAction: partial.nextAction?.trim() ?? "",

@@ -64,6 +64,10 @@ function sanitizeState(raw: unknown): ProspectingState {
       ...c,
       market: normalizeProspectMarket(c.market),
       source: normalizeProspectSource(c.source),
+      sizeKw:
+        typeof c.sizeKw === "number" && Number.isFinite(c.sizeKw) && c.sizeKw > 0
+          ? c.sizeKw
+          : 0,
     }),
   );
   const contacts = (Array.isArray(o.contacts) ? o.contacts : []).map((c) => ({
@@ -178,6 +182,10 @@ function companyFromRow(row: Record<string, unknown>): ProspectCompany {
     strategyWhy: String(row.strategy_why ?? ""),
     strategyAngle: String(row.strategy_angle ?? ""),
     strategyMessage: String(row.strategy_message ?? ""),
+    sizeKw: (() => {
+      const n = Number(row.size_kw);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })(),
     potentialValue:
       row.potential_value == null ? null : Number(row.potential_value),
     existingRelationship: String(row.existing_relationship ?? ""),
@@ -277,6 +285,7 @@ function companyToRow(c: ProspectCompany) {
     strategy_why: c.strategyWhy,
     strategy_angle: c.strategyAngle,
     strategy_message: c.strategyMessage,
+    size_kw: c.sizeKw > 0 ? c.sizeKw : null,
     potential_value: c.potentialValue,
     existing_relationship: c.existingRelationship,
     next_action: c.nextAction,
@@ -356,6 +365,8 @@ export interface AddCompanyInput {
   strategyWhy?: string;
   strategyAngle?: string;
   strategyMessage?: string;
+  /** Optional system size in kW */
+  sizeKw?: number;
   /** Optional first contact (legacy single-contact shape) */
   contact?: {
     name: string;
@@ -593,6 +604,40 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [],
   );
 
+  // Backfill: older company-only adds never appeared in the contact-centric queue.
+  useEffect(() => {
+    if (!ready) return;
+    const orphans = stateRef.current.companies.filter(
+      (co) => !stateRef.current.contacts.some((c) => c.companyId === co.id),
+    );
+    if (orphans.length === 0) return;
+
+    const extras = orphans.map((co) =>
+      createEmptyContact({
+        companyId: co.id,
+        name: "Contact TBD",
+        ownerId: co.ownerId,
+        source: co.source,
+        priority: co.priority,
+        isPrimary: true,
+        status:
+          co.status === "contacted" || co.status === "follow-up-due"
+            ? co.status
+            : "target-identified",
+      }),
+    );
+
+    setState((prev) => ({
+      ...prev,
+      contacts: [...extras, ...prev.contacts],
+    }));
+    for (const contact of extras) {
+      void persistContact(contact, "upsert");
+    }
+  }, [ready, state.companies, state.contacts, persistContact]);
+
+  // (Company-only targets are shown in the work queue without inventing contacts.)
+
   const persistActivity = useCallback(async (a: ProspectActivity) => {
     if (!supabase || !remoteRef.current) return true;
     const res = await supabase.from("prospect_activities").upsert(activityToRow(a));
@@ -647,6 +692,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         strategyWhy: input.strategyWhy,
         strategyAngle: input.strategyAngle,
         strategyMessage: input.strategyMessage,
+        sizeKw: input.sizeKw,
       });
 
       const draftContacts = (
@@ -657,21 +703,34 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             : []
       ).filter((c) => c.name.trim());
 
-      const createdContacts: ProspectContact[] = draftContacts.map(
-        (draft, index) =>
-          createEmptyContact({
-            companyId: company.id,
-            name: draft.name,
-            title: draft.title,
-            email: draft.email,
-            phone: draft.phone,
-            linkedinUrl: draft.linkedinUrl,
-            ownerId: input.ownerId,
-            source: input.source,
-            priority: input.priority,
-            isPrimary: draft.isPrimary ?? index === 0,
-            status: "target-identified",
-          }),
+      // The work queue is contact-centric — always create at least one contact
+      // so the company is visible after add (even when the form left contacts blank).
+      const createdContacts: ProspectContact[] = (
+        draftContacts.length > 0
+          ? draftContacts
+          : [
+              {
+                name: "Contact TBD",
+                title: "",
+                email: "",
+                phone: "",
+                isPrimary: true,
+              },
+            ]
+      ).map((draft, index) =>
+        createEmptyContact({
+          companyId: company.id,
+          name: draft.name,
+          title: draft.title,
+          email: draft.email,
+          phone: draft.phone,
+          linkedinUrl: draft.linkedinUrl,
+          ownerId: input.ownerId,
+          source: input.source,
+          priority: input.priority,
+          isPrimary: draft.isPrimary ?? index === 0,
+          status: "target-identified",
+        }),
       );
 
       // Only one primary per company

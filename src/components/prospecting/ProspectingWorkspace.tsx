@@ -110,7 +110,6 @@ export default function ProspectingWorkspace() {
     activities,
     targets,
     kpis,
-    markPrepared,
     deleteContact,
     deleteCompany,
   } = useProspecting();
@@ -675,11 +674,14 @@ export default function ProspectingWorkspace() {
                           {rows.length === 0 ? (
                             <div className="mx-auto max-w-sm px-2">
                               <p className="font-medium text-deep">
-                                No prospects yet
+                                {companies.length > 0
+                                  ? "No contacts to show yet"
+                                  : "No prospects yet"}
                               </p>
                               <p className="mt-1 text-sm">
-                                Add a target company to start Monday/Wednesday
-                                preparation.
+                                {companies.length > 0
+                                  ? "Companies were saved without contacts — open Add contact on a company, or add a new target with a contact name."
+                                  : "Add a target company to start Monday/Wednesday preparation."}
                               </p>
                               <button
                                 type="button"
@@ -688,8 +690,35 @@ export default function ProspectingWorkspace() {
                                 }
                                 className="mt-4 mb-2 rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase text-white"
                               >
-                                Add first company
+                                {companies.length > 0
+                                  ? "Add company + contact"
+                                  : "Add first company"}
                               </button>
+                            </div>
+                          ) : view !== "all" ? (
+                            <div className="mx-auto max-w-sm px-2">
+                              <p className="font-medium text-deep">
+                                No rows in this view
+                              </p>
+                              <p className="mt-1 text-sm">
+                                New targets land in{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setView("prepare")}
+                                  className="font-semibold text-teal-accent hover:underline"
+                                >
+                                  Prepare
+                                </button>{" "}
+                                or{" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setView("all")}
+                                  className="font-semibold text-teal-accent hover:underline"
+                                >
+                                  All Prospects
+                                </button>
+                                . Check filters if you still don’t see them.
+                              </p>
                             </div>
                           ) : (
                             "No rows match these filters"
@@ -1107,15 +1136,6 @@ export default function ProspectingWorkspace() {
                   {(selected.contact.status === "target-identified" ||
                     selected.contact.status === "contact-prepared") && (
                     <>
-                      {selected.contact.status === "target-identified" && (
-                        <button
-                          type="button"
-                          onClick={() => markPrepared(selected.contact.id)}
-                          className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-deep"
-                        >
-                          Quick prep
-                        </button>
-                      )}
                       <button
                         type="button"
                         onClick={() =>
