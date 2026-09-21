@@ -5,7 +5,8 @@ export type PermissionType =
   | "warehouse"
   | "production"
   | "technical_sales"
-  | "eu_funding_rnd";
+  | "eu_funding_rnd"
+  | "sales_manager";
 
 export const PERMISSION_TYPES: PermissionType[] = [
   "sales",
@@ -14,6 +15,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "production",
   "technical_sales",
   "eu_funding_rnd",
+  "sales_manager",
 ];
 
 export const PERMISSION_LABELS: Record<PermissionType, string> = {
@@ -23,6 +25,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   production: "Production",
   technical_sales: "Technical sales",
   eu_funding_rnd: "EU Funding and R&D",
+  sales_manager: "Sales Manager",
 };
 
 export interface SessionUser {

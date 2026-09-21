@@ -18,8 +18,6 @@ import {
   ProspectView,
   ProspectWorkRow,
   todayDateOnly,
-  weekdayFocus,
-  WEEKDAY_FOCUS_COPY,
 } from "@/lib/prospecting-types";
 import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
@@ -30,6 +28,7 @@ import {
   MarkContactedDialog,
   MarkEngagedDialog,
 } from "./ProspectingDialogs";
+import StrategySection from "./StrategySection";
 
 type DialogState =
   | { type: "add-company" }
@@ -157,8 +156,6 @@ export default function ProspectingWorkspace() {
   }
 
   const today = todayDateOnly();
-  const focus = weekdayFocus();
-  const focusCopy = WEEKDAY_FOCUS_COPY[focus];
   const me =
     currentUserId && teamMembers.some((m) => m.id === currentUserId)
       ? currentUserId
@@ -437,60 +434,7 @@ export default function ProspectingWorkspace() {
         />
       </div>
 
-      {/* Today focus */}
-      <div className="rounded-xl border border-line bg-panel px-4 py-3">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-teal-accent">
-              Today ·{" "}
-              {new Date().toLocaleDateString("en-GB", {
-                weekday: "long",
-                day: "numeric",
-                month: "short",
-              })}
-            </div>
-            <h2 className="mt-0.5 text-base font-bold text-deep">
-              {focusCopy.title}
-            </h2>
-            <p className="mt-0.5 max-w-2xl text-sm text-muted">
-              {focusCopy.hint}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            {focusCopy.prepareTarget > 0 && (
-              <div className="rounded-lg border border-line bg-surface px-3 py-2">
-                <span className="text-muted">Prepare list</span>
-                <div className="font-bold text-deep">
-                  {kpis.toContact} waiting
-                </div>
-              </div>
-            )}
-            {focusCopy.contactTarget > 0 && (
-              <div className="rounded-lg border border-line bg-surface px-3 py-2">
-                <span className="text-muted">New contacts today goal</span>
-                <div className="font-bold text-deep">
-                  {focusCopy.contactTarget}
-                </div>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setView(
-                  focus === "prepare" || focus === "research"
-                    ? "prepare"
-                    : focus === "contact"
-                      ? "contacted"
-                      : "my-work",
-                );
-              }}
-              className="rounded-lg border border-teal-accent/30 bg-teal-soft px-3 py-2 font-bold text-teal-accent"
-            >
-              Open today&apos;s queue
-            </button>
-          </div>
-        </div>
-      </div>
+      <StrategySection />
 
       {/* Views */}
       <div className="flex flex-wrap items-center gap-1 border-b border-line pb-0">

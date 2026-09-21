@@ -17,17 +17,20 @@ import {
   recordPersistedChange,
   type RecordChangeInput,
 } from "./change-history";
-import { isMarketTag } from "./types";
 import {
   createEmptyCompany,
   createEmptyContact,
+  createEmptyStrategy,
+  DEFAULT_PROSPECTING_STRATEGIES,
   DEFAULT_PROSPECTING_TARGETS,
   dateOnly,
   isIsoInRange,
+  normalizeStrategyMarkets,
   ProspectActivity,
   ProspectCompany,
   ProspectContact,
   ProspectingState,
+  ProspectingStrategy,
   ProspectingTargets,
   ProspectMarket,
   ProspectPriority,
@@ -40,6 +43,7 @@ import {
   startOfMonth,
   startOfWeekMonday,
   statusAfterOutreachResult,
+  targetsFromStrategies,
   todayDateOnly,
   normalizeProspectMarket,
   normalizeProspectSource,
@@ -56,12 +60,33 @@ function emptyState(): ProspectingState {
     contacts: [],
     activities: [],
     targets: { ...DEFAULT_PROSPECTING_TARGETS },
+    strategies: DEFAULT_PROSPECTING_STRATEGIES.map((s) => ({ ...s })),
   };
 }
 
+function sanitizeStrategies(raw: unknown): ProspectingStrategy[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return DEFAULT_PROSPECTING_STRATEGIES.map((s) => ({ ...s }));
+  }
+  return raw.map((item) => {
+    const s = item as Partial<ProspectingStrategy>;
+    return createEmptyStrategy({
+      id: typeof s.id === "string" ? s.id : undefined,
+      name: String(s.name ?? "Strategy").trim() || "Strategy",
+      markets: normalizeStrategyMarkets(s.markets),
+      industries: String(s.industries ?? ""),
+      weeklyContactTarget: Number(s.weeklyContactTarget) || 0,
+      sortOrder: Number(s.sortOrder) || 0,
+      isActive: s.isActive !== false,
+      notes: String(s.notes ?? ""),
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+    });
+  });
+}
+
 function sanitizeState(raw: unknown): ProspectingState {
-  const base = emptyState();
-  if (!raw || typeof raw !== "object") return base;
+  if (!raw || typeof raw !== "object") return emptyState();
   const o = raw as Partial<ProspectingState>;
   const companies = (Array.isArray(o.companies) ? o.companies : []).map(
     (c) => {
@@ -86,28 +111,13 @@ function sanitizeState(raw: unknown): ProspectingState {
     source: normalizeProspectSource(c.source),
     status: normalizeProspectStatus(c.status),
   }));
-  const rawAlloc = o.targets?.marketAllocation ?? {};
-  const marketAllocation = { ...DEFAULT_PROSPECTING_TARGETS.marketAllocation };
-  for (const [key, value] of Object.entries(rawAlloc)) {
-    const n = Number(value) || 0;
-    if (key === "Funding") {
-      marketAllocation["Clean H2"] =
-        (marketAllocation["Clean H2"] ?? 0) + n;
-      continue;
-    }
-    if (isMarketTag(key)) {
-      marketAllocation[key] = n || marketAllocation[key] || 0;
-    }
-  }
+  const strategies = sanitizeStrategies(o.strategies);
   return {
     companies,
     contacts,
     activities: Array.isArray(o.activities) ? o.activities : [],
-    targets: {
-      ...DEFAULT_PROSPECTING_TARGETS,
-      ...(o.targets ?? {}),
-      marketAllocation,
-    },
+    strategies,
+    targets: targetsFromStrategies(strategies),
   };
 }
 
@@ -124,7 +134,7 @@ function loadLocal(): ProspectingState {
 async function loadRemote(): Promise<ProspectingState | null> {
   if (!supabase) return null;
   try {
-    const [cRes, pRes, aRes, tRes] = await Promise.all([
+    const [cRes, pRes, aRes, tRes, sRes] = await Promise.all([
       supabase.from("prospect_companies").select("*").order("created_at", {
         ascending: false,
       }),
@@ -135,6 +145,10 @@ async function loadRemote(): Promise<ProspectingState | null> {
         ascending: false,
       }),
       supabase.from("prospecting_targets").select("*").eq("id", 1).maybeSingle(),
+      supabase
+        .from("prospecting_strategies")
+        .select("*")
+        .order("sort_order", { ascending: true }),
     ]);
     if (cRes.error || pRes.error || aRes.error) {
       // Tables not migrated yet — fall back to local.
@@ -155,37 +169,69 @@ async function loadRemote(): Promise<ProspectingState | null> {
       activityFromRow(row as Record<string, unknown>),
     );
 
-    let targets = { ...DEFAULT_PROSPECTING_TARGETS };
-    if (tRes.data && !tRes.error) {
-      const t = tRes.data as Record<string, unknown>;
-      const rawAlloc =
-        (t.market_allocation as Record<string, number> | null) ?? {};
-      const marketAllocation = {
-        ...DEFAULT_PROSPECTING_TARGETS.marketAllocation,
-      };
-      for (const [key, value] of Object.entries(rawAlloc)) {
-        const n = Number(value) || 0;
-        if (key === "Funding") {
-          marketAllocation["Clean H2"] =
-            (marketAllocation["Clean H2"] ?? 0) + n;
-          continue;
-        }
-        if (isMarketTag(key)) {
-          marketAllocation[key] = n || marketAllocation[key] || 0;
-        }
+    const strategies: ProspectingStrategy[] =
+      sRes.error || !sRes.data
+        ? DEFAULT_PROSPECTING_STRATEGIES.map((s) => ({ ...s }))
+        : sRes.data.length === 0
+          ? DEFAULT_PROSPECTING_STRATEGIES.map((s) => ({ ...s }))
+          : (sRes.data as Record<string, unknown>[]).map(strategyFromRow);
+
+    // Strategies are the source of truth for weekly quotas + market share.
+    const targets = targetsFromStrategies(strategies);
+
+    if (!sRes.error && supabase) {
+      if (!sRes.data || sRes.data.length === 0) {
+        void supabase
+          .from("prospecting_strategies")
+          .upsert(
+            DEFAULT_PROSPECTING_STRATEGIES.map((s) => strategyToRow(s)),
+          );
       }
-      targets = {
-        monthlyContactTarget: Number(t.monthly_contact_target) || 80,
-        weeklyContactTarget: Number(t.weekly_contact_target) || 20,
-        marketAllocation,
-      };
+      void supabase.from("prospecting_targets").upsert({
+        id: 1,
+        monthly_contact_target: targets.monthlyContactTarget,
+        weekly_contact_target: targets.weeklyContactTarget,
+        market_allocation: targets.marketAllocation,
+        updated_at: new Date().toISOString(),
+      });
+      void tRes;
     }
 
-    return { companies, contacts, activities, targets };
+    return { companies, contacts, activities, targets, strategies };
   } catch (e) {
     console.warn("Failed to load prospecting from Supabase:", e);
     return null;
   }
+}
+
+function strategyFromRow(row: Record<string, unknown>): ProspectingStrategy {
+  return createEmptyStrategy({
+    id: String(row.id),
+    name: String(row.name ?? "Strategy"),
+    markets: normalizeStrategyMarkets(row.markets),
+    industries: String(row.industries ?? ""),
+    weeklyContactTarget: Number(row.weekly_contact_target) || 0,
+    sortOrder: Number(row.sort_order) || 0,
+    isActive: row.is_active !== false,
+    notes: String(row.notes ?? ""),
+    createdAt: row.created_at ? String(row.created_at) : undefined,
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  });
+}
+
+function strategyToRow(s: ProspectingStrategy): Record<string, unknown> {
+  return {
+    id: s.id,
+    name: s.name,
+    markets: s.markets,
+    industries: s.industries,
+    weekly_contact_target: s.weeklyContactTarget,
+    sort_order: s.sortOrder,
+    is_active: s.isActive,
+    notes: s.notes,
+    created_at: s.createdAt,
+    updated_at: s.updatedAt,
+  };
 }
 
 function companyFromRow(row: Record<string, unknown>): ProspectCompany {
@@ -458,6 +504,7 @@ export interface ProspectingApi {
   contacts: ProspectContact[];
   activities: ProspectActivity[];
   targets: ProspectingTargets;
+  strategies: ProspectingStrategy[];
   kpis: ProspectingKpis;
   addCompany: (input: AddCompanyInput) => { companyId: string; contactId?: string; duplicateWarning?: string };
   updateCompany: (id: string, patch: Partial<ProspectCompany>) => void;
@@ -494,6 +541,11 @@ export interface ProspectingApi {
     stage: string,
   ) => void;
   updateTargets: (patch: Partial<ProspectingTargets>) => void;
+  addStrategy: (
+    input: Partial<ProspectingStrategy> & { name: string },
+  ) => string;
+  updateStrategy: (id: string, patch: Partial<ProspectingStrategy>) => void;
+  deleteStrategy: (id: string) => void;
   findDuplicateCompany: (name: string) => ProspectCompany | undefined;
   findDuplicateContact: (
     companyId: string,
@@ -1436,6 +1488,76 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [persistCompany, persistContact],
   );
 
+  const persistStrategy = useCallback(
+    async (s: ProspectingStrategy, mode: "upsert" | "delete") => {
+      if (!supabase || !remoteRef.current) return true;
+      if (mode === "delete") {
+        const res = await supabase
+          .from("prospecting_strategies")
+          .delete()
+          .eq("id", s.id);
+        if (res.error) {
+          console.error(
+            "Supabase prospecting strategy delete failed:",
+            res.error.message,
+          );
+          return false;
+        }
+        return true;
+      }
+      const res = await supabase
+        .from("prospecting_strategies")
+        .upsert(strategyToRow(s));
+      if (res.error) {
+        console.error(
+          "Supabase prospecting strategy upsert failed:",
+          res.error.message,
+        );
+        return false;
+      }
+      return true;
+    },
+    [],
+  );
+
+  const persistTargetsRow = useCallback((targets: ProspectingTargets) => {
+    if (!supabase || !remoteRef.current) return;
+    void supabase.from("prospecting_targets").upsert({
+      id: 1,
+      monthly_contact_target: targets.monthlyContactTarget,
+      weekly_contact_target: targets.weeklyContactTarget,
+      market_allocation: targets.marketAllocation,
+      updated_at: new Date().toISOString(),
+    });
+  }, []);
+
+  const applyStrategies = useCallback(
+    (
+      nextStrategies: ProspectingStrategy[],
+      change: {
+        action: "create" | "update" | "delete";
+        strategy: ProspectingStrategy;
+        summary: string;
+      },
+    ) => {
+      const targets = targetsFromStrategies(nextStrategies);
+      setState((prev) => ({
+        ...prev,
+        strategies: nextStrategies,
+        targets,
+      }));
+      persistTargetsRow(targets);
+      recordProspectChange({
+        entityType: "prospecting_strategy",
+        entityId: change.strategy.id,
+        action: change.action,
+        summary: change.summary,
+        payloadJson: { name: change.strategy.name },
+      });
+    },
+    [persistTargetsRow, recordProspectChange],
+  );
+
   const updateTargets = useCallback(
     (patch: Partial<ProspectingTargets>) => {
       setState((prev) => {
@@ -1447,15 +1569,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             ...(patch.marketAllocation ?? {}),
           },
         };
-        if (supabase && remoteRef.current) {
-          void supabase.from("prospecting_targets").upsert({
-            id: 1,
-            monthly_contact_target: targets.monthlyContactTarget,
-            weekly_contact_target: targets.weeklyContactTarget,
-            market_allocation: targets.marketAllocation,
-            updated_at: new Date().toISOString(),
-          });
-        }
+        persistTargetsRow(targets);
         return { ...prev, targets };
       });
       recordProspectChange({
@@ -1466,7 +1580,89 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         payloadJson: { fields: Object.keys(patch) },
       });
     },
-    [recordProspectChange],
+    [persistTargetsRow, recordProspectChange],
+  );
+
+  const addStrategy = useCallback(
+    (input: Partial<ProspectingStrategy> & { name: string }) => {
+      const maxSort = stateRef.current.strategies.reduce(
+        (m, s) => Math.max(m, s.sortOrder),
+        0,
+      );
+      const strategy = createEmptyStrategy({
+        ...input,
+        sortOrder: input.sortOrder ?? maxSort + 10,
+      });
+      const next = [...stateRef.current.strategies, strategy].sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+      );
+      applyStrategies(next, {
+        action: "create",
+        strategy,
+        summary: `Added strategy ${strategy.name}`,
+      });
+      void persistStrategy(strategy, "upsert");
+      return strategy.id;
+    },
+    [applyStrategies, persistStrategy],
+  );
+
+  const updateStrategy = useCallback(
+    (id: string, patch: Partial<ProspectingStrategy>) => {
+      const prev = stateRef.current.strategies.find((s) => s.id === id);
+      if (!prev) return;
+      const now = new Date().toISOString();
+      const strategy: ProspectingStrategy = {
+        ...prev,
+        ...patch,
+        id: prev.id,
+        name:
+          patch.name !== undefined
+            ? patch.name.trim() || prev.name
+            : prev.name,
+        markets:
+          patch.markets !== undefined
+            ? normalizeStrategyMarkets(patch.markets)
+            : prev.markets,
+        industries:
+          patch.industries !== undefined
+            ? patch.industries.trim()
+            : prev.industries,
+        weeklyContactTarget:
+          patch.weeklyContactTarget !== undefined
+            ? Math.max(0, Math.round(patch.weeklyContactTarget) || 0)
+            : prev.weeklyContactTarget,
+        notes: patch.notes !== undefined ? patch.notes.trim() : prev.notes,
+        updatedAt: now,
+      };
+      const next = stateRef.current.strategies
+        .map((s) => (s.id === id ? strategy : s))
+        .sort(
+          (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+        );
+      applyStrategies(next, {
+        action: "update",
+        strategy,
+        summary: `Updated strategy ${strategy.name}`,
+      });
+      void persistStrategy(strategy, "upsert");
+    },
+    [applyStrategies, persistStrategy],
+  );
+
+  const deleteStrategy = useCallback(
+    (id: string) => {
+      const strategy = stateRef.current.strategies.find((s) => s.id === id);
+      if (!strategy) return;
+      const next = stateRef.current.strategies.filter((s) => s.id !== id);
+      applyStrategies(next, {
+        action: "delete",
+        strategy,
+        summary: `Deleted strategy ${strategy.name}`,
+      });
+      void persistStrategy(strategy, "delete");
+    },
+    [applyStrategies, persistStrategy],
   );
 
   const kpis = useMemo((): ProspectingKpis => {
@@ -1545,6 +1741,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       contacts: state.contacts,
       activities: state.activities,
       targets: state.targets,
+      strategies: state.strategies,
       kpis,
       addCompany,
       updateCompany,
@@ -1561,6 +1758,9 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       markPromoted,
       syncFromSalesProject,
       updateTargets,
+      addStrategy,
+      updateStrategy,
+      deleteStrategy,
       findDuplicateCompany,
       findDuplicateContact,
     }),
@@ -1584,6 +1784,9 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       markPromoted,
       syncFromSalesProject,
       updateTargets,
+      addStrategy,
+      updateStrategy,
+      deleteStrategy,
       findDuplicateCompany,
       findDuplicateContact,
     ],

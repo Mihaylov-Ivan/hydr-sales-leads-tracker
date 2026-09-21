@@ -511,16 +511,172 @@ export const DEFAULT_PROSPECTING_TARGETS: ProspectingTargets = {
     "Burner Optimisation": 30,
     Cement: 25,
     "Power Plants": 20,
-    "Clean H2": 20,
-    Tenders: 5,
+    "Clean H2": 25,
+    Tenders: 0,
   },
 };
+
+/** Go-to-market strategy with a weekly contacts quota tied to markets. */
+export interface ProspectingStrategy {
+  id: string;
+  name: string;
+  /** Markets this strategy tackles (Sales / prospecting tags). */
+  markets: ProspectMarketTag[];
+  /** Free-text industries / segments covered. */
+  industries: string;
+  weeklyContactTarget: number;
+  sortOrder: number;
+  isActive: boolean;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DEFAULT_PROSPECTING_STRATEGIES: ProspectingStrategy[] = [
+  {
+    id: "a1000000-0000-4000-8000-000000000001",
+    name: "CNG Optimisation",
+    markets: ["Burner Optimisation"],
+    industries: "CNG / burner optimisation sites",
+    weeklyContactTarget: 6,
+    sortOrder: 10,
+    isActive: true,
+    notes: "",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "a1000000-0000-4000-8000-000000000002",
+    name: "Cement Plants",
+    markets: ["Cement"],
+    industries: "Cement manufacturing plants",
+    weeklyContactTarget: 5,
+    sortOrder: 20,
+    isActive: true,
+    notes: "",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "a1000000-0000-4000-8000-000000000003",
+    name: "Power Plants",
+    markets: ["Power Plants"],
+    industries: "Power generation facilities",
+    weeklyContactTarget: 4,
+    sortOrder: 30,
+    isActive: true,
+    notes: "",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "a1000000-0000-4000-8000-000000000004",
+    name: "H2 Valleys Construction",
+    markets: ["Clean H2"],
+    industries: "Hydrogen valleys and industrial H2 construction",
+    weeklyContactTarget: 5,
+    sortOrder: 40,
+    isActive: true,
+    notes: "",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+export function normalizeStrategyMarkets(
+  value: unknown,
+): ProspectMarketTag[] {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\s*\+\s*/)
+      : [];
+  const tags: ProspectMarketTag[] = [];
+  const seen = new Set<ProspectMarketTag>();
+  for (const part of raw) {
+    const mapped = mapLegacyMarketPart(String(part).trim());
+    if (!mapped || seen.has(mapped)) continue;
+    seen.add(mapped);
+    tags.push(mapped);
+  }
+  return tags.length > 0 ? tags : ["Clean H2"];
+}
+
+/** Derive company-wide weekly/monthly targets + market % from strategies. */
+export function targetsFromStrategies(
+  strategies: ProspectingStrategy[],
+): ProspectingTargets {
+  const active = strategies.filter((s) => s.isActive);
+  const weekly = active.reduce(
+    (sum, s) => sum + Math.max(0, Math.round(s.weeklyContactTarget) || 0),
+    0,
+  );
+
+  const weights: Record<ProspectMarketTag, number> = Object.fromEntries(
+    PROSPECT_MARKETS.map((m) => [m, 0]),
+  ) as Record<ProspectMarketTag, number>;
+
+  for (const s of active) {
+    const w = Math.max(0, Math.round(s.weeklyContactTarget) || 0);
+    if (w <= 0 || s.markets.length === 0) continue;
+    const perMarket = w / s.markets.length;
+    for (const m of s.markets) {
+      weights[m] = (weights[m] ?? 0) + perMarket;
+    }
+  }
+
+  const weightTotal = PROSPECT_MARKETS.reduce((sum, m) => sum + weights[m], 0);
+  const marketAllocation = { ...DEFAULT_PROSPECTING_TARGETS.marketAllocation };
+  if (weightTotal <= 0) {
+    for (const m of PROSPECT_MARKETS) marketAllocation[m] = 0;
+  } else {
+    let allocated = 0;
+    for (let i = 0; i < PROSPECT_MARKETS.length; i++) {
+      const m = PROSPECT_MARKETS[i]!;
+      if (i === PROSPECT_MARKETS.length - 1) {
+        marketAllocation[m] = Math.max(0, 100 - allocated);
+      } else {
+        const pct = Math.round((weights[m] / weightTotal) * 100);
+        marketAllocation[m] = pct;
+        allocated += pct;
+      }
+    }
+  }
+
+  return {
+    weeklyContactTarget: weekly,
+    monthlyContactTarget: weekly * 4,
+    marketAllocation,
+  };
+}
+
+export function createEmptyStrategy(
+  partial: Partial<ProspectingStrategy> & Pick<ProspectingStrategy, "name">,
+): ProspectingStrategy {
+  const now = new Date().toISOString();
+  return {
+    id: partial.id ?? newId(),
+    name: partial.name.trim(),
+    markets: normalizeStrategyMarkets(partial.markets ?? ["Clean H2"]),
+    industries: partial.industries?.trim() ?? "",
+    weeklyContactTarget: Math.max(
+      0,
+      Math.round(partial.weeklyContactTarget ?? 0) || 0,
+    ),
+    sortOrder: partial.sortOrder ?? 100,
+    isActive: partial.isActive ?? true,
+    notes: partial.notes?.trim() ?? "",
+    createdAt: partial.createdAt ?? now,
+    updatedAt: partial.updatedAt ?? now,
+  };
+}
 
 export interface ProspectingState {
   companies: ProspectCompany[];
   contacts: ProspectContact[];
   activities: ProspectActivity[];
   targets: ProspectingTargets;
+  strategies: ProspectingStrategy[];
 }
 
 export type ProspectView =
