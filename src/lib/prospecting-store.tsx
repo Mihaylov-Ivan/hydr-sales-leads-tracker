@@ -42,6 +42,7 @@ import {
   todayDateOnly,
   normalizeProspectMarket,
   normalizeProspectSource,
+  normalizeProspectStatus,
 } from "./prospecting-types";
 
 const STORAGE_KEY = "hydrogenera-prospecting-v1";
@@ -64,6 +65,7 @@ function sanitizeState(raw: unknown): ProspectingState {
       ...c,
       market: normalizeProspectMarket(c.market),
       source: normalizeProspectSource(c.source),
+      status: normalizeProspectStatus(c.status),
       sizeKw:
         typeof c.sizeKw === "number" && Number.isFinite(c.sizeKw) && c.sizeKw > 0
           ? c.sizeKw
@@ -73,6 +75,7 @@ function sanitizeState(raw: unknown): ProspectingState {
   const contacts = (Array.isArray(o.contacts) ? o.contacts : []).map((c) => ({
     ...c,
     source: normalizeProspectSource(c.source),
+    status: normalizeProspectStatus(c.status),
   }));
   const rawAlloc = o.targets?.marketAllocation ?? {};
   const marketAllocation = { ...DEFAULT_PROSPECTING_TARGETS.marketAllocation };
@@ -177,7 +180,7 @@ function companyFromRow(row: Record<string, unknown>): ProspectCompany {
     source: normalizeProspectSource(String(row.source ?? "email")),
     priority: (row.priority as ProspectPriority) ?? "medium",
     ownerId: String(row.owner_id ?? ""),
-    status: (row.status as ProspectStatus) ?? "target-identified",
+    status: normalizeProspectStatus(String(row.status ?? "target-identified")),
     notes: String(row.notes ?? ""),
     strategyWhy: String(row.strategy_why ?? ""),
     strategyAngle: String(row.strategy_angle ?? ""),
@@ -217,7 +220,7 @@ function contactFromRow(row: Record<string, unknown>): ProspectContact {
     linkedinUrl: String(row.linkedin_url ?? ""),
     preferredMethod: (row.preferred_method as ProspectContact["preferredMethod"]) ?? "email",
     source: normalizeProspectSource(String(row.source ?? "email")),
-    status: (row.status as ProspectStatus) ?? "target-identified",
+    status: normalizeProspectStatus(String(row.status ?? "target-identified")),
     priority: (row.priority as ProspectPriority) ?? "medium",
     ownerId: String(row.owner_id ?? ""),
     isPrimary: Boolean(row.is_primary),
@@ -417,13 +420,13 @@ export interface ProspectingKpis {
   newContactsMonth: number;
   weeklyTarget: number;
   monthlyTarget: number;
-  prepared: number;
+  /** Contacts still on the prepare list (awaiting Contacted). */
+  toContact: number;
   followUpsDue: number;
   overdueFollowUps: number;
   engaged: number;
   qualified: number;
   promotedThisMonth: number;
-  preparedThisWeek: number;
 }
 
 export interface ProspectingApi {
@@ -443,9 +446,8 @@ export interface ProspectingApi {
   ) => { contactId: string; duplicateWarning?: string };
   updateContact: (id: string, patch: Partial<ProspectContact>) => void;
   deleteContact: (id: string) => void;
-  markPrepared: (contactId: string) => void;
   logOutreach: (input: LogOutreachInput) => string;
-  /** Prepare → Contacted: log outreach + set follow-up. */
+  /** Prepare list → Contacted: log outreach + set follow-up. */
   markContacted: (input: MarkContactedInput) => string;
   scheduleFollowUp: (
     contactId: string,
@@ -1017,42 +1019,6 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [persistContact, recordProspectChange],
   );
 
-  const markPrepared = useCallback(
-    (contactId: string) => {
-      const now = new Date().toISOString();
-      setState((prev) => {
-        const contacts = prev.contacts.map((c) => {
-          if (c.id !== contactId) return c;
-          const next: ProspectContact = {
-            ...c,
-            status: "contact-prepared",
-            preparedAt: c.preparedAt ?? now,
-            updatedAt: now,
-          };
-          persistContact(next, "upsert");
-          return next;
-        });
-        const contact = contacts.find((c) => c.id === contactId);
-        const companies = prev.companies.map((co) => {
-          if (!contact || co.id !== contact.companyId) return co;
-          const next: ProspectCompany = {
-            ...co,
-            status:
-              co.status === "target-identified" || !co.status
-                ? "contact-prepared"
-                : co.status,
-            lastActivityAt: now,
-            updatedAt: now,
-          };
-          persistCompany(next, "upsert");
-          return next;
-        });
-        return { ...prev, contacts, companies };
-      });
-    },
-    [persistCompany, persistContact],
-  );
-
   const logOutreach = useCallback(
     (input: LogOutreachInput) => {
       const now = new Date().toISOString();
@@ -1129,10 +1095,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             newStatus === "contacted"
           ) {
             nextStatus = newStatus;
-          } else if (
-            co.status === "target-identified" ||
-            co.status === "contact-prepared"
-          ) {
+          } else if (co.status === "target-identified") {
             nextStatus = "contacted";
           }
           const next: ProspectCompany = {
@@ -1505,15 +1468,14 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
 
     const activeStatuses = new Set<ProspectStatus>([
       "target-identified",
-      "contact-prepared",
       "contacted",
       "follow-up-due",
       "engaged",
       "qualified",
     ]);
 
-    const prepared = state.contacts.filter(
-      (c) => c.status === "contact-prepared",
+    const toContact = state.contacts.filter(
+      (c) => c.status === "target-identified",
     ).length;
     const followUpsDue = state.contacts.filter((c) => {
       if (!c.nextFollowUpAt) return false;
@@ -1538,22 +1500,18 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         c.status === "promoted" &&
         isIsoInRange(c.updatedAt, monthStart, monthEnd),
     ).length;
-    const preparedThisWeek = state.contacts.filter(
-      (c) => c.preparedAt && isIsoInRange(c.preparedAt, weekStart, weekEnd),
-    ).length;
 
     return {
       newContactsWeek,
       newContactsMonth,
       weeklyTarget: state.targets.weeklyContactTarget,
       monthlyTarget: state.targets.monthlyContactTarget,
-      prepared,
+      toContact,
       followUpsDue,
       overdueFollowUps,
       engaged,
       qualified,
       promotedThisMonth,
-      preparedThisWeek,
     };
   }, [state]);
 
@@ -1572,7 +1530,6 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       addContact,
       updateContact,
       deleteContact,
-      markPrepared,
       logOutreach,
       markContacted,
       scheduleFollowUp,
@@ -1596,7 +1553,6 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       addContact,
       updateContact,
       deleteContact,
-      markPrepared,
       logOutreach,
       markContacted,
       scheduleFollowUp,

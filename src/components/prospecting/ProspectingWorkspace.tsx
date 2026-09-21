@@ -30,14 +30,12 @@ import {
   EditProspectDialog,
   MarkContactedDialog,
   MarkEngagedDialog,
-  PrepareContactDialog,
 } from "./ProspectingDialogs";
 
 type DialogState =
   | { type: "add-company" }
   | { type: "add-contact"; company: ProspectCompany }
   | { type: "edit"; company: ProspectCompany; contact: ProspectContact }
-  | { type: "prepare"; company: ProspectCompany; contact: ProspectContact }
   | { type: "mark-contacted"; company: ProspectCompany; contact: ProspectContact }
   | { type: "mark-engaged"; company: ProspectCompany; contact: ProspectContact }
   | null;
@@ -196,10 +194,7 @@ export default function ProspectingWorkspace() {
     return rows.filter(({ contact, company }) => {
       if (view === "my-work" && me && contact.ownerId !== me) return false;
       if (view === "prepare") {
-        if (
-          contact.status !== "target-identified" &&
-          contact.status !== "contact-prepared"
-        ) {
+        if (contact.status !== "target-identified") {
           return false;
         }
       }
@@ -343,9 +338,7 @@ export default function ProspectingWorkspace() {
     return {
       "my-work": mine,
       prepare: rows.filter(
-        (r) =>
-          r.contact.status === "target-identified" ||
-          r.contact.status === "contact-prepared",
+        (r) => r.contact.status === "target-identified",
       ).length,
       contacted: rows.filter(
         (r) =>
@@ -378,8 +371,8 @@ export default function ProspectingWorkspace() {
         <div>
           <h1 className="text-xl font-bold text-deep">Prospecting</h1>
           <p className="mt-0.5 text-sm text-muted">
-            Prepare contacts, log outreach, then engage replies — before Sales
-            Projects.
+            Add targets to the prepare list, mark them Contacted, then engage
+            replies — before Sales Projects.
           </p>
         </div>
         <div className="shrink-0">
@@ -423,7 +416,7 @@ export default function ProspectingWorkspace() {
             tone="olive"
           />
         </div>
-        <KpiChip label="Prepared" value={String(kpis.prepared)} />
+        <KpiChip label="To contact" value={String(kpis.toContact)} />
         <KpiChip
           label="Follow-ups due"
           value={String(kpis.followUpsDue)}
@@ -464,9 +457,9 @@ export default function ProspectingWorkspace() {
           <div className="flex flex-wrap gap-2 text-xs">
             {focusCopy.prepareTarget > 0 && (
               <div className="rounded-lg border border-line bg-surface px-3 py-2">
-                <span className="text-muted">Prepared this week</span>
+                <span className="text-muted">Prepare list</span>
                 <div className="font-bold text-deep">
-                  {kpis.preparedThisWeek} / {focusCopy.prepareTarget * 2}
+                  {kpis.toContact} waiting
                 </div>
               </div>
             )}
@@ -681,7 +674,7 @@ export default function ProspectingWorkspace() {
                               <p className="mt-1 text-sm">
                                 {companies.length > 0
                                   ? "Companies were saved without contacts — open Add contact on a company, or add a new target with a contact name."
-                                  : "Add a target company to start Monday/Wednesday preparation."}
+                                  : "Add a target company to start the prepare list."}
                               </p>
                               <button
                                 type="button"
@@ -816,38 +809,21 @@ export default function ProspectingWorkspace() {
                                 >
                                   Edit
                                 </button>
-                                {(contact.status === "target-identified" ||
-                                  contact.status === "contact-prepared") && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      title="Prepare"
-                                      onClick={() =>
-                                        setDialog({
-                                          type: "prepare",
-                                          company,
-                                          contact,
-                                        })
-                                      }
-                                      className="rounded-md border border-teal-accent/40 bg-teal-soft px-2 py-1 text-[10px] font-bold uppercase text-teal-accent"
+                                {contact.status === "target-identified" && (
+                                  <button
+                                    type="button"
+                                    title="Mark contacted"
+                                    onClick={() =>
+                                      setDialog({
+                                        type: "mark-contacted",
+                                        company,
+                                        contact,
+                                      })
+                                    }
+                                    className="rounded-md bg-teal-accent px-2 py-1 text-[10px] font-bold uppercase text-white"
                                   >
-                                    Prep
+                                    Contacted
                                   </button>
-                                    <button
-                                      type="button"
-                                      title="Mark contacted"
-                                      onClick={() =>
-                                        setDialog({
-                                          type: "mark-contacted",
-                                          company,
-                                          contact,
-                                        })
-                                      }
-                                      className="rounded-md bg-teal-accent px-2 py-1 text-[10px] font-bold uppercase text-white"
-                                    >
-                                      Contacted
-                                    </button>
-                                  </>
                                 )}
                                 {(contact.status === "contacted" ||
                                   contact.status === "follow-up-due") && (
@@ -1048,16 +1024,9 @@ export default function ProspectingWorkspace() {
                             : "—"}
                         </dd>
                       </div>
-                      {(selected.contact.personalizationNote ||
-                        selected.contact.notes) && (
+                      {(selected.contact.notes) && (
                         <p className="mt-1 rounded-lg bg-surface-tint px-2.5 py-2 text-xs">
-                          {selected.contact.personalizationNote ||
-                            selected.contact.notes}
-                        </p>
-                      )}
-                      {selected.contact.draftMessage && (
-                        <p className="mt-1 whitespace-pre-wrap rounded-lg border border-line px-2.5 py-2 text-xs text-muted">
-                          {selected.contact.draftMessage}
+                          {selected.contact.notes}
                         </p>
                       )}
                     </dl>
@@ -1139,36 +1108,20 @@ export default function ProspectingWorkspace() {
                   >
                     Edit
                   </button>
-                  {(selected.contact.status === "target-identified" ||
-                    selected.contact.status === "contact-prepared") && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDialog({
-                            type: "prepare",
-                            company: selected.company,
-                            contact: selected.contact,
-                          })
-                        }
-                        className="rounded-lg border border-teal-accent/40 bg-teal-soft px-2.5 py-1.5 text-[10px] font-bold uppercase text-teal-accent"
-                      >
-                        Prepare
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDialog({
-                            type: "mark-contacted",
-                            company: selected.company,
-                            contact: selected.contact,
-                          })
-                        }
-                        className="rounded-lg bg-teal-accent px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
-                      >
-                        Contacted
-                      </button>
-                    </>
+                  {selected.contact.status === "target-identified" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDialog({
+                          type: "mark-contacted",
+                          company: selected.company,
+                          contact: selected.contact,
+                        })
+                      }
+                      className="rounded-lg bg-teal-accent px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
+                    >
+                      Contacted
+                    </button>
                   )}
                   {(selected.contact.status === "contacted" ||
                     selected.contact.status === "follow-up-due") && (
@@ -1221,13 +1174,6 @@ export default function ProspectingWorkspace() {
       {dialog?.type === "edit" && (
         <EditProspectDialog
           key={dialog.contact.id}
-          company={dialog.company}
-          contact={dialog.contact}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {dialog?.type === "prepare" && (
-        <PrepareContactDialog
           company={dialog.company}
           contact={dialog.contact}
           onClose={() => setDialog(null)}

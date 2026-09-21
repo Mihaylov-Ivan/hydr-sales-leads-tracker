@@ -100,7 +100,7 @@ export type ProspectSource =
   | "website"
   | "other";
 
-/** Source options match Prepare / Log channel options. */
+/** Source options match Log outreach channel options. */
 export const PROSPECT_SOURCES: ProspectSource[] = [
   "email",
   "phone",
@@ -163,10 +163,10 @@ export function normalizeProspectSource(
 /**
  * Contact / company pipeline statuses.
  * Stored as strings so new statuses (e.g. Warm) can be added later.
+ * Legacy "contact-prepared" is remapped to "target-identified" on read.
  */
 export type ProspectStatus =
   | "target-identified"
-  | "contact-prepared"
   | "contacted"
   | "follow-up-due"
   | "engaged"
@@ -178,7 +178,6 @@ export type ProspectStatus =
 
 export const PROSPECT_STATUSES: ProspectStatus[] = [
   "target-identified",
-  "contact-prepared",
   "contacted",
   "follow-up-due",
   "engaged",
@@ -191,7 +190,6 @@ export const PROSPECT_STATUSES: ProspectStatus[] = [
 
 export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   "target-identified": "Target Identified",
-  "contact-prepared": "Contact Prepared",
   contacted: "Contacted",
   "follow-up-due": "Follow-Up Due",
   engaged: "Engaged",
@@ -201,6 +199,15 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   dormant: "No Response / Dormant",
   disqualified: "Disqualified",
 };
+
+/** Map legacy prep status onto the prepare-list stage. */
+export function normalizeProspectStatus(raw: string | null | undefined): ProspectStatus {
+  if (raw === "contact-prepared") return "target-identified";
+  if (raw && (PROSPECT_STATUSES as string[]).includes(raw)) {
+    return raw as ProspectStatus;
+  }
+  return "target-identified";
+}
 
 export type ProspectPriority = "high" | "medium" | "low";
 
@@ -227,7 +234,7 @@ export type OutreachChannel =
   | "tender-submission"
   | "other";
 
-/** Channels used on Prepare / Log outreach forms. */
+/** Channels used on Log outreach forms. */
 export const PROSPECTING_CHANNELS: OutreachChannel[] = [
   "email",
   "phone",
@@ -276,7 +283,7 @@ export type OutreachResult =
   | "referred"
   | "not-relevant";
 
-/** Results used when logging that outreach was sent (Prepare → Contacted). */
+/** Results used when logging that outreach was sent (prepare list → Contacted). */
 export const CONTACTED_OUTREACH_RESULT: OutreachResult = "outreach-sent";
 
 /** Results used on the Engaged form (Contacted → Engaged). */
@@ -393,7 +400,7 @@ export interface ProspectContact {
   ownerId: string;
   isPrimary: boolean;
   notes: string;
-  /** Preparation fields (optional) */
+  /** Legacy prep fields — kept for stored data; no longer used in UI. */
   contactObjective: string;
   outreachAngle: string;
   personalizationNote: string;
@@ -629,9 +636,7 @@ export function statusAfterOutreachResult(
     case "referred":
       return "follow-up-due";
     default:
-      return current === "target-identified" || current === "contact-prepared"
-        ? "contacted"
-        : current;
+      return current === "target-identified" ? "contacted" : current;
   }
 }
 
@@ -664,20 +669,20 @@ export const WEEKDAY_FOCUS_COPY: Record<
   { title: string; hint: string; prepareTarget: number; contactTarget: number }
 > = {
   prepare: {
-    title: "Prepare contacts",
-    hint: "Identify companies, decision-makers, and outreach angles for the next contact day.",
+    title: "Build the prepare list",
+    hint: "Add target companies and contacts so outreach days have a clear queue.",
     prepareTarget: 10,
     contactTarget: 0,
   },
   contact: {
     title: "Outreach day",
-    hint: "Contact prepared prospects and clear due follow-ups.",
+    hint: "Mark prepare-list prospects as Contacted and clear due follow-ups.",
     prepareTarget: 0,
     contactTarget: 10,
   },
   research: {
     title: "Research day",
-    hint: "Scan tenders, funding, and announcements while preparing contacts.",
+    hint: "Scan tenders, funding, and announcements while adding targets.",
     prepareTarget: 10,
     contactTarget: 0,
   },
