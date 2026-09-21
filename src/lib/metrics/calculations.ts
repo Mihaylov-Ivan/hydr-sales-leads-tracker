@@ -521,11 +521,7 @@ export function buildMetricsSnapshot(
   asOf: string = todayDate(),
   metricsSettings: CompanyMetricsSettings = defaultMetricsSettings(),
 ): MetricsSnapshot {
-  // To Contact is tracking-only — never included in conversion / capacity metrics.
-  const metricsEligible = projects.filter(
-    (p) => p.currentStatus !== "to-contact",
-  );
-  const filtered = applyMetricsFilters(metricsEligible, filters);
+  const filtered = applyMetricsFilters(projects, filters);
   const classified = classifyAll(
     filtered,
     filters.targetOutcome,

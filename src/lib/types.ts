@@ -1,5 +1,4 @@
 export type Stage =
-  | "to-contact"
   | "cold-lead"
   | "hot-lead"
   | "under-development"
@@ -8,7 +7,7 @@ export type Stage =
 
 /**
  * Always-visible kanban columns.
- * "to-contact" and "cancelled" stay collapsed by default on the board.
+ * "cancelled" stays collapsed by default on the board.
  */
 export const BOARD_STAGES: Stage[] = [
   "cold-lead",
@@ -18,13 +17,12 @@ export const BOARD_STAGES: Stage[] = [
 ];
 
 /** Stages selectable when creating a project (excludes cancelled). */
-export const CREATE_STAGES: Stage[] = ["to-contact", ...BOARD_STAGES];
+export const CREATE_STAGES: Stage[] = [...BOARD_STAGES];
 
 /** All valid stages (including collapsed / cancelled). */
 export const STAGES: Stage[] = [...CREATE_STAGES, "cancelled"];
 
 export const STAGE_LABELS: Record<Stage, string> = {
-  "to-contact": "To Contact",
   "cold-lead": "Cold Lead",
   "hot-lead": "Hot Lead",
   "under-development": "Under Development",
@@ -34,9 +32,8 @@ export const STAGE_LABELS: Record<Stage, string> = {
 
 /** Map legacy stage ids (and unknown values) onto the current set. */
 export function normalizeStage(value: string | null | undefined): Stage {
-  if (value === "new-lead") return "cold-lead";
+  if (value === "new-lead" || value === "to-contact") return "cold-lead";
   if (
-    value === "to-contact" ||
     value === "cold-lead" ||
     value === "hot-lead" ||
     value === "under-development" ||
@@ -1018,7 +1015,7 @@ export function normalizeProjectExpense(
 export type StageProbabilities = Partial<Record<Stage, number>>;
 
 export const DEFAULT_STAGE_PROBABILITIES: Record<
-  Exclude<Stage, "cancelled" | "to-contact">,
+  Exclude<Stage, "cancelled">,
   number
 > = {
   "cold-lead": 10,

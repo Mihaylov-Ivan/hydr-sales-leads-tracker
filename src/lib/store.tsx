@@ -6267,7 +6267,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       series: "Custom",
       market: "Clean H2",
       sizeKw: 1,
-      stage: "to-contact",
+      stage: "cold-lead",
       isWarehouseHolding: true,
       baseDescription:
         "Internal holding project for spare and buffer warehouse stock. Hidden from Sales Projects.",
@@ -6275,7 +6275,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: false,
       ...initialMetricsFields({
-        stage: "to-contact",
+        stage: "cold-lead",
         createdDate: createdAt.slice(0, 10),
       }),
       comments: [],
