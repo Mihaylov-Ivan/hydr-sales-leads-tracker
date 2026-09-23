@@ -5,7 +5,6 @@ import {
   parseSessionToken,
   sessionUserFromPayload,
 } from "@/lib/auth";
-import { isViewerUser } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -51,15 +50,13 @@ export async function POST(request: NextRequest) {
     }
 
     const user = sessionUserFromPayload(payload);
-    const hasCrmAccess =
+    const hasReadableWorkspace =
       user.isAdmin ||
-      user.permissions.includes("sales") ||
-      user.permissions.includes("technical_sales") ||
-      user.permissions.includes("eu_funding_rnd");
+      user.permissions.some((permission) => permission !== "viewer");
 
-    if (isViewerUser(user) || !hasCrmAccess) {
+    if (!hasReadableWorkspace) {
       return NextResponse.json(
-        { error: "This account cannot use the CRM voice assistant" },
+        { error: "This account has no CRM workspace access" },
         { status: 403 },
       );
     }
