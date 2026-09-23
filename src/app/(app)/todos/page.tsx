@@ -2,13 +2,13 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
-import { useAuth } from "@/lib/auth-context";
 import {
   PersonalTodoStatus,
   PERSONAL_TODO_BOARD_STATUSES,
   PERSONAL_TODO_STATUS_LABELS,
   PERSONAL_TODO_STATUSES,
   comparePersonalTodos,
+  isOwnPersonalTodo,
 } from "@/lib/types";
 import PersonalTodoCard, {
   PERSONAL_TODO_DRAG_TYPE,
@@ -294,7 +294,6 @@ export default function PersonalTodosPage() {
     movePersonalTodo,
     reorderPersonalTodo,
   } = useProjects();
-  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [dragOverStatus, setDragOverStatus] =
@@ -344,10 +343,9 @@ export default function PersonalTodosPage() {
   }, [showDone, donePrefReady]);
 
   const scopedTodos = useMemo(() => {
-    if (user?.isAdmin) return personalTodos;
     if (!currentUserId) return [];
-    return personalTodos.filter((t) => t.ownerUserId === currentUserId);
-  }, [personalTodos, user?.isAdmin, currentUserId]);
+    return personalTodos.filter((t) => isOwnPersonalTodo(t, currentUserId));
+  }, [personalTodos, currentUserId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -425,9 +423,8 @@ export default function PersonalTodosPage() {
         <div>
           <h1 className="text-2xl font-bold text-deep">Personal to-dos</h1>
           <p className="mt-1 text-sm text-muted">
-            {user?.isAdmin
-              ? "Admin view: all personal tasks. Drag to reorder or move between columns."
-              : "Your tasks only. Drag to reorder within a column or move between columns."}
+            Your tasks only. Drag to reorder within a column or move between
+            columns.
           </p>
         </div>
         <button

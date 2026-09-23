@@ -20,6 +20,7 @@ import {
   isClientFollowUpTodo,
   isUserEmailReminderDue,
   nextEmailReminderDateForUser,
+  isOwnPersonalTodo,
   isPersonalTodoOpen,
   isTodoInWorkWindow,
   isTodoWorkWindowUpcoming,
@@ -856,10 +857,13 @@ export default function OutstandingSidebar() {
   const openPersonal = useMemo(
     () =>
       personalTodos
-        .filter(isPersonalTodoOpen)
+        .filter(
+          (todo) =>
+            isPersonalTodoOpen(todo) && isOwnPersonalTodo(todo, currentUserId),
+        )
         .slice()
         .sort(comparePersonalTodos),
-    [personalTodos],
+    [personalTodos, currentUserId],
   );
 
   const personalWorkWindow = useMemo(() => {

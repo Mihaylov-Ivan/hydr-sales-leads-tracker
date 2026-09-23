@@ -164,6 +164,33 @@ export async function replaceUserPermissions(
   if (insErr) throw new Error(insErr.message);
 }
 
+/** Seed disabled follow-up prefs for every project so new users start quiet. */
+async function seedDisabledRemindersForUser(userId: string): Promise<void> {
+  const db = createServiceClient();
+  const { data, error } = await db.from("projects").select("id");
+  if (error) throw new Error(error.message);
+  const projectIds = (data ?? [])
+    .map((row) => (row as { id: string }).id)
+    .filter(Boolean);
+  if (projectIds.length === 0) return;
+
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+  const rows = projectIds.map((project_id) => ({
+    project_id,
+    user_id: userId,
+    email_reminder_days: 7,
+    email_reminder_enabled: false,
+    last_client_contact_at: today,
+    updated_at: now,
+  }));
+
+  const { error: upsertError } = await db
+    .from("project_user_reminders")
+    .upsert(rows, { onConflict: "project_id,user_id" });
+  if (upsertError) throw new Error(upsertError.message);
+}
+
 export async function createManagedUser(input: {
   name: string;
   username: string;
@@ -193,6 +220,10 @@ export async function createManagedUser(input: {
   if (!input.isAdmin) {
     await replaceUserPermissions(id, input.permissions);
   }
+
+  // No personal todos are created for new accounts. Reminders start disabled
+  // for every existing project so Outstanding stays empty until they opt in.
+  await seedDisabledRemindersForUser(id);
 
   return {
     id,

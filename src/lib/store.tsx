@@ -64,6 +64,7 @@ import {
   normalizeProjectExpense,
   normalizePersonalTodoStatus,
   comparePersonalTodos,
+  isOwnPersonalTodo,
   normalizeStage,
   normalizeProjectTrack,
   parseSeriesTags,
@@ -951,18 +952,16 @@ function finalizePersonalTodos(todos: PersonalTodo[]): PersonalTodo[] {
   return normalizePersonalTodoSortOrders(todos.map(sanitizePersonalTodo));
 }
 
-async function loadRemotePersonalTodos(): Promise<PersonalTodo[] | null> {
-  if (!supabase) return null;
-  const [todosRes, commentsRes] = await Promise.all([
-    supabase.from("personal_todos").select("*").order("sort_order", {
-      ascending: true,
-    }).order("created_at", {
-      ascending: true,
-    }),
-    supabase.from("personal_todo_comments").select("*").order("created_at", {
-      ascending: true,
-    }),
-  ]);
+async function loadRemotePersonalTodos(
+  ownerUserId: string,
+): Promise<PersonalTodo[] | null> {
+  if (!supabase || !ownerUserId) return null;
+  const todosRes = await supabase
+    .from("personal_todos")
+    .select("*")
+    .eq("owner_user_id", ownerUserId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
   if (todosRes.error) {
     console.warn(
       "Personal todos table unavailable:",
@@ -970,22 +969,41 @@ async function loadRemotePersonalTodos(): Promise<PersonalTodo[] | null> {
     );
     return null;
   }
-  if (commentsRes.error) {
-    console.error(
-      "Failed to load personal todo comments:",
-      commentsRes.error.message,
-    );
+  const todoRows = (todosRes.data ?? []) as PersonalTodoRow[];
+  let commentRows: PersonalTodoCommentRow[] = [];
+  const todoIds = todoRows.map((row) => row.id);
+  if (todoIds.length > 0) {
+    const commentsRes = await supabase
+      .from("personal_todo_comments")
+      .select("*")
+      .in("todo_id", todoIds)
+      .order("created_at", { ascending: true });
+    if (commentsRes.error) {
+      console.error(
+        "Failed to load personal todo comments:",
+        commentsRes.error.message,
+      );
+    } else {
+      commentRows = (commentsRes.data ?? []) as PersonalTodoCommentRow[];
+    }
   }
   const commentsByTodo = new Map<string, PersonalTodoComment[]>();
-  for (const row of (commentsRes.data ?? []) as PersonalTodoCommentRow[]) {
+  for (const row of commentRows) {
     const list = commentsByTodo.get(row.todo_id) ?? [];
     list.push(personalTodoCommentFromRow(row));
     commentsByTodo.set(row.todo_id, list);
   }
   return finalizePersonalTodos(
-    ((todosRes.data ?? []) as PersonalTodoRow[]).map((row) =>
+    todoRows.map((row) =>
       personalTodoFromRow(row, commentsByTodo.get(row.id) ?? []),
     ),
+  );
+}
+
+function loadOwnedLocalPersonalTodos(ownerUserId: string | null): PersonalTodo[] {
+  if (!ownerUserId) return [];
+  return loadLocalPersonalTodos().filter((todo) =>
+    isOwnPersonalTodo(todo, ownerUserId),
   );
 }
 
@@ -1126,7 +1144,7 @@ function loadLocalProjectUserReminders(): ProjectUserReminder[] {
         projectId: r.projectId,
         userId: r.userId,
         emailReminderDays: Math.max(1, Math.floor(r.emailReminderDays)),
-        emailReminderEnabled: r.emailReminderEnabled !== false,
+        emailReminderEnabled: r.emailReminderEnabled === true,
         lastClientContactAt: (r.lastClientContactAt || todayDate()).slice(0, 10),
       }));
   } catch {
@@ -1147,7 +1165,7 @@ async function loadRemoteProjectUserReminders(): Promise<ProjectUserReminder[]> 
     projectId: row.project_id,
     userId: row.user_id,
     emailReminderDays: Math.max(1, Math.floor(row.email_reminder_days || 7)),
-    emailReminderEnabled: row.email_reminder_enabled !== false,
+    emailReminderEnabled: row.email_reminder_enabled === true,
     lastClientContactAt: (row.last_client_contact_at || todayDate()).slice(
       0,
       10,
@@ -1380,6 +1398,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   teamMembersRef.current = teamMembers;
   const currentUserIdRef = useRef<string | null>(currentUserId);
   currentUserIdRef.current = currentUserId;
+  const authReadyRef = useRef(authReady);
+  authReadyRef.current = authReady;
+  const authEnabledRef = useRef(authEnabled);
+  authEnabledRef.current = authEnabled;
+  const authUserIdRef = useRef<string | null>(authUser?.userId ?? null);
+  authUserIdRef.current = authUser?.userId ?? null;
+  const loadedPersonalOwnerRef = useRef<string | null>(null);
   const warehouseRef = useRef<WarehouseState>(warehouse);
   warehouseRef.current = warehouse;
   const deleteWarehouseLotRef = useRef<
@@ -1404,6 +1429,39 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function boot() {
+      async function resolvePersonalOwnerId(
+        fallbackOwnerId: string | null,
+      ): Promise<string | null> {
+        const start = Date.now();
+        while (!authReadyRef.current && Date.now() - start < 8000) {
+          await new Promise((resolve) => setTimeout(resolve, 40));
+        }
+        if (!authEnabledRef.current) return fallbackOwnerId;
+        return authUserIdRef.current;
+      }
+
+      async function applyOwnedPersonalTodos(fallbackOwnerId: string | null) {
+        const ownerId = await resolvePersonalOwnerId(fallbackOwnerId);
+        loadedPersonalOwnerRef.current = ownerId;
+        if (!ownerId) {
+          setPersonalTodos([]);
+          setSupportsPersonalTodos(false);
+          return;
+        }
+        if (supabase) {
+          const remotePersonal = await loadRemotePersonalTodos(ownerId).catch(
+            () => null,
+          );
+          if (remotePersonal) {
+            setPersonalTodos(remotePersonal);
+            setSupportsPersonalTodos(true);
+            return;
+          }
+        }
+        setPersonalTodos(loadOwnedLocalPersonalTodos(ownerId));
+        setSupportsPersonalTodos(false);
+      }
+
       purgeFinancialLocalStorage();
       const wh = loadWarehouseState();
       setWarehouse(wh);
@@ -1432,14 +1490,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceSettings(defaultFinanceSettings());
         setMetricsSettings(remoteMetrics);
         setFinanceImport(null);
-        const remotePersonal = await loadRemotePersonalTodos().catch(() => null);
-        if (remotePersonal) {
-          setPersonalTodos(remotePersonal);
-          setSupportsPersonalTodos(true);
-        } else {
-          setPersonalTodos(loadLocalPersonalTodos());
-          setSupportsPersonalTodos(false);
-        }
+        await applyOwnedPersonalTodos(members[0]?.id ?? null);
 
         const remoteReminders = await loadRemoteProjectUserReminders().catch(
           (e) => {
@@ -1482,8 +1533,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceSettings(defaultFinanceSettings());
         setMetricsSettings(loadLocalMetricsSettings());
         setFinanceImport(null);
-        setPersonalTodos(loadLocalPersonalTodos());
-        setSupportsPersonalTodos(false);
+        await applyOwnedPersonalTodos(members[0]?.id ?? null);
         setProjectUserReminders(loadLocalProjectUserReminders());
         setReady(true);
       }
@@ -1540,6 +1590,35 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // If boot finished before the session user was known, load only that user's tasks.
+  useEffect(() => {
+    if (!ready || !authReady) return;
+    const ownerId = authEnabled ? (authUser?.userId ?? null) : currentUserId;
+    if (!ownerId || ownerId === loadedPersonalOwnerRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      if (supabase) {
+        const remotePersonal = await loadRemotePersonalTodos(ownerId).catch(
+          () => null,
+        );
+        if (cancelled) return;
+        if (remotePersonal) {
+          setPersonalTodos(remotePersonal);
+          setSupportsPersonalTodos(true);
+          loadedPersonalOwnerRef.current = ownerId;
+          return;
+        }
+      }
+      if (cancelled) return;
+      setPersonalTodos(loadOwnedLocalPersonalTodos(ownerId));
+      setSupportsPersonalTodos(false);
+      loadedPersonalOwnerRef.current = ownerId;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, authReady, authEnabled, authUser?.userId, currentUserId]);
+
   useEffect(() => {
     if (!ready) return;
     if (!supabase) return;
@@ -1563,13 +1642,20 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [projects, ready]);
 
   useEffect(() => {
-    if (ready && (!supabase || !supportsPersonalTodos)) {
-      window.localStorage.setItem(
-        PERSONAL_TODOS_STORAGE_KEY,
-        JSON.stringify(personalTodos),
-      );
-    }
-  }, [personalTodos, ready, supportsPersonalTodos]);
+    if (!ready || (supabase && supportsPersonalTodos)) return;
+    const ownerId = currentUserId;
+    const existing = loadLocalPersonalTodos();
+    const kept = ownerId
+      ? existing.filter((todo) => !isOwnPersonalTodo(todo, ownerId))
+      : existing;
+    const mine = ownerId
+      ? personalTodos.filter((todo) => isOwnPersonalTodo(todo, ownerId))
+      : [];
+    window.localStorage.setItem(
+      PERSONAL_TODOS_STORAGE_KEY,
+      JSON.stringify([...kept, ...mine]),
+    );
+  }, [personalTodos, ready, supportsPersonalTodos, currentUserId]);
 
   useEffect(() => {
     if (ready && !supabase) {
@@ -2628,13 +2714,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         project?.lastClientContactAt ||
         project?.createdAt.slice(0, 10) ||
         todayDate();
+      // Missing per-user prefs default OFF — users opt in explicitly.
       if (!uid) {
         return {
           projectId,
           userId: "",
           emailReminderDays:
             project?.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
-          emailReminderEnabled: project?.emailReminderEnabled !== false,
+          emailReminderEnabled: false,
           lastClientContactAt: fallbackDate,
         };
       }
@@ -2647,7 +2734,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         userId: uid,
         emailReminderDays:
           project?.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
-        emailReminderEnabled: project?.emailReminderEnabled !== false,
+        emailReminderEnabled: false,
         lastClientContactAt: fallbackDate,
       };
     },
@@ -3359,12 +3446,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const updatePersonalTodo = useCallback(
     (todoId: string, patch: PersonalTodoPatch) => {
       const current = personalTodosRef.current.find((t) => t.id === todoId);
-      if (!current) return;
-      if (
-        !authUser?.isAdmin &&
-        current.ownerUserId &&
-        current.ownerUserId !== currentUserIdRef.current
-      ) {
+      if (!current || !isOwnPersonalTodo(current, currentUserIdRef.current)) {
         return;
       }
       const now = new Date().toISOString();
@@ -3481,7 +3563,6 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [
-      authUser?.isAdmin,
       recordChangeEvent,
       supportsPersonalTodos,
       pushNotification,
@@ -3496,17 +3577,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       targetIndex: number,
     ) => {
       const dragged = personalTodosRef.current.find((t) => t.id === todoId);
-      if (!dragged) return;
-      if (
-        !authUser?.isAdmin &&
-        dragged.ownerUserId &&
-        dragged.ownerUserId !== currentUserIdRef.current
-      ) {
+      if (!dragged || !isOwnPersonalTodo(dragged, currentUserIdRef.current)) {
         return;
       }
 
       const column = personalTodosRef.current
-        .filter((t) => t.status === targetStatus)
+        .filter(
+          (t) =>
+            t.status === targetStatus &&
+            isOwnPersonalTodo(t, currentUserIdRef.current),
+        )
         .sort(comparePersonalTodos);
       const fromIndex = column.findIndex((t) => t.id === todoId);
       const clampedIndex = Math.max(0, Math.min(targetIndex, column.length));
@@ -3587,16 +3667,22 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
+    [recordChangeEvent, supportsPersonalTodos],
   );
 
   const reorderPersonalTodo = useCallback(
     (todoId: string, direction: "up" | "down") => {
       const current = personalTodosRef.current.find((t) => t.id === todoId);
-      if (!current) return;
+      if (!current || !isOwnPersonalTodo(current, currentUserIdRef.current)) {
+        return;
+      }
 
       const column = personalTodosRef.current
-        .filter((t) => t.status === current.status)
+        .filter(
+          (t) =>
+            t.status === current.status &&
+            isOwnPersonalTodo(t, currentUserIdRef.current),
+        )
         .sort(comparePersonalTodos);
       const index = column.findIndex((t) => t.id === todoId);
       if (index < 0) return;
@@ -3612,14 +3698,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const deletePersonalTodo = useCallback(
     (todoId: string) => {
       const todo = personalTodosRef.current.find((t) => t.id === todoId);
-      if (!todo) return;
-      if (
-        !authUser?.isAdmin &&
-        todo.ownerUserId &&
-        todo.ownerUserId !== currentUserIdRef.current
-      ) {
-        return;
-      }
+      if (!todo || !isOwnPersonalTodo(todo, currentUserIdRef.current)) return;
       setPersonalTodos((prev) => prev.filter((t) => t.id !== todoId));
       recordChangeEvent({
         domain: "crm",
@@ -3636,13 +3715,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           .then(logDbError("personal todo delete"));
       }
     },
-    [authUser?.isAdmin, recordChangeEvent, supportsPersonalTodos],
+    [recordChangeEvent, supportsPersonalTodos],
   );
 
   const addPersonalTodoComment = useCallback(
     (todoId: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      const todo = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!todo || !isOwnPersonalTodo(todo, currentUserIdRef.current)) return;
       const comment: PersonalTodoComment = {
         id: newId(),
         text: trimmed,
@@ -3684,6 +3765,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     (todoId: string, commentId: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      const todo = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!todo || !isOwnPersonalTodo(todo, currentUserIdRef.current)) return;
       setPersonalTodos((prev) =>
         prev.map((t) =>
           t.id === todoId
@@ -3709,6 +3792,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const deletePersonalTodoComment = useCallback(
     (todoId: string, commentId: string) => {
+      const todo = personalTodosRef.current.find((t) => t.id === todoId);
+      if (!todo || !isOwnPersonalTodo(todo, currentUserIdRef.current)) return;
       setPersonalTodos((prev) =>
         prev.map((t) =>
           t.id === todoId
@@ -8019,7 +8104,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         toggleTodo,
         updateTodo,
         deleteTodo,
-        personalTodos,
+        personalTodos: personalTodos.filter((todo) =>
+          isOwnPersonalTodo(todo, currentUserId),
+        ),
         addPersonalTodo,
         updatePersonalTodo,
         deletePersonalTodo,

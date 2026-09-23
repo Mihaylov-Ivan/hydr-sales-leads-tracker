@@ -33,7 +33,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
   }, [currentUserId, project.id, ensureProjectUserReminder]);
 
   const reminder = getProjectUserReminder(project.id, currentUserId);
-  const enabled = reminder.emailReminderEnabled !== false;
+  const enabled = reminder.emailReminderEnabled === true;
   const due = Boolean(currentUserId) && isUserEmailReminderDue(reminder);
   const delta = userEmailReminderDeltaDays(reminder);
   const last = lastContactDateForUserReminder(reminder);

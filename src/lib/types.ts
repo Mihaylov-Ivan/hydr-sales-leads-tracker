@@ -1367,6 +1367,14 @@ export function isPersonalTodoOpen(todo: PersonalTodo): boolean {
   return todo.status === "todo" || todo.status === "doing";
 }
 
+/** Personal tasks are private to their owner. */
+export function isOwnPersonalTodo(
+  todo: { ownerUserId?: string },
+  userId: string | null | undefined,
+): boolean {
+  return Boolean(userId && todo.ownerUserId === userId);
+}
+
 /** Deadline first, then window end; undated last. */
 export function personalTodoSortDate(todo: PersonalTodo): string {
   return todo.dueDate ?? todo.endDate ?? "9999-12-31";
