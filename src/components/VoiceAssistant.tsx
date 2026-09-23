@@ -1282,6 +1282,15 @@ export default function VoiceAssistant() {
               phone: contact.phone ?? "",
               position: contact.position ?? "",
             })),
+            files: (project.files ?? []).map((file) => ({
+              id: file.id,
+              name: file.name,
+              kind: file.kind,
+              note: file.note ?? null,
+              mime_type: file.mimeType,
+              size_bytes: file.sizeBytes,
+              created_at: file.createdAt,
+            })),
           });
         }
 
