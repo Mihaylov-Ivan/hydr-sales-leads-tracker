@@ -798,3 +798,167 @@ export async function executeVoiceTool(
       return JSON.stringify({ ok: false, error: "A valid stage for this project track is required." });
     }
     p.updateProject(project.id, { stage });
+    ctx.appendAction?.(`Moved ${project.name} to ${STAGE_LABELS[stage]}.`);
+    return JSON.stringify({ ok: true, project_id: project.id, stage });
+  }
+
+  if (name === "project_action") {
+    const operation = str("operation");
+    if (operation === "create_project") {
+      const track = (str("track") || "sales") as ProjectTrack;
+      const nameValue = str("name");
+      const client = str("client");
+      const country = str("country");
+      if (!["sales", "eu", "rnd"].includes(track)) {
+        return JSON.stringify({ ok: false, error: "Invalid project track." });
+      }
+      const mayCreate =
+        !ctx.authEnabled ||
+        Boolean(ctx.user?.isAdmin) ||
+        (track === "sales"
+          ? has("sales") || has("technical_sales")
+          : has("eu_funding_rnd"));
+      if (!mayCreate) {
+        return JSON.stringify({ ok: false, error: "The current user cannot create projects on that track." });
+      }
+      if (!nameValue || !client || !country) {
+        return JSON.stringify({
+          ok: false,
+          error: "Project name, client/organisation, and country are required.",
+          missing_fields: [
+            ...(!nameValue ? ["name"] : []),
+            ...(!client ? ["client"] : []),
+            ...(!country ? ["country"] : []),
+          ],
+        });
+      }
+      const lead = str("lead_user_id");
+      if (lead && !validateOwner(lead)) {
+        return JSON.stringify({ ok: false, error: "The requested project lead is not assignable." });
+      }
+      const requestedStage = str("stage") as Stage;
+      const stage = requestedStage || defaultStageForTrack(track);
+      if (!stagesForTrack(track).includes(stage)) {
+        return JSON.stringify({ ok: false, error: "That stage is not valid for the selected project track." });
+      }
+      const projectId = p.addProject({
+        name: nameValue,
+        client,
+        country,
+        city: str("city"),
+        series: str("series") || "Z Series",
+        market: str("market") || "Clean H2",
+        sizeKw: Math.max(0, num("size_kw") ?? 0),
+        stage,
+        track,
+        baseDescription: str("description"),
+        ...(lead ? { leadUserId: lead } : {}),
+      });
+      ctx.appendAction?.(`Created project ${nameValue}.`);
+      return JSON.stringify({ ok: true, project_id: projectId, name: nameValue });
+    }
+
+    const project = findGeneralProject(args.project_id);
+    if (!project) {
+      return JSON.stringify({ ok: false, error: "Project not found or not editable by this user." });
+    }
+
+    if (operation === "update_project") {
+      const patch: Parameters<ProjectsApi["updateProject"]>[1] = {};
+      if (args.name !== undefined) patch.name = str("name");
+      if (args.client !== undefined) patch.client = str("client");
+      if (args.country !== undefined) patch.country = str("country");
+      if (args.city !== undefined) patch.city = str("city");
+      if (args.series !== undefined) patch.series = str("series");
+      if (args.market !== undefined) patch.market = str("market");
+      if (num("size_kw") !== undefined) patch.sizeKw = Math.max(0, num("size_kw")!);
+      if (args.description !== undefined) patch.baseDescription = str("description");
+      if (args.stage !== undefined) {
+        const stage = str("stage") as Stage;
+        if (!stagesForTrack(trackOfProject(project)).includes(stage)) {
+          return JSON.stringify({ ok: false, error: "That stage is not valid for this project track." });
+        }
+        patch.stage = stage;
+      }
+      if (args.lead_user_id !== undefined) {
+        const owner = str("lead_user_id");
+        if (owner && !validateOwner(owner)) {
+          return JSON.stringify({ ok: false, error: "The requested project lead is not assignable." });
+        }
+        patch.leadUserId = owner || undefined;
+      }
+      for (const [source, target] of [
+        ["last_client_contact_at", "lastClientContactAt"],
+        ["cold_lead_entered_at", "coldLeadEnteredAt"],
+        ["hot_lead_entered_at", "hotLeadEnteredAt"],
+        ["under_development_at", "underDevelopmentAt"],
+        ["commissioned_at", "commissionedAt"],
+        ["cancelled_at", "cancelledAt"],
+        ["last_meaningful_activity_at", "lastMeaningfulActivityAt"],
+      ] as const) {
+        if (args[source] === undefined) continue;
+        const value = str(source);
+        if (value && !isValidDateOnly(value)) {
+          return JSON.stringify({ ok: false, error: `${source} must be YYYY-MM-DD or empty to clear.` });
+        }
+        (patch as Record<string, unknown>)[target] = value || undefined;
+      }
+      if (num("email_reminder_days") !== undefined) {
+        patch.emailReminderDays = Math.max(1, Math.round(num("email_reminder_days")!));
+      }
+      if (bool("email_reminder_enabled") !== undefined) {
+        patch.emailReminderEnabled = bool("email_reminder_enabled");
+      }
+      if (args.cancellation_reason !== undefined) {
+        patch.cancellationReason = str("cancellation_reason") || undefined;
+      }
+      p.updateProject(project.id, patch);
+      ctx.appendAction?.(`Updated ${project.name}.`);
+      return JSON.stringify({ ok: true, project_id: project.id });
+    }
+
+    if (operation === "delete_project") {
+      p.deleteProject(project.id);
+      ctx.appendAction?.(`Deleted project ${project.name}.`);
+      return JSON.stringify({ ok: true, deleted_project_id: project.id });
+    }
+
+    if (operation === "add_comment") {
+      const textValue = str("text");
+      if (!textValue) return JSON.stringify({ ok: false, error: "Comment text is required." });
+      p.addComment(project.id, textValue);
+      return JSON.stringify({ ok: true });
+    }
+    if (operation === "update_comment" || operation === "delete_comment") {
+      const id = str("entity_id");
+      if (!project.comments.some((comment) => comment.id === id)) {
+        return JSON.stringify({ ok: false, error: "Comment not found." });
+      }
+      if (operation === "delete_comment") p.deleteComment(project.id, id);
+      else {
+        const textValue = str("text");
+        if (!textValue) return JSON.stringify({ ok: false, error: "Comment text is required." });
+        p.updateComment(project.id, id, textValue);
+      }
+      return JSON.stringify({ ok: true });
+    }
+
+    if (operation === "create_task") {
+      const textValue = str("text");
+      if (!textValue) return JSON.stringify({ ok: false, error: "Task text is required." });
+      const owner = str("owner_user_id");
+      if (owner && !validateOwner(owner)) {
+        return JSON.stringify({ ok: false, error: "Assignee is not assignable." });
+      }
+      const due = str("due_date");
+      const start = str("start_date");
+      const end = str("end_date");
+      for (const value of [due, start, end]) {
+        if (value && !isValidDateOnly(value)) {
+          return JSON.stringify({ ok: false, error: "Task dates must be YYYY-MM-DD." });
+        }
+      }
+      p.addTodo(
+        project.id,
+        "our-action",
+        textValue,
