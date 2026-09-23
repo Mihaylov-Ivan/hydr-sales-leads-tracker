@@ -615,3 +615,186 @@ export async function executeVoiceTool(
         )
         .slice(0, 20),
       balances: p.warehouse.balances
+        .filter((balance) => lotIds.has(balance.lotId))
+        .slice(0, 50),
+    });
+  }
+
+  if (name === "admin_user_action") {
+    if (!ctx.authEnabled || !ctx.user?.isAdmin) {
+      return JSON.stringify({ ok: false, error: "Admin access is required." });
+    }
+    const operation = str("operation");
+    if (operation === "list") {
+      const res = await fetch("/api/users", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      return JSON.stringify({
+        ok: res.ok,
+        ...(res.ok ? data : { error: String(data.error ?? "Could not load users.") }),
+      });
+    }
+    if (operation === "create") {
+      const nameValue = str("name");
+      const username = str("username");
+      const password = str("password");
+      if (!nameValue || !username || password.length < 8) {
+        return JSON.stringify({
+          ok: false,
+          error:
+            "Name, username, and a temporary password of at least 8 characters are required.",
+        });
+      }
+      const res = await fetch("/api/users", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameValue,
+          username,
+          email: str("email") || undefined,
+          password,
+          isAdmin: bool("is_admin") ?? false,
+          permissions: Array.isArray(args.permissions) ? args.permissions : [],
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (res.ok) await p.reloadTeamMembers();
+      ctx.appendAction?.(res.ok ? `Created user ${nameValue}.` : "User creation failed.");
+      return JSON.stringify({
+        ok: res.ok,
+        ...(res.ok
+          ? { user: data.user }
+          : { error: String(data.error ?? "Could not create user.") }),
+      });
+    }
+    if (operation === "update") {
+      const userId = str("user_id");
+      if (!userId) {
+        return JSON.stringify({ ok: false, error: "user_id is required." });
+      }
+      const body: Record<string, unknown> = {};
+      if (args.name !== undefined) body.name = str("name");
+      if (args.email !== undefined) body.email = str("email") || null;
+      if (args.username !== undefined) body.username = str("username");
+      if (bool("is_admin") !== undefined) body.isAdmin = bool("is_admin");
+      if (bool("is_active") !== undefined) body.isActive = bool("is_active");
+      if (Array.isArray(args.permissions)) body.permissions = args.permissions;
+      if (str("password")) body.password = str("password");
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (res.ok) await p.reloadTeamMembers();
+      ctx.appendAction?.(res.ok ? "Updated user account." : "User update failed.");
+      return JSON.stringify({
+        ok: res.ok,
+        ...(res.ok
+          ? { user: data.user }
+          : { error: String(data.error ?? "Could not update user.") }),
+      });
+    }
+    return JSON.stringify({ ok: false, error: "Unknown admin operation." });
+  }
+
+  if (name === "notification_action") {
+    const operation = str("operation");
+    if (operation === "mark_all_read") {
+      p.markAllNotificationsRead();
+      return JSON.stringify({ ok: true });
+    }
+    const id = str("notification_id");
+    if (!id) {
+      return JSON.stringify({ ok: false, error: "notification_id is required." });
+    }
+    if (operation === "mark_read") p.markNotificationRead(id);
+    else if (operation === "delete") p.deleteNotification(id);
+    else return JSON.stringify({ ok: false, error: "Unknown notification operation." });
+    return JSON.stringify({ ok: true });
+  }
+
+  const writeTools = new Set([
+    "add_project_comment",
+    "create_project_task",
+    "change_project_stage",
+    "project_action",
+    "personal_todo_action",
+    "prospect_action",
+    "gantt_action",
+    "finance_action",
+    "warehouse_action",
+    "settings_action",
+  ]);
+  if (writeTools.has(name) && !canMutate) {
+    return JSON.stringify({
+      ok: false,
+      error: "This account is read-only and cannot change CRM data.",
+    });
+  }
+
+  if (name === "add_project_comment") {
+    const project = findGeneralProject(args.project_id);
+    const textValue = str("text");
+    const stageChange = str("stage_change") as Stage;
+    if (!project) {
+      return JSON.stringify({ ok: false, error: "Project not found or not editable by this user." });
+    }
+    if (!textValue) {
+      return JSON.stringify({ ok: false, error: "Comment text is required." });
+    }
+    if (stageChange && !stagesForTrack(trackOfProject(project)).includes(stageChange)) {
+      return JSON.stringify({ ok: false, error: "That stage is not valid for this project's track." });
+    }
+    p.addComment(project.id, textValue, stageChange || undefined);
+    ctx.appendAction?.(
+      `Added update to ${project.name}${stageChange ? ` and moved it to ${STAGE_LABELS[stageChange]}` : ""}.`,
+    );
+    return JSON.stringify({ ok: true, project_id: project.id });
+  }
+
+  if (name === "create_project_task") {
+    const project = findGeneralProject(args.project_id);
+    const textValue = str("text");
+    if (!project || !textValue) {
+      return JSON.stringify({
+        ok: false,
+        error: project ? "Task text is required." : "Project not found or not editable by this user.",
+      });
+    }
+    const due = str("due_date");
+    const start = str("start_date");
+    const end = str("end_date");
+    for (const value of [due, start, end]) {
+      if (value && !isValidDateOnly(value)) {
+        return JSON.stringify({ ok: false, error: "Task dates must be YYYY-MM-DD." });
+      }
+    }
+    const owner = str("owner_user_id");
+    if (owner && !validateOwner(owner)) {
+      return JSON.stringify({ ok: false, error: "The requested assignee is not assignable." });
+    }
+    p.addTodo(
+      project.id,
+      "our-action",
+      textValue,
+      due || undefined,
+      owner || undefined,
+      start || undefined,
+      end || undefined,
+    );
+    ctx.appendAction?.(`Created action item on ${project.name}.`);
+    return JSON.stringify({ ok: true, project_id: project.id });
+  }
+
+  if (name === "change_project_stage") {
+    const project = findGeneralProject(args.project_id);
+    const stage = str("stage") as Stage;
+    if (!project) {
+      return JSON.stringify({ ok: false, error: "Project not found or not editable by this user." });
+    }
+    if (!stage || !stagesForTrack(trackOfProject(project)).includes(stage)) {
+      return JSON.stringify({ ok: false, error: "A valid stage for this project track is required." });
+    }
+    p.updateProject(project.id, { stage });
