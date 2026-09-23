@@ -11,18 +11,39 @@ import {
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import { useProjects } from "@/lib/store";
+import { useProspecting } from "@/lib/prospecting-store";
+import {
+  voiceToolsForAccess,
+  type VoiceAccessProfile,
+} from "@/lib/voice-tools";
 import {
   STAGE_LABELS,
   TODO_KIND_LABELS,
+  defaultStageForTrack,
   isInternalHiddenProject,
   stagesForTrack,
   trackOfProject,
+  type MilestoneKind,
+  type PersonalTodoStatus,
   type Project,
+  type ProjectExpenseCategory,
+  type ProjectTrack,
+  type ScheduleShiftUnit,
   type Stage,
   type TeamMember,
   type TodoKind,
+  type WarehouseLocation,
+  type WarehouseMaterialKind,
 } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
+import type {
+  ContactMethod,
+  OutreachChannel,
+  OutreachResult,
+  ProspectPriority,
+  ProspectQualification,
+  ProspectStatus,
+} from "@/lib/prospecting-types";
 
 type VoiceStatus =
   | "off"
@@ -63,137 +84,6 @@ interface RealtimeEvent {
     >;
   };
 }
-
-const SALES_STAGE_VALUES: Stage[] = [
-  "cold-lead",
-  "hot-lead",
-  "under-development",
-  "commissioned",
-  "cancelled",
-  "eu-application-prep",
-  "eu-application-submitted",
-  "eu-project-started",
-  "rnd-execution",
-];
-
-const CRM_TOOLS = [
-  {
-    type: "function",
-    name: "search_projects",
-    description:
-      "Search CRM projects by project name, client, country, or city. Use this before acting on a project unless an exact project_id was already resolved earlier in this conversation.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description:
-            "Natural project/client search text, for example 'DW', 'Volkswagen', or 'BA Glass Sofia'.",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    type: "function",
-    name: "get_project",
-    description:
-      "Read the current CRM details, latest updates, and open tasks for one already-resolved project.",
-    parameters: {
-      type: "object",
-      properties: {
-        project_id: { type: "string" },
-      },
-      required: ["project_id"],
-    },
-  },
-  {
-    type: "function",
-    name: "search_team_members",
-    description:
-      "Find assignable CRM team members by name, username, or email. Always use this when the user names an assignee and you do not already have that person's exact user id from this conversation.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description: "Person name, username, or email fragment.",
-        },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    type: "function",
-    name: "add_project_comment",
-    description:
-      "Add a factual update/comment to a CRM project. May also change the project stage if the user explicitly asked for that stage change.",
-    parameters: {
-      type: "object",
-      properties: {
-        project_id: { type: "string" },
-        text: {
-          type: "string",
-          description:
-            "The update to store. Preserve the user's facts; remove only conversational filler and do not invent details.",
-        },
-        stage_change: {
-          type: "string",
-          enum: SALES_STAGE_VALUES,
-          description:
-            "Optional exact CRM stage id. Only provide when the user explicitly requested or clearly stated the stage change.",
-        },
-      },
-      required: ["project_id", "text"],
-    },
-  },
-  {
-    type: "function",
-    name: "create_project_task",
-    description:
-      "Create a CRM action item or reminder on a project.",
-    parameters: {
-      type: "object",
-      properties: {
-        project_id: { type: "string" },
-        text: { type: "string" },
-        kind: {
-          type: "string",
-          enum: ["our-action"],
-          description: "Always our-action. Kept for compatibility with older prompts.",
-        },
-        due_date: {
-          type: "string",
-          description:
-            "Optional due date in YYYY-MM-DD. Convert relative dates using the user's local date before calling.",
-        },
-        owner_user_id: {
-          type: "string",
-          description:
-            "Optional assignee id returned by search_team_members. Never invent this value.",
-        },
-      },
-      required: ["project_id", "text"],
-    },
-  },
-  {
-    type: "function",
-    name: "change_project_stage",
-    description:
-      "Move an already-resolved project to a different CRM stage when the user explicitly asks to change its stage.",
-    parameters: {
-      type: "object",
-      properties: {
-        project_id: { type: "string" },
-        stage: {
-          type: "string",
-          enum: SALES_STAGE_VALUES,
-        },
-      },
-      required: ["project_id", "stage"],
-    },
-  },
-] as const;
 
 function normalizeSearch(value: string): string {
   return value
@@ -279,6 +169,7 @@ function assistantTextFromResponse(event: RealtimeEvent): string | null {
 }
 
 export default function VoiceAssistant() {
+  const projectsApi = useProjects();
   const {
     projects,
     teamMembers,
@@ -286,23 +177,66 @@ export default function VoiceAssistant() {
     addComment,
     addTodo,
     updateProject,
-  } = useProjects();
+  } = projectsApi;
+  const prospectingApi = useProspecting();
   const {
     user,
     authEnabled,
     ready: authReady,
     can,
     canWrite,
-    isViewer,
   } = useAuth();
 
   const enabled = process.env.NEXT_PUBLIC_AI_VOICE === "true";
-  const hasAreaAccess =
-    !authEnabled ||
-    user?.isAdmin ||
-    can("sales") ||
-    can("technical_sales") ||
-    can("eu_funding_rnd");
+  const hasPermission = useCallback(
+    (permission: Parameters<typeof can>[0]) =>
+      !authEnabled || Boolean(user?.isAdmin) || can(permission),
+    [authEnabled, can, user?.isAdmin],
+  );
+
+  const accessProfile = useMemo<VoiceAccessProfile>(
+    () => ({
+      anyArea:
+        !authEnabled ||
+        Boolean(
+          user?.isAdmin ||
+            user?.permissions.some((permission) => permission !== "viewer"),
+        ),
+      projectGeneral:
+        !authEnabled ||
+        Boolean(
+          user?.isAdmin ||
+            can("sales") ||
+            can("technical_sales") ||
+            can("eu_funding_rnd"),
+        ),
+      prospecting: !authEnabled || Boolean(user?.isAdmin || can("sales")),
+      ganttWrite:
+        !authEnabled ||
+        Boolean(user?.isAdmin || can("technical_sales") || can("eu_funding_rnd")),
+      ganttRead:
+        !authEnabled ||
+        Boolean(
+          user?.isAdmin ||
+            can("technical_sales") ||
+            can("eu_funding_rnd") ||
+            can("production"),
+        ),
+      finance:
+        !authEnabled ||
+        Boolean(user?.isAdmin || can("finance") || can("eu_funding_rnd")),
+      warehouse: !authEnabled || Boolean(user?.isAdmin || can("warehouse")),
+      production: !authEnabled || Boolean(user?.isAdmin || can("production")),
+      sales: !authEnabled || Boolean(user?.isAdmin || can("sales")),
+      salesManager:
+        !authEnabled || Boolean(user?.isAdmin || can("sales_manager")),
+      admin: !authEnabled ? false : Boolean(user?.isAdmin),
+      canWrite: !authEnabled || canWrite,
+    }),
+    [authEnabled, can, canWrite, user?.isAdmin, user?.permissions],
+  );
+
+  const hasAreaAccess = accessProfile.anyArea;
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -327,6 +261,8 @@ export default function VoiceAssistant() {
     addComment,
     addTodo,
     updateProject,
+    projectsApi,
+    prospectingApi,
     user,
     authEnabled,
     canWrite,
@@ -338,6 +274,8 @@ export default function VoiceAssistant() {
     addComment,
     addTodo,
     updateProject,
+    projectsApi,
+    prospectingApi,
     user,
     authEnabled,
     canWrite,
