@@ -342,6 +342,7 @@ export default function Dashboard() {
     ready,
     updateProject,
     teamMembers,
+    projectUserReminders,
   } = useProjects();
   const { user, canWrite } = useAuth();
   const [countryFilter, setCountryFilter] = useState("all");
@@ -470,13 +471,13 @@ export default function Dashboard() {
     }
     for (const stage of STAGES) {
       map[stage].sort((a, b) => {
-        const fa = isProjectNextStepMissing(a) ? 0 : 1;
-        const fb = isProjectNextStepMissing(b) ? 0 : 1;
+        const fa = isProjectNextStepMissing(a, projectUserReminders) ? 0 : 1;
+        const fb = isProjectNextStepMissing(b, projectUserReminders) ? 0 : 1;
         return fa - fb;
       });
     }
     return map;
-  }, [filtered]);
+  }, [filtered, projectUserReminders]);
 
   const keyDateFilterProjects = useMemo(
     () => [...filtered].sort((a, b) => a.name.localeCompare(b.name)),

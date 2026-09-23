@@ -1808,14 +1808,20 @@ export function isClientFollowUpTodo(
 
 /**
  * True when the project has nothing next: no open questions/actions and
- * no planned client-contact reminder. Warehouse holding and cancelled
- * projects are excluded.
+ * no user has an enabled follow-up reminder. Project-level
+ * `emailReminderEnabled` is ignored — upcoming contact is driven only by
+ * per-user prefs. Warehouse holding and cancelled projects are excluded.
  */
-export function isProjectNextStepMissing(p: Project): boolean {
+export function isProjectNextStepMissing(
+  p: Project,
+  userReminders: readonly ProjectUserReminder[] = [],
+): boolean {
   if (isInternalHiddenProject(p) || p.stage === "cancelled") return false;
   if (trackOfProject(p) !== "sales") return false;
   const hasOpenTodo = (p.todos ?? []).some((t) => !t.done);
-  const contactPlanned = p.emailReminderEnabled !== false;
+  const contactPlanned = userReminders.some(
+    (r) => r.projectId === p.id && r.emailReminderEnabled === true,
+  );
   return !hasOpenTodo && !contactPlanned;
 }
 
