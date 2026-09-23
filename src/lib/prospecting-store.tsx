@@ -537,7 +537,7 @@ export interface ProspectingApi {
   markPromoted: (
     companyId: string,
     projectId: string,
-    options?: { prospectStatus?: ProspectStatus },
+    options?: { prospectStatus?: ProspectStatus; contactId?: string },
   ) => void;
   /** Reflect a linked Sales Project stage onto the prospect (e.g. cancelled). */
   syncFromSalesProject: (
@@ -1474,11 +1474,25 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     (
       companyId: string,
       projectId: string,
-      options?: { prospectStatus?: ProspectStatus },
+      options?: { prospectStatus?: ProspectStatus; contactId?: string },
     ) => {
       const now = new Date().toISOString();
       const prospectStatus = options?.prospectStatus ?? "promoted";
       const company = stateRef.current.companies.find((c) => c.id === companyId);
+      const companyContacts = stateRef.current.contacts.filter(
+        (c) => c.companyId === companyId,
+      );
+      // Cold-lead "engaged" path: only touch the acting contact (or primary).
+      // Full promote/qualify still updates all active contacts at the company.
+      let contactIdsToUpdate: Set<string> | null = null;
+      if (prospectStatus === "engaged") {
+        const preferredId =
+          options?.contactId ||
+          companyContacts.find((c) => c.isPrimary)?.id ||
+          companyContacts[0]?.id;
+        contactIdsToUpdate = preferredId ? new Set([preferredId]) : new Set();
+      }
+
       setState((prev) => {
         const companies = prev.companies.map((co) => {
           if (co.id !== companyId) return co;
@@ -1501,6 +1515,9 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           ) {
             return c;
           }
+          if (contactIdsToUpdate && !contactIdsToUpdate.has(c.id)) {
+            return c;
+          }
           const next: ProspectContact = {
             ...c,
             status: prospectStatus,
@@ -1517,7 +1534,11 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         projectId,
         action: "promote",
         summary: `Promoted prospect ${company?.name ?? companyId} to sales project`,
-        payloadJson: { projectId, status: prospectStatus },
+        payloadJson: {
+          projectId,
+          status: prospectStatus,
+          ...(options?.contactId ? { contactId: options.contactId } : {}),
+        },
       });
     },
     [persistCompany, persistContact, recordProspectChange],

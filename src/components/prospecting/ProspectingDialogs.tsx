@@ -699,6 +699,7 @@ export function LogOutreachDialog({
       const projectId = await linkToColdLead(
         company,
         contacts.filter((c) => c.companyId === company.id),
+        contact.id,
       );
       onClose();
       if (openProjectAfter && projectId) {
@@ -1037,6 +1038,7 @@ export function MarkEngagedDialog({
       const projectId = await linkToColdLead(
         company,
         contacts.filter((c) => c.companyId === company.id),
+        contact.id,
       );
       onClose();
       if (projectId) router.push(`/projects/${projectId}`);
@@ -1124,7 +1126,7 @@ export function MarkEngagedDialog({
   );
 }
 
-/** Edit company + selected contact fields at any time (incl. follow-up date). */
+/** Edit company + all contacts at any time (incl. follow-up date). */
 export function EditProspectDialog({
   company,
   contact,
@@ -1134,9 +1136,25 @@ export function EditProspectDialog({
   contact: ProspectContact;
   onClose: () => void;
 }) {
-  const { updateCompany, updateContact, addContact } = useProspecting();
+  const { updateCompany, updateContact, addContact, contacts } =
+    useProspecting();
   const { teamMembers, currentUserId } = useProjects();
   const assignable = assignableTeamMembers(teamMembers);
+
+  type ExistingDraft = {
+    id: string;
+    name: string;
+    title: string;
+    email: string;
+    phone: string;
+    linkedinUrl: string;
+    ownerId: string;
+    priority: ProspectPriority;
+    isPrimary: boolean;
+    nextFollowUpAt: string;
+    followUpReason: string;
+    notes: string;
+  };
 
   type NewDraft = {
     key: string;
@@ -1145,7 +1163,18 @@ export function EditProspectDialog({
     email: string;
     phone: string;
     linkedinUrl: string;
+    isPrimary: boolean;
   };
+
+  const companyContacts = useMemo(() => {
+    const list = contacts.filter((c) => c.companyId === company.id);
+    return [...list].sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      if (a.id === contact.id) return -1;
+      if (b.id === contact.id) return 1;
+      return (a.name || a.email).localeCompare(b.name || b.email);
+    });
+  }, [contacts, company.id, contact.id]);
 
   const [name, setName] = useState(company.name);
   const [country, setCountry] = useState(company.country);
@@ -1163,34 +1192,70 @@ export function EditProspectDialog({
   const [companyNotes, setCompanyNotes] = useState(company.notes);
   const [nextAction, setNextAction] = useState(company.nextAction);
 
-  const [contactName, setContactName] = useState(contact.name);
-  const [title, setTitle] = useState(contact.title);
-  const [email, setEmail] = useState(contact.email);
-  const [phone, setPhone] = useState(contact.phone);
-  const [linkedinUrl, setLinkedinUrl] = useState(contact.linkedinUrl);
-  const [contactOwnerId, setContactOwnerId] = useState(contact.ownerId);
-  const [priority, setPriority] = useState<ProspectPriority>(contact.priority);
-  const [isPrimary, setIsPrimary] = useState(contact.isPrimary);
-  const [nextFollowUpAt, setNextFollowUpAt] = useState(
-    contact.nextFollowUpAt ?? "",
+  const [existingContacts, setExistingContacts] = useState<ExistingDraft[]>(
+    () =>
+      companyContacts.map((c) => ({
+        id: c.id,
+        name: c.name,
+        title: c.title,
+        email: c.email,
+        phone: c.phone,
+        linkedinUrl: c.linkedinUrl,
+        ownerId: c.ownerId,
+        priority: c.priority,
+        isPrimary: c.isPrimary,
+        nextFollowUpAt: c.nextFollowUpAt ?? "",
+        followUpReason: c.followUpReason,
+        notes: c.notes,
+      })),
   );
-  const [followUpReason, setFollowUpReason] = useState(contact.followUpReason);
-  const [contactNotes, setContactNotes] = useState(contact.notes);
   const [newContacts, setNewContacts] = useState<NewDraft[]>([]);
 
   const valid = name.trim().length > 0;
 
+  function updateExisting(id: string, patch: Partial<ExistingDraft>) {
+    setExistingContacts((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) {
+          if (patch.isPrimary) return { ...c, isPrimary: false };
+          return c;
+        }
+        return { ...c, ...patch };
+      }),
+    );
+  }
+
   function updateNewDraft(key: string, patch: Partial<NewDraft>) {
     setNewContacts((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, ...patch } : c)),
+      prev.map((c) => {
+        if (c.key !== key) {
+          if (patch.isPrimary) return { ...c, isPrimary: false };
+          return c;
+        }
+        return { ...c, ...patch };
+      }),
     );
+    if (patch.isPrimary) {
+      setExistingContacts((prev) =>
+        prev.map((c) => ({ ...c, isPrimary: false })),
+      );
+    }
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) return;
-    const followUp = nextFollowUpAt.trim() || null;
     const parsedSize = Number(sizeKw);
+    const primaryExisting = existingContacts.find((c) => c.isPrimary);
+    const companyFollowUp =
+      (primaryExisting?.nextFollowUpAt ||
+        existingContacts[0]?.nextFollowUpAt ||
+        "").trim() || null;
+    const companyFollowUpReason =
+      primaryExisting?.followUpReason.trim() ||
+      existingContacts[0]?.followUpReason.trim() ||
+      "";
+
     updateCompany(company.id, {
       name: name.trim(),
       country: country.trim(),
@@ -1203,27 +1268,30 @@ export function EditProspectDialog({
       ownerId: companyOwnerId,
       strategyWhy: strategyWhy.trim(),
       notes: companyNotes.trim(),
-      nextAction: nextAction.trim() || followUpReason.trim(),
-      nextActionAt: followUp,
+      nextAction: nextAction.trim() || companyFollowUpReason,
+      nextActionAt: companyFollowUp,
       sizeKw:
         Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
     });
-    updateContact(contact.id, {
-      name: contactName.trim(),
-      title: title.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-      linkedinUrl: linkedinUrl.trim(),
-      ownerId: contactOwnerId,
-      priority,
-      isPrimary,
-      nextFollowUpAt: followUp,
-      followUpReason: followUpReason.trim(),
-      notes: contactNotes.trim(),
-    });
+
+    for (const draft of existingContacts) {
+      updateContact(draft.id, {
+        name: draft.name.trim(),
+        title: draft.title.trim(),
+        email: draft.email.trim(),
+        phone: draft.phone.trim(),
+        linkedinUrl: draft.linkedinUrl.trim(),
+        ownerId: draft.ownerId,
+        priority: draft.priority,
+        isPrimary: draft.isPrimary,
+        nextFollowUpAt: draft.nextFollowUpAt.trim() || null,
+        followUpReason: draft.followUpReason.trim(),
+        notes: draft.notes.trim(),
+      });
+    }
 
     const ownerForNew =
-      contactOwnerId ||
+      existingContacts[0]?.ownerId ||
       companyOwnerId ||
       (currentUserId && assignable.some((m) => m.id === currentUserId)
         ? currentUserId
@@ -1251,7 +1319,7 @@ export function EditProspectDialog({
         ownerId: ownerForNew,
         source,
         priority: company.priority,
-        isPrimary: false,
+        isPrimary: draft.isPrimary,
       });
     }
 
@@ -1379,118 +1447,9 @@ export function EditProspectDialog({
         </div>
 
         <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
-          <p className="mb-2 text-xs font-semibold text-deep">
-            Contact — {contact.name}
-          </p>
-        </div>
-        <div>
-          <label className={labelCls}>Full name</label>
-          <input
-            className={inputCls}
-            value={contactName}
-            onChange={(e) => setContactName(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Job title</label>
-          <input
-            className={inputCls}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Email</label>
-          <input
-            className={inputCls}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Phone</label>
-          <input
-            className={inputCls}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className={labelCls}>LinkedIn URL</label>
-          <input
-            className={inputCls}
-            value={linkedinUrl}
-            onChange={(e) => setLinkedinUrl(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Contact owner</label>
-          <select
-            className={selectCls}
-            value={contactOwnerId}
-            onChange={(e) => setContactOwnerId(e.target.value)}
-          >
-            {assignable.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Priority</label>
-          <select
-            className={selectCls}
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as ProspectPriority)}
-          >
-            {PROSPECT_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PROSPECT_PRIORITY_LABELS[p]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Follow-up date</label>
-          <input
-            type="date"
-            className={inputCls}
-            value={nextFollowUpAt}
-            onChange={(e) => setNextFollowUpAt(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Follow-up reason</label>
-          <input
-            className={inputCls}
-            value={followUpReason}
-            onChange={(e) => setFollowUpReason(e.target.value)}
-            placeholder="Why follow up"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className={labelCls}>Contact notes</label>
-          <textarea
-            className={`${inputCls} min-h-[56px]`}
-            value={contactNotes}
-            onChange={(e) => setContactNotes(e.target.value)}
-          />
-        </div>
-        <label className="sm:col-span-2 flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={isPrimary}
-            onChange={(e) => setIsPrimary(e.target.checked)}
-          />
-          Primary contact
-        </label>
-
-        <div className="sm:col-span-2 mt-1 border-t border-line pt-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold text-deep">
-              Add more contacts
+              Contacts ({existingContacts.length + newContacts.length})
             </p>
             <button
               type="button"
@@ -1504,6 +1463,7 @@ export function EditProspectDialog({
                     email: "",
                     phone: "",
                     linkedinUrl: "",
+                    isPrimary: false,
                   },
                 ])
               }
@@ -1512,93 +1472,252 @@ export function EditProspectDialog({
               + Add contact
             </button>
           </div>
-          {newContacts.length === 0 ? (
-            <p className="text-xs text-muted">
-              Optional — add additional people for this company before saving.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {newContacts.map((draft, index) => (
-                <div
-                  key={draft.key}
-                  className="rounded-xl border border-line bg-panel/60 p-3"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      New contact {index + 1}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNewContacts((prev) =>
-                          prev.filter((c) => c.key !== draft.key),
-                        )
+          <div className="space-y-3">
+            {existingContacts.map((draft, index) => (
+              <div
+                key={draft.id}
+                className="rounded-xl border border-line bg-panel/60 p-3"
+              >
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  Contact {index + 1}
+                  {draft.isPrimary ? " · Primary" : ""}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Full name</label>
+                    <input
+                      className={inputCls}
+                      value={draft.name}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { name: e.target.value })
                       }
-                      className="text-[10px] font-semibold text-muted hover:text-amber-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Job title</label>
+                    <input
+                      className={inputCls}
+                      value={draft.title}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { title: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Email</label>
+                    <input
+                      className={inputCls}
+                      type="email"
+                      value={draft.email}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Phone</label>
+                    <input
+                      className={inputCls}
+                      value={draft.phone}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { phone: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>LinkedIn URL</label>
+                    <input
+                      className={inputCls}
+                      value={draft.linkedinUrl}
+                      onChange={(e) =>
+                        updateExisting(draft.id, {
+                          linkedinUrl: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Contact owner</label>
+                    <select
+                      className={selectCls}
+                      value={draft.ownerId}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { ownerId: e.target.value })
+                      }
                     >
-                      Remove
-                    </button>
+                      {assignable.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className={labelCls}>Name</label>
-                      <input
-                        className={inputCls}
-                        value={draft.name}
-                        onChange={(e) =>
-                          updateNewDraft(draft.key, { name: e.target.value })
-                        }
-                        placeholder="Optional"
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Job title</label>
-                      <input
-                        className={inputCls}
-                        value={draft.title}
-                        onChange={(e) =>
-                          updateNewDraft(draft.key, { title: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Email</label>
-                      <input
-                        className={inputCls}
-                        type="email"
-                        value={draft.email}
-                        onChange={(e) =>
-                          updateNewDraft(draft.key, { email: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Phone</label>
-                      <input
-                        className={inputCls}
-                        value={draft.phone}
-                        onChange={(e) =>
-                          updateNewDraft(draft.key, { phone: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className={labelCls}>LinkedIn URL</label>
-                      <input
-                        className={inputCls}
-                        value={draft.linkedinUrl}
-                        onChange={(e) =>
-                          updateNewDraft(draft.key, {
-                            linkedinUrl: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
+                  <div>
+                    <label className={labelCls}>Priority</label>
+                    <select
+                      className={selectCls}
+                      value={draft.priority}
+                      onChange={(e) =>
+                        updateExisting(draft.id, {
+                          priority: e.target.value as ProspectPriority,
+                        })
+                      }
+                    >
+                      {PROSPECT_PRIORITIES.map((p) => (
+                        <option key={p} value={p}>
+                          {PROSPECT_PRIORITY_LABELS[p]}
+                        </option>
+                      ))}
+                    </select>
                   </div>
+                  <div>
+                    <label className={labelCls}>Follow-up date</label>
+                    <input
+                      type="date"
+                      className={inputCls}
+                      value={draft.nextFollowUpAt}
+                      onChange={(e) =>
+                        updateExisting(draft.id, {
+                          nextFollowUpAt: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Follow-up reason</label>
+                    <input
+                      className={inputCls}
+                      value={draft.followUpReason}
+                      onChange={(e) =>
+                        updateExisting(draft.id, {
+                          followUpReason: e.target.value,
+                        })
+                      }
+                      placeholder="Why follow up"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Contact notes</label>
+                    <textarea
+                      className={`${inputCls} min-h-[56px]`}
+                      value={draft.notes}
+                      onChange={(e) =>
+                        updateExisting(draft.id, { notes: e.target.value })
+                      }
+                    />
+                  </div>
+                  <label className="sm:col-span-2 flex items-center gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={draft.isPrimary}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        updateExisting(draft.id, { isPrimary: on });
+                        if (on) {
+                          setNewContacts((prev) =>
+                            prev.map((c) => ({ ...c, isPrimary: false })),
+                          );
+                        }
+                      }}
+                    />
+                    Primary contact
+                  </label>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+
+            {newContacts.map((draft, index) => (
+              <div
+                key={draft.key}
+                className="rounded-xl border border-dashed border-line bg-panel/60 p-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    New contact {index + 1}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNewContacts((prev) =>
+                        prev.filter((c) => c.key !== draft.key),
+                      )
+                    }
+                    className="text-[10px] font-semibold text-muted hover:text-amber-accent"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className={labelCls}>Name</label>
+                    <input
+                      className={inputCls}
+                      value={draft.name}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, { name: e.target.value })
+                      }
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Job title</label>
+                    <input
+                      className={inputCls}
+                      value={draft.title}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, { title: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Email</label>
+                    <input
+                      className={inputCls}
+                      type="email"
+                      value={draft.email}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, { email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Phone</label>
+                    <input
+                      className={inputCls}
+                      value={draft.phone}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, { phone: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>LinkedIn URL</label>
+                    <input
+                      className={inputCls}
+                      value={draft.linkedinUrl}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, {
+                          linkedinUrl: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <label className="sm:col-span-2 flex items-center gap-2 text-sm text-ink">
+                    <input
+                      type="checkbox"
+                      checked={draft.isPrimary}
+                      onChange={(e) =>
+                        updateNewDraft(draft.key, {
+                          isPrimary: e.target.checked,
+                        })
+                      }
+                    />
+                    Primary contact
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="sm:col-span-2 mt-2 flex justify-end gap-2">
@@ -1612,7 +1731,7 @@ export function EditProspectDialog({
           <button
             type="submit"
             disabled={!valid}
-            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
           >
             Save changes
           </button>
@@ -1621,6 +1740,7 @@ export function EditProspectDialog({
     </ModalShell>
   );
 }
+
 
 export function QualifyDialog({
   company,

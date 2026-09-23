@@ -6,6 +6,7 @@ import { useProspecting } from "@/lib/prospecting-store";
 import {
   ProspectCompany,
   ProspectContact,
+  ProspectStatus,
 } from "@/lib/prospecting-types";
 
 /**
@@ -57,16 +58,25 @@ export function useLinkProspectToColdLead() {
   return async function linkProspectToColdLead(
     company: ProspectCompany,
     companyContacts?: ProspectContact[],
+    actingContactId?: string,
   ): Promise<string> {
+    const promoteOpts = (status: ProspectStatus) => ({
+      prospectStatus: status,
+      ...(actingContactId ? { contactId: actingContactId } : {}),
+    });
+
     if (company.promotedProjectId) {
       const existing = projects.find((p) => p.id === company.promotedProjectId);
       if (existing) {
-        markPromoted(company.id, existing.id, {
-          prospectStatus:
+        markPromoted(
+          company.id,
+          existing.id,
+          promoteOpts(
             company.status === "qualified" || company.status === "promoted"
               ? company.status
               : "engaged",
-        });
+          ),
+        );
         return existing.id;
       }
     }
@@ -79,10 +89,13 @@ export function useLinkProspectToColdLead() {
         p.client.trim().toLowerCase() === company.name.trim().toLowerCase(),
     );
     if (match) {
-      markPromoted(company.id, match.id, {
-        prospectStatus:
+      markPromoted(
+        company.id,
+        match.id,
+        promoteOpts(
           company.status === "qualified" ? "qualified" : "engaged",
-      });
+        ),
+      );
       return match.id;
     }
 
@@ -133,7 +146,7 @@ export function useLinkProspectToColdLead() {
       });
     }
 
-    markPromoted(company.id, projectId, { prospectStatus: "engaged" });
+    markPromoted(company.id, projectId, promoteOpts("engaged"));
     return projectId;
   };
 }

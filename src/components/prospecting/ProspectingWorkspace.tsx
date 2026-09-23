@@ -195,7 +195,7 @@ export default function ProspectingWorkspace() {
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter(({ contact, company }) => {
+    const matched = rows.filter(({ contact, company }) => {
       if (view === "my-work" && me && contact.ownerId !== me) return false;
       if (view === "prepare") {
         if (contact.status !== "target-identified") {
@@ -241,6 +241,32 @@ export default function ProspectingWorkspace() {
         .join(" ")
         .toLowerCase();
       return hay.includes(q);
+    });
+
+    // Engaged + All are company-centric: one row per company (primary preferred).
+    if (view !== "engaged" && view !== "all") return matched;
+
+    const byCompany = new Map<string, ProspectWorkRow>();
+    for (const row of matched) {
+      const existing = byCompany.get(row.company.id);
+      if (!existing) {
+        byCompany.set(row.company.id, row);
+        continue;
+      }
+      const preferNew =
+        (row.contact.isPrimary && !existing.contact.isPrimary) ||
+        (!existing.contact.isPrimary &&
+          !row.contact.isPrimary &&
+          (row.contact.updatedAt ?? "") > (existing.contact.updatedAt ?? ""));
+      if (preferNew) byCompany.set(row.company.id, row);
+    }
+    return [...byCompany.values()].sort((a, b) => {
+      const af = a.contact.nextFollowUpAt ?? "9999";
+      const bf = b.contact.nextFollowUpAt ?? "9999";
+      if (af !== bf) return af.localeCompare(bf);
+      return (b.company.lastActivityAt ?? "").localeCompare(
+        a.company.lastActivityAt ?? "",
+      );
     });
   }, [
     rows,
@@ -342,6 +368,18 @@ export default function ProspectingWorkspace() {
     const mine = me
       ? rows.filter((r) => r.contact.ownerId === me).length
       : rows.length;
+    const engagedCompanyIds = new Set<string>();
+    const allCompanyIds = new Set<string>();
+    for (const r of rows) {
+      allCompanyIds.add(r.company.id);
+      if (
+        r.contact.status === "engaged" ||
+        r.contact.status === "qualified" ||
+        r.contact.status === "promoted"
+      ) {
+        engagedCompanyIds.add(r.company.id);
+      }
+    }
     return {
       "my-work": mine,
       prepare: rows.filter(
@@ -352,13 +390,8 @@ export default function ProspectingWorkspace() {
           r.contact.status === "contacted" ||
           r.contact.status === "follow-up-due",
       ).length,
-      engaged: rows.filter(
-        (r) =>
-          r.contact.status === "engaged" ||
-          r.contact.status === "qualified" ||
-          r.contact.status === "promoted",
-      ).length,
-      all: rows.length,
+      engaged: engagedCompanyIds.size,
+      all: allCompanyIds.size,
       insights: 0,
     } satisfies Record<ProspectView, number>;
   }, [rows, me]);
