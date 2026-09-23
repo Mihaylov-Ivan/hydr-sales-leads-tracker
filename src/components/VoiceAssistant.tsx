@@ -50,6 +50,9 @@ interface FunctionCallItem {
 interface RealtimeEvent {
   type?: string;
   error?: { message?: string };
+  transcript?: string;
+  delta?: string;
+  item_id?: string;
   response?: {
     output?: Array<
       | FunctionCallItem
@@ -313,6 +316,8 @@ export default function VoiceAssistant() {
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const toolResultsRef = useRef<Map<string, string>>(new Map());
+  const logsEndRef = useRef<HTMLDivElement | null>(null);
+  const logsScrollRef = useRef<HTMLDivElement | null>(null);
 
   const stateRef = useRef({
     projects,
@@ -338,12 +343,14 @@ export default function VoiceAssistant() {
   };
 
   const appendLog = useCallback((kind: LogKind, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
     setLogs((prev) => [
-      ...prev.slice(-11),
+      ...prev.slice(-49),
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         kind,
-        text,
+        text: trimmed,
       },
     ]);
   }, []);
@@ -760,6 +767,13 @@ CRM safety and action rules:
           instructions,
           tools: CRM_TOOLS,
           tool_choice: "auto",
+          audio: {
+            input: {
+              transcription: {
+                model: "gpt-4o-mini-transcribe",
+              },
+            },
+          },
         },
       }),
     );
@@ -856,6 +870,15 @@ CRM safety and action rules:
 
           if (event.type === "input_audio_buffer.speech_started") {
             setStatus("listening");
+            return;
+          }
+
+          if (
+            event.type ===
+            "conversation.item.input_audio_transcription.completed"
+          ) {
+            const spoken = event.transcript?.trim();
+            if (spoken) appendLog("user", spoken);
             return;
           }
 
@@ -1014,6 +1037,12 @@ CRM safety and action rules:
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    const scroller = logsScrollRef.current;
+    if (!scroller) return;
+    scroller.scrollTop = scroller.scrollHeight;
+  }, [logs, panelOpen]);
+
   if (!enabled || !authReady || isViewer || !hasAreaAccess) {
     return null;
   }
@@ -1072,7 +1101,10 @@ CRM safety and action rules:
               </button>
             </div>
 
-          <div className="max-h-72 min-h-40 space-y-2 overflow-y-auto px-4 py-3">
+          <div
+            ref={logsScrollRef}
+            className="min-h-40 max-h-[min(22rem,45vh)] space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
+          >
             {logs.length === 0 ? (
               <div className="space-y-2 text-xs leading-relaxed text-muted">
                 <p className="font-semibold text-deep">
@@ -1089,25 +1121,34 @@ CRM safety and action rules:
                 </p>
               </div>
             ) : (
-              logs.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${
-                    entry.kind === "action"
-                      ? "border border-teal-accent/20 bg-teal-soft text-deep"
-                      : entry.kind === "error"
-                        ? "border border-red-200 bg-red-50 text-red-700"
-                        : entry.kind === "user"
-                          ? "ml-8 bg-deep text-white"
-                          : "mr-8 bg-surface text-deep"
-                  }`}
-                >
-                  {entry.kind === "action" && (
-                    <span className="mr-1 font-bold text-teal-accent">CRM:</span>
-                  )}
-                  {entry.text}
-                </div>
-              ))
+              <>
+                {logs.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                      entry.kind === "action"
+                        ? "border border-teal-accent/20 bg-teal-soft text-deep"
+                        : entry.kind === "error"
+                          ? "border border-red-200 bg-red-50 text-red-700"
+                          : entry.kind === "user"
+                            ? "ml-8 bg-deep text-white"
+                            : "mr-8 bg-surface text-deep"
+                    }`}
+                  >
+                    {entry.kind === "action" && (
+                      <span className="mr-1 font-bold text-teal-accent">CRM:</span>
+                    )}
+                    {entry.kind === "user" && (
+                      <span className="mr-1 font-semibold text-white/70">You:</span>
+                    )}
+                    {entry.kind === "assistant" && (
+                      <span className="mr-1 font-semibold text-teal-accent">Hydr:</span>
+                    )}
+                    {entry.text}
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </>
             )}
           </div>
 

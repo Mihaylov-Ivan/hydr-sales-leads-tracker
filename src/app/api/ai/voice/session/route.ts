@@ -84,6 +84,9 @@ export async function POST(request: NextRequest) {
         turn_detection: {
           type: "semantic_vad",
         },
+        transcription: {
+          model: "gpt-4o-mini-transcribe",
+        },
       },
       output: {
         voice: REALTIME_VOICE,
