@@ -212,6 +212,441 @@ const CRM_TOOLS = [
   },
 ] as const;
 
+const EXTENDED_CRM_TOOLS = [
+  {
+    type: "function",
+    name: "get_portfolio_update",
+    description:
+      "Return concise current-state and latest-activity data for all CRM projects the signed-in user may access, or only selected projects. Use this for requests such as 'give me an update on all projects', 'what happened lately', summaries, and bullet-point status reports.",
+    parameters: {
+      type: "object",
+      properties: {
+        project_ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional exact project ids already resolved by search_projects. Omit to summarize all accessible projects.",
+        },
+        query: {
+          type: "string",
+          description:
+            "Optional name/client filter when the user asked about a subset but exact ids are not yet known.",
+        },
+        days: {
+          type: "integer",
+          description:
+            "Optional recent-activity window in days. Omit to include the latest activity regardless of age.",
+        },
+        limit: {
+          type: "integer",
+          description: "Maximum projects to return. Defaults to 60.",
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    name: "create_project",
+    description:
+      "Create a new Sales, EU, or RnD project when the signed-in user has access to that track. Ask only for genuinely required missing fields. Project name, client/organisation, and country are required.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        client: { type: "string" },
+        country: { type: "string" },
+        city: { type: "string" },
+        series: { type: "string" },
+        market: { type: "string" },
+        size_kw: { type: "number" },
+        stage: { type: "string", enum: SALES_STAGE_VALUES },
+        description: { type: "string" },
+        lead_user_id: { type: "string" },
+        track: { type: "string", enum: ["sales", "eu", "rnd"] },
+      },
+      required: ["name", "client", "country"],
+    },
+  },
+  {
+    type: "function",
+    name: "update_project_fields",
+    description:
+      "Edit project fields and pipeline-activity dates. Use only after resolving the project. Supports name/client/location/system/market/size/stage/description/lead and pipeline timestamps or cancellation reason.",
+    parameters: {
+      type: "object",
+      properties: {
+        project_id: { type: "string" },
+        name: { type: "string" },
+        client: { type: "string" },
+        country: { type: "string" },
+        city: { type: "string" },
+        series: { type: "string" },
+        market: { type: "string" },
+        size_kw: { type: "number" },
+        stage: { type: "string", enum: SALES_STAGE_VALUES },
+        description: { type: "string" },
+        lead_user_id: { type: ["string", "null"] },
+        last_client_contact_at: { type: "string" },
+        email_reminder_days: { type: "integer" },
+        email_reminder_enabled: { type: "boolean" },
+        cold_lead_entered_at: { type: "string" },
+        hot_lead_entered_at: { type: ["string", "null"] },
+        under_development_at: { type: ["string", "null"] },
+        commissioned_at: { type: ["string", "null"] },
+        cancelled_at: { type: ["string", "null"] },
+        last_meaningful_activity_at: { type: "string" },
+        cancellation_reason: { type: ["string", "null"] },
+      },
+      required: ["project_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_project_task",
+    description:
+      "Create, update, complete/reopen, or delete an action item on a resolved project.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["create", "update", "complete", "reopen", "delete"],
+        },
+        project_id: { type: "string" },
+        task_id: { type: "string" },
+        text: { type: "string" },
+        answer: { type: ["string", "null"] },
+        due_date: { type: ["string", "null"] },
+        start_date: { type: ["string", "null"] },
+        end_date: { type: ["string", "null"] },
+        owner_user_id: { type: ["string", "null"] },
+      },
+      required: ["action", "project_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_project_contact",
+    description:
+      "Add, edit, or delete a contact attached to a resolved project.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["add", "update", "delete"] },
+        project_id: { type: "string" },
+        contact_id: { type: "string" },
+        name: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        position: { type: "string" },
+      },
+      required: ["action", "project_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_personal_todo",
+    description:
+      "Read or manage the signed-in user's private To-Dos. Personal To-Dos are not project tasks.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list", "create", "update", "delete", "add_comment"],
+        },
+        todo_id: { type: "string" },
+        title: { type: "string" },
+        description: { type: ["string", "null"] },
+        status: {
+          type: "string",
+          enum: ["cancelled", "todo", "doing", "done"],
+        },
+        due_date: { type: ["string", "null"] },
+        start_date: { type: ["string", "null"] },
+        end_date: { type: ["string", "null"] },
+        comment: { type: "string" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "search_prospects",
+    description:
+      "Search prospecting companies and contacts by company name, contact name, email, industry, country, city, or notes.",
+    parameters: {
+      type: "object",
+      properties: { query: { type: "string" } },
+      required: ["query"],
+    },
+  },
+  {
+    type: "function",
+    name: "get_prospect",
+    description:
+      "Read one resolved prospect company, its contacts, recent outreach/activity, qualification, and next action.",
+    parameters: {
+      type: "object",
+      properties: { company_id: { type: "string" } },
+      required: ["company_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_prospect",
+    description:
+      "Create/edit/delete prospect companies and contacts, log outreach, schedule follow-up, mark engaged/qualified, or promote a prospect into Sales Projects. Ask for missing information naturally before calling.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "create_company",
+            "update_company",
+            "delete_company",
+            "add_contact",
+            "update_contact",
+            "delete_contact",
+            "log_outreach",
+            "schedule_follow_up",
+            "mark_engaged",
+            "mark_qualified",
+            "promote_to_project"
+          ],
+        },
+        company_id: { type: "string" },
+        contact_id: { type: "string" },
+        name: { type: "string" },
+        country: { type: "string" },
+        city: { type: "string" },
+        site_name: { type: "string" },
+        website: { type: "string" },
+        industry: { type: "string" },
+        market: { type: "string" },
+        system: { type: "string" },
+        source: { type: "string" },
+        priority: { type: "string", enum: ["high", "medium", "low"] },
+        owner_user_id: { type: "string" },
+        notes: { type: "string" },
+        size_kw: { type: "number" },
+        potential_value: { type: ["number", "null"] },
+        existing_relationship: { type: "string" },
+        next_action: { type: "string" },
+        next_action_at: { type: ["string", "null"] },
+        status: { type: "string" },
+        title: { type: "string" },
+        department: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        linkedin_url: { type: "string" },
+        preferred_method: { type: "string" },
+        is_primary: { type: "boolean" },
+        channel: { type: "string" },
+        result: { type: "string" },
+        summary: { type: "string" },
+        follow_up_at: { type: ["string", "null"] },
+        qualification: { type: "object" },
+        project_name: { type: "string" },
+        project_stage: { type: "string", enum: SALES_STAGE_VALUES },
+        project_description: { type: "string" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_prospecting_strategy",
+    description:
+      "List, create, edit, or delete Prospecting strategies and their weekly contact targets.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list", "create", "update", "delete"] },
+        strategy_id: { type: "string" },
+        name: { type: "string" },
+        markets: { type: "array", items: { type: "string" } },
+        industries: { type: "string" },
+        weekly_contact_target: { type: "integer" },
+        is_active: { type: "boolean" },
+        notes: { type: "string" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_project_finance",
+    description:
+      "Read or edit project financial data, payments, expenses, and financial milestones. This tool is only available when the signed-in user has the same finance access the UI grants for that project.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "get",
+            "update_summary",
+            "add_payment",
+            "update_payment",
+            "delete_payment",
+            "add_expense",
+            "update_expense",
+            "delete_expense",
+            "add_milestone",
+            "update_milestone",
+            "delete_milestone"
+          ],
+        },
+        project_id: { type: "string" },
+        record_id: { type: "string" },
+        contract_value: { type: ["number", "null"] },
+        contract_signed_date: { type: ["string", "null"] },
+        expenses_total: { type: ["number", "null"] },
+        max_materials_expense: { type: ["number", "null"] },
+        max_man_hr_expense: { type: ["number", "null"] },
+        opex_value: { type: ["number", "null"] },
+        opex_expense_percent: { type: ["number", "null"] },
+        warranty_years: { type: ["number", "null"] },
+        system_lifetime_years: { type: ["number", "null"] },
+        amount: { type: "number" },
+        amount_ex_vat: { type: ["number", "null"] },
+        percent: { type: ["number", "null"] },
+        due_date: { type: "string" },
+        actual_date: { type: ["string", "null"] },
+        label: { type: "string" },
+        milestone_id: { type: ["string", "null"] },
+        category: {
+          type: "string",
+          enum: ["man-hr", "materials", "installation", "maintenance", "admin"],
+        },
+        subcategory: { type: ["string", "null"] },
+        milestone_kind: {
+          type: "string",
+          enum: [
+            "contract-signed",
+            "engineering-done",
+            "manufacturing-done",
+            "fat",
+            "sat",
+            "commissioned"
+          ],
+        },
+        milestone_date: { type: "string" },
+        note: { type: "string" },
+      },
+      required: ["action", "project_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_gantt",
+    description:
+      "Read, create, edit, delete, or shift a project's Gantt phases, activities, and deadlines. Gantt permissions mirror the project page; production-only users may read schedules but not edit them.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "get",
+            "add_phase",
+            "update_phase",
+            "delete_phase",
+            "add_activity",
+            "update_activity",
+            "delete_activity",
+            "add_deadline",
+            "update_deadline",
+            "delete_deadline",
+            "shift_schedule"
+          ],
+        },
+        project_id: { type: "string" },
+        record_id: { type: "string" },
+        phase_id: { type: "string" },
+        name: { type: "string" },
+        start_date: { type: "string" },
+        duration_days: { type: "integer" },
+        actual_start_date: { type: ["string", "null"] },
+        actual_duration_days: { type: ["integer", "null"] },
+        date: { type: "string" },
+        actual_date: { type: ["string", "null"] },
+        wbs: { type: "string" },
+        owner: { type: "string" },
+        status: { type: "string" },
+        note: { type: "string" },
+        sort_order: { type: "integer" },
+        amount: { type: "integer" },
+        unit: { type: "string", enum: ["days", "weeks", "months"] },
+        include_actuals: { type: "boolean" },
+      },
+      required: ["action", "project_id"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_warehouse",
+    description:
+      "Read or change warehouse inventory for users with Warehouse permission. Supports stock receipt, transfer, consumption, adjustment, lot edits, catalog items/groups, and BOM recipes. Put operation-specific fields in payload.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "summary",
+            "search_items",
+            "receive_stock",
+            "transfer_stock",
+            "consume_stock",
+            "adjust_stock",
+            "update_lot",
+            "delete_lot",
+            "upsert_item",
+            "upsert_group",
+            "delete_group",
+            "save_bom",
+            "delete_bom"
+          ],
+        },
+        query: { type: "string" },
+        payload: {
+          type: "object",
+          description:
+            "Operation data. Locations use {site:'ELX|MH|Van',slot:'project|spare|buffer',projectId?}. receive_stock expects itemId or newItem, qty, unitCostIncVat, receivedAt, materialKind, destination, expenseMode, and optional supplier/label/notes. transfer/consume/adjust use lotId/qty/location. save_bom uses name and lines [{componentName,componentItemId?,qtyPerUnit,unitCost?}].",
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_company_settings",
+    description:
+      "Read/update company finance settings or Sales pipeline metrics settings. Finance settings require Finance permission; metrics settings require Sales permission.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "get_finance",
+            "update_finance",
+            "get_metrics",
+            "update_metrics"
+          ],
+        },
+        payload: { type: "object" },
+      },
+      required: ["action"],
+    },
+  },
+] as const;
+
+const ALL_CRM_TOOLS = [...CRM_TOOLS, ...EXTENDED_CRM_TOOLS] as const;
+
 function normalizeSearch(value: string): string {
   return value
     .toLowerCase()
