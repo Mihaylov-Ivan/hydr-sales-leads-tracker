@@ -1625,6 +1625,1211 @@ export default function VoiceAssistant() {
         });
       }
 
+      if (name === "create_project") {
+        const track =
+          args.track === "eu" || args.track === "rnd" ? args.track : "sales";
+        const trackAllowed =
+          track === "sales"
+            ? has("sales") || has("technical_sales")
+            : has("eu_funding_rnd");
+        if (!trackAllowed) {
+          return JSON.stringify({
+            ok: false,
+            error: "You do not have permission to create projects on that track.",
+          });
+        }
+
+        const projectName = stringValue(args.name);
+        const client = stringValue(args.client);
+        const country = stringValue(args.country);
+        if (!projectName || !client || !country) {
+          return JSON.stringify({
+            ok: false,
+            error: "Project name, client/organisation, and country are required.",
+          });
+        }
+
+        const leadUserId = stringValue(args.lead_user_id);
+        if (
+          leadUserId &&
+          !assignableTeamMembers(s.teamMembers).some((member) => member.id === leadUserId)
+        ) {
+          return JSON.stringify({
+            ok: false,
+            error: "The requested project lead is not assignable. Search the team roster first.",
+          });
+        }
+
+        const defaultStage: Stage =
+          track === "eu"
+            ? "eu-application-prep"
+            : track === "rnd"
+              ? "rnd-execution"
+              : "cold-lead";
+        const requestedStage =
+          typeof args.stage === "string" ? (args.stage as Stage) : defaultStage;
+        if (!stagesForTrack(track).includes(requestedStage)) {
+          return JSON.stringify({
+            ok: false,
+            error: "That stage is not valid for the requested project track.",
+          });
+        }
+
+        const id = s.addProject({
+          name: projectName,
+          client,
+          country,
+          city: stringValue(args.city) ?? "",
+          series: (stringValue(args.series) ?? "Z Series") as Project["series"],
+          market: (stringValue(args.market) ?? "Clean H2") as Project["market"],
+          sizeKw: numberValue(args.size_kw) ?? 0,
+          stage: requestedStage,
+          baseDescription: stringValue(args.description) ?? "",
+          ...(leadUserId ? { leadUserId } : {}),
+          track,
+        });
+        appendLog("action", `Created project ${projectName}.`);
+        return JSON.stringify({
+          ok: true,
+          project_id: id,
+          project_name: projectName,
+          track,
+          stage: requestedStage,
+        });
+      }
+
+      if (name === "update_project_fields") {
+        const project = findProject(args.project_id);
+        if (!project) {
+          return JSON.stringify({
+            ok: false,
+            error: "Project not found or core project access is not available to this user.",
+          });
+        }
+        const patch: Parameters<typeof s.updateProject>[1] = {};
+        if (typeof args.name === "string") patch.name = args.name.trim();
+        if (typeof args.client === "string") patch.client = args.client.trim();
+        if (typeof args.country === "string") patch.country = args.country.trim();
+        if (typeof args.city === "string") patch.city = args.city.trim();
+        if (typeof args.series === "string") {
+          patch.series = args.series.trim() as Project["series"];
+        }
+        if (typeof args.market === "string") {
+          patch.market = args.market.trim() as Project["market"];
+        }
+        if (typeof args.size_kw === "number" && Number.isFinite(args.size_kw)) {
+          patch.sizeKw = Math.max(0, args.size_kw);
+        }
+        if (typeof args.stage === "string") {
+          const stage = args.stage as Stage;
+          if (!stagesForTrack(trackOfProject(project)).includes(stage)) {
+            return JSON.stringify({
+              ok: false,
+              error: "That stage is not valid for this project's track.",
+            });
+          }
+          patch.stage = stage;
+        }
+        if (typeof args.description === "string") {
+          patch.baseDescription = args.description.trim();
+        }
+        if (args.lead_user_id === null) {
+          patch.leadUserId = undefined;
+        } else if (typeof args.lead_user_id === "string") {
+          const lead = args.lead_user_id.trim();
+          if (
+            lead &&
+            !assignableTeamMembers(s.teamMembers).some((member) => member.id === lead)
+          ) {
+            return JSON.stringify({
+              ok: false,
+              error: "The requested project lead is not assignable.",
+            });
+          }
+          patch.leadUserId = lead || undefined;
+        }
+        if (typeof args.last_client_contact_at === "string") {
+          if (!isValidDateOnly(args.last_client_contact_at)) {
+            return JSON.stringify({ ok: false, error: "last_client_contact_at must be YYYY-MM-DD." });
+          }
+          patch.lastClientContactAt = args.last_client_contact_at;
+        }
+        if (typeof args.email_reminder_days === "number") {
+          patch.emailReminderDays = Math.max(1, Math.round(args.email_reminder_days));
+        }
+        if (typeof args.email_reminder_enabled === "boolean") {
+          patch.emailReminderEnabled = args.email_reminder_enabled;
+        }
+
+        const dateMappings = [
+          ["cold_lead_entered_at", "coldLeadEnteredAt"],
+          ["hot_lead_entered_at", "hotLeadEnteredAt"],
+          ["under_development_at", "underDevelopmentAt"],
+          ["commissioned_at", "commissionedAt"],
+          ["cancelled_at", "cancelledAt"],
+          ["last_meaningful_activity_at", "lastMeaningfulActivityAt"],
+        ] as const;
+        for (const [argKey, patchKey] of dateMappings) {
+          const raw = args[argKey];
+          if (raw === null) {
+            if (patchKey !== "coldLeadEnteredAt" && patchKey !== "lastMeaningfulActivityAt") {
+              (patch as Record<string, unknown>)[patchKey] = undefined;
+            }
+          } else if (typeof raw === "string") {
+            if (!isValidDateOnly(raw)) {
+              return JSON.stringify({
+                ok: false,
+                error: `${argKey} must be a real YYYY-MM-DD date.`,
+              });
+            }
+            (patch as Record<string, unknown>)[patchKey] = raw;
+          }
+        }
+        if (args.cancellation_reason === null) {
+          patch.cancellationReason = undefined;
+        } else if (typeof args.cancellation_reason === "string") {
+          patch.cancellationReason = args.cancellation_reason.trim() || undefined;
+        }
+
+        if (Object.keys(patch).length === 0) {
+          return JSON.stringify({ ok: false, error: "No project fields were provided to update." });
+        }
+        s.updateProject(project.id, patch);
+        appendLog("action", `Updated ${project.name}.`);
+        return JSON.stringify({
+          ok: true,
+          project_id: project.id,
+          project_name: project.name,
+          updated_fields: Object.keys(patch),
+        });
+      }
+
+      if (name === "manage_project_task") {
+        const project = findProject(args.project_id);
+        if (!project) {
+          return JSON.stringify({ ok: false, error: "Project not found or unavailable." });
+        }
+        const action = stringValue(args.action);
+        if (action === "create") {
+          const text = stringValue(args.text);
+          if (!text) {
+            return JSON.stringify({ ok: false, error: "Task text is required." });
+          }
+          const due = validOptionalDate(args.due_date);
+          const start = validOptionalDate(args.start_date);
+          const endDate = validOptionalDate(args.end_date);
+          if (
+            (typeof args.due_date === "string" && args.due_date.trim() && due === undefined) ||
+            (typeof args.start_date === "string" && args.start_date.trim() && start === undefined) ||
+            (typeof args.end_date === "string" && args.end_date.trim() && endDate === undefined)
+          ) {
+            return JSON.stringify({ ok: false, error: "Task dates must use valid YYYY-MM-DD dates." });
+          }
+          const owner = nullableStringValue(args.owner_user_id) ?? undefined;
+          if (
+            owner &&
+            !assignableTeamMembers(s.teamMembers).some((member) => member.id === owner)
+          ) {
+            return JSON.stringify({ ok: false, error: "Task assignee is not assignable." });
+          }
+          s.addTodo(
+            project.id,
+            "our-action",
+            text,
+            due ?? undefined,
+            owner,
+            start ?? undefined,
+            endDate ?? undefined,
+          );
+          appendLog("action", `Created task on ${project.name}.`);
+          return JSON.stringify({ ok: true, saved: "task", project_id: project.id });
+        }
+
+        const taskId = stringValue(args.task_id);
+        const task = taskId ? project.todos.find((todo) => todo.id === taskId) : undefined;
+        if (!task) {
+          return JSON.stringify({ ok: false, error: "A valid task_id is required for this action." });
+        }
+        if (action === "delete") {
+          s.deleteTodo(project.id, task.id);
+          appendLog("action", `Deleted task from ${project.name}.`);
+          return JSON.stringify({ ok: true, deleted: "task", task_id: task.id });
+        }
+        if (action === "complete" || action === "reopen") {
+          const targetDone = action === "complete";
+          if (task.done !== targetDone) s.toggleTodo(project.id, task.id);
+          return JSON.stringify({ ok: true, task_id: task.id, done: targetDone });
+        }
+        if (action === "update") {
+          const patch: Parameters<typeof s.updateTodo>[2] = {};
+          if (typeof args.text === "string") patch.text = args.text.trim();
+          if (args.answer === null || typeof args.answer === "string") {
+            patch.answer = args.answer === null ? null : args.answer.trim();
+          }
+          for (const [argKey, patchKey] of [
+            ["due_date", "dueDate"],
+            ["start_date", "startDate"],
+            ["end_date", "endDate"],
+          ] as const) {
+            const raw = args[argKey];
+            if (raw === null) {
+              (patch as Record<string, unknown>)[patchKey] = null;
+            } else if (typeof raw === "string") {
+              if (!isValidDateOnly(raw)) {
+                return JSON.stringify({ ok: false, error: `${argKey} must be YYYY-MM-DD.` });
+              }
+              (patch as Record<string, unknown>)[patchKey] = raw;
+            }
+          }
+          if (args.owner_user_id === null) {
+            patch.ownerUserId = null;
+          } else if (typeof args.owner_user_id === "string") {
+            const owner = args.owner_user_id.trim();
+            if (
+              owner &&
+              !assignableTeamMembers(s.teamMembers).some((member) => member.id === owner)
+            ) {
+              return JSON.stringify({ ok: false, error: "Task assignee is not assignable." });
+            }
+            patch.ownerUserId = owner || null;
+          }
+          s.updateTodo(project.id, task.id, patch);
+          return JSON.stringify({ ok: true, task_id: task.id, updated_fields: Object.keys(patch) });
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported project task action." });
+      }
+
+      if (name === "manage_project_contact") {
+        const project = findProject(args.project_id);
+        if (!project) {
+          return JSON.stringify({ ok: false, error: "Project not found or unavailable." });
+        }
+        const action = stringValue(args.action);
+        const contactInput = {
+          ...(typeof args.name === "string" ? { name: args.name.trim() } : {}),
+          ...(typeof args.email === "string" ? { email: args.email.trim() } : {}),
+          ...(typeof args.phone === "string" ? { phone: args.phone.trim() } : {}),
+          ...(typeof args.position === "string" ? { position: args.position.trim() } : {}),
+        };
+        if (action === "add") {
+          if (Object.keys(contactInput).length === 0) {
+            return JSON.stringify({ ok: false, error: "Provide at least one contact detail." });
+          }
+          s.addContact(project.id, contactInput);
+          appendLog("action", `Added contact to ${project.name}.`);
+          return JSON.stringify({ ok: true, saved: "project_contact" });
+        }
+        const contactId = stringValue(args.contact_id);
+        const contact = contactId
+          ? project.contacts.find((candidate) => candidate.id === contactId)
+          : undefined;
+        if (!contact) {
+          return JSON.stringify({ ok: false, error: "A valid contact_id is required." });
+        }
+        if (action === "update") {
+          s.updateContact(project.id, contact.id, contactInput);
+          return JSON.stringify({ ok: true, contact_id: contact.id });
+        }
+        if (action === "delete") {
+          s.deleteContact(project.id, contact.id);
+          return JSON.stringify({ ok: true, deleted: "project_contact", contact_id: contact.id });
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported project contact action." });
+      }
+
+      if (name === "manage_personal_todo") {
+        const action = stringValue(args.action);
+        if (action === "create") {
+          const title = stringValue(args.title);
+          if (!title) {
+            return JSON.stringify({ ok: false, error: "To-Do title is required." });
+          }
+          const input: Parameters<typeof s.addPersonalTodo>[0] = {
+            title,
+            status: (stringValue(args.status) ?? "todo") as PersonalTodoStatus,
+            ...(stringValue(args.description) ? { description: stringValue(args.description) } : {}),
+            ...(validOptionalDate(args.due_date) ? { dueDate: validOptionalDate(args.due_date) as string } : {}),
+            ...(validOptionalDate(args.start_date) ? { startDate: validOptionalDate(args.start_date) as string } : {}),
+            ...(validOptionalDate(args.end_date) ? { endDate: validOptionalDate(args.end_date) as string } : {}),
+            ...(s.user?.userId ? { ownerUserId: s.user.userId } : {}),
+          };
+          const id = s.addPersonalTodo(input);
+          appendLog("action", `Created personal To-Do: ${title}.`);
+          return JSON.stringify({ ok: true, todo_id: id, title });
+        }
+        const todoId = stringValue(args.todo_id);
+        const todo = todoId ? s.personalTodos.find((x) => x.id === todoId) : undefined;
+        if (!todo) {
+          return JSON.stringify({ ok: false, error: "A valid personal todo_id is required." });
+        }
+        if (s.authEnabled && s.user && todo.ownerUserId !== s.user.userId) {
+          return JSON.stringify({ ok: false, error: "Personal To-Dos are private to their owner." });
+        }
+        if (action === "delete") {
+          s.deletePersonalTodo(todo.id);
+          return JSON.stringify({ ok: true, deleted: "personal_todo", todo_id: todo.id });
+        }
+        if (action === "add_comment") {
+          const comment = stringValue(args.comment);
+          if (!comment) return JSON.stringify({ ok: false, error: "Comment text is required." });
+          s.addPersonalTodoComment(todo.id, comment);
+          return JSON.stringify({ ok: true, todo_id: todo.id, saved: "comment" });
+        }
+        if (action === "update") {
+          const patch: Parameters<typeof s.updatePersonalTodo>[1] = {};
+          if (typeof args.title === "string") patch.title = args.title.trim();
+          if (args.description === null || typeof args.description === "string") {
+            patch.description = args.description === null ? null : args.description.trim();
+          }
+          if (typeof args.status === "string") {
+            patch.status = args.status as PersonalTodoStatus;
+          }
+          for (const [argKey, patchKey] of [
+            ["due_date", "dueDate"],
+            ["start_date", "startDate"],
+            ["end_date", "endDate"],
+          ] as const) {
+            const raw = args[argKey];
+            if (raw === null) {
+              (patch as Record<string, unknown>)[patchKey] = null;
+            } else if (typeof raw === "string") {
+              if (!isValidDateOnly(raw)) {
+                return JSON.stringify({ ok: false, error: `${argKey} must be YYYY-MM-DD.` });
+              }
+              (patch as Record<string, unknown>)[patchKey] = raw;
+            }
+          }
+          s.updatePersonalTodo(todo.id, patch);
+          return JSON.stringify({ ok: true, todo_id: todo.id, updated_fields: Object.keys(patch) });
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported personal To-Do action." });
+      }
+
+      if (name === "manage_prospect") {
+        if (!has("sales")) {
+          return JSON.stringify({ ok: false, error: "Prospecting requires Sales permission." });
+        }
+        const p = s.prospecting;
+        const action = stringValue(args.action);
+        const companyId = stringValue(args.company_id);
+        const contactId = stringValue(args.contact_id);
+        const company = companyId ? p.companies.find((x) => x.id === companyId) : undefined;
+        const contact = contactId ? p.contacts.find((x) => x.id === contactId) : undefined;
+
+        if (action === "create_company") {
+          const companyName = stringValue(args.name);
+          const market = stringValue(args.market);
+          if (!companyName || !market) {
+            return JSON.stringify({
+              ok: false,
+              error: "Company name and market are required to create a prospect.",
+            });
+          }
+          const requestedOwner = stringValue(args.owner_user_id) ?? s.user?.userId;
+          if (!requestedOwner) {
+            return JSON.stringify({ ok: false, error: "A prospect owner is required." });
+          }
+          const ownerAssignable = assignableTeamMembers(s.teamMembers).some(
+            (member) => member.id === requestedOwner,
+          );
+          if (!ownerAssignable) {
+            return JSON.stringify({
+              ok: false,
+              error: "The prospect owner is not assignable. Search the team roster first.",
+            });
+          }
+          const contactName = stringValue(args.contact_name);
+          const hasContactDetails =
+            Boolean(contactName) ||
+            Boolean(stringValue(args.email)) ||
+            Boolean(stringValue(args.phone)) ||
+            Boolean(stringValue(args.title)) ||
+            Boolean(stringValue(args.linkedin_url));
+          const result = p.addCompany({
+            name: companyName,
+            country: stringValue(args.country),
+            city: stringValue(args.city),
+            siteName: stringValue(args.site_name),
+            website: stringValue(args.website),
+            industry: stringValue(args.industry),
+            market: market as Parameters<typeof p.addCompany>[0]["market"],
+            system: stringValue(args.system) as Parameters<typeof p.addCompany>[0]["system"],
+            source: stringValue(args.source) as Parameters<typeof p.addCompany>[0]["source"],
+            priority: (stringValue(args.priority) ?? "medium") as ProspectPriority,
+            ownerId: requestedOwner,
+            notes: stringValue(args.notes),
+            sizeKw: numberValue(args.size_kw),
+            ...(hasContactDetails
+              ? {
+                  contact: {
+                    name: contactName,
+                    title: stringValue(args.title),
+                    email: stringValue(args.email),
+                    phone: stringValue(args.phone),
+                    linkedinUrl: stringValue(args.linkedin_url),
+                    isPrimary: true,
+                  },
+                }
+              : {}),
+          });
+          appendLog("action", `Created prospect ${companyName}.`);
+          return JSON.stringify({ ok: true, ...result, company_name: companyName });
+        }
+
+        if (!company && action !== "update_contact" && action !== "delete_contact") {
+          return JSON.stringify({ ok: false, error: "A valid company_id is required." });
+        }
+
+        if (action === "update_company" && company) {
+          const patch: Partial<typeof company> = {};
+          const simpleMappings = [
+            ["name", "name"],
+            ["country", "country"],
+            ["city", "city"],
+            ["site_name", "siteName"],
+            ["website", "website"],
+            ["industry", "industry"],
+            ["market", "market"],
+            ["system", "system"],
+            ["source", "source"],
+            ["notes", "notes"],
+            ["existing_relationship", "existingRelationship"],
+            ["next_action", "nextAction"],
+          ] as const;
+          for (const [argKey, key] of simpleMappings) {
+            if (typeof args[argKey] === "string") {
+              (patch as Record<string, unknown>)[key] = String(args[argKey]).trim();
+            }
+          }
+          if (typeof args.priority === "string") patch.priority = args.priority as ProspectPriority;
+          if (typeof args.status === "string") patch.status = args.status as ProspectStatus;
+          if (typeof args.owner_user_id === "string") patch.ownerId = args.owner_user_id.trim();
+          if (typeof args.size_kw === "number") patch.sizeKw = Math.max(0, args.size_kw);
+          if (args.potential_value === null || typeof args.potential_value === "number") {
+            patch.potentialValue = args.potential_value as number | null;
+          }
+          if (args.next_action_at === null) patch.nextActionAt = null;
+          else if (typeof args.next_action_at === "string") {
+            if (!isValidDateOnly(args.next_action_at)) {
+              return JSON.stringify({ ok: false, error: "next_action_at must be YYYY-MM-DD." });
+            }
+            patch.nextActionAt = args.next_action_at;
+          }
+          if (args.qualification && typeof args.qualification === "object") {
+            patch.qualification = {
+              ...company.qualification,
+              ...(args.qualification as ProspectQualification),
+            };
+          }
+          p.updateCompany(company.id, patch);
+          return JSON.stringify({ ok: true, company_id: company.id, updated_fields: Object.keys(patch) });
+        }
+
+        if (action === "delete_company" && company) {
+          p.deleteCompany(company.id);
+          return JSON.stringify({ ok: true, deleted: "prospect_company", company_id: company.id });
+        }
+
+        if (action === "add_contact" && company) {
+          const requestedOwner = stringValue(args.owner_user_id) ?? company.ownerId ?? s.user?.userId;
+          if (!requestedOwner) {
+            return JSON.stringify({ ok: false, error: "A contact owner is required." });
+          }
+          const result = p.addContact(company.id, {
+            ownerId: requestedOwner,
+            name: stringValue(args.name) ?? "",
+            title: stringValue(args.title),
+            department: stringValue(args.department),
+            email: stringValue(args.email),
+            phone: stringValue(args.phone),
+            linkedinUrl: stringValue(args.linkedin_url),
+            preferredMethod: stringValue(args.preferred_method) as Parameters<typeof p.addContact>[1]["preferredMethod"],
+            priority: (stringValue(args.priority) ?? company.priority) as ProspectPriority,
+            source: stringValue(args.source) as Parameters<typeof p.addContact>[1]["source"],
+            isPrimary: booleanValue(args.is_primary),
+            notes: stringValue(args.notes),
+          });
+          return JSON.stringify({ ok: true, ...result });
+        }
+
+        if ((action === "update_contact" || action === "delete_contact") && !contact) {
+          return JSON.stringify({ ok: false, error: "A valid contact_id is required." });
+        }
+        if (action === "update_contact" && contact) {
+          const patch: Partial<typeof contact> = {};
+          const contactMappings = [
+            ["name", "name"],
+            ["title", "title"],
+            ["department", "department"],
+            ["email", "email"],
+            ["phone", "phone"],
+            ["linkedin_url", "linkedinUrl"],
+            ["preferred_method", "preferredMethod"],
+            ["notes", "notes"],
+            ["status", "status"],
+            ["source", "source"],
+          ] as const;
+          for (const [argKey, key] of contactMappings) {
+            if (typeof args[argKey] === "string") {
+              (patch as Record<string, unknown>)[key] = String(args[argKey]).trim();
+            }
+          }
+          if (typeof args.priority === "string") patch.priority = args.priority as ProspectPriority;
+          if (typeof args.owner_user_id === "string") patch.ownerId = args.owner_user_id.trim();
+          if (typeof args.is_primary === "boolean") patch.isPrimary = args.is_primary;
+          p.updateContact(contact.id, patch);
+          return JSON.stringify({ ok: true, contact_id: contact.id, updated_fields: Object.keys(patch) });
+        }
+        if (action === "delete_contact" && contact) {
+          p.deleteContact(contact.id);
+          return JSON.stringify({ ok: true, deleted: "prospect_contact", contact_id: contact.id });
+        }
+
+        if (action === "schedule_follow_up" && contact) {
+          const followUp = stringValue(args.follow_up_at);
+          if (!followUp || !isValidDateOnly(followUp)) {
+            return JSON.stringify({ ok: false, error: "A valid follow_up_at date is required." });
+          }
+          p.scheduleFollowUp(contact.id, followUp, stringValue(args.next_action) ?? stringValue(args.summary));
+          return JSON.stringify({ ok: true, contact_id: contact.id, follow_up_at: followUp });
+        }
+
+        if (action === "mark_engaged" && contact) {
+          p.markEngaged(contact.id);
+          return JSON.stringify({ ok: true, contact_id: contact.id, status: "engaged" });
+        }
+
+        if (action === "mark_qualified" && company) {
+          const qualification =
+            args.qualification && typeof args.qualification === "object"
+              ? (args.qualification as ProspectQualification)
+              : undefined;
+          p.markQualified(company.id, qualification);
+          return JSON.stringify({ ok: true, company_id: company.id, status: "qualified" });
+        }
+
+        if (action === "log_outreach" && company) {
+          if (!contact || contact.companyId !== company.id) {
+            return JSON.stringify({
+              ok: false,
+              error: "A valid contact_id belonging to the prospect company is required.",
+            });
+          }
+          const channel = stringValue(args.channel) as OutreachChannel | undefined;
+          const result = stringValue(args.result) as OutreachResult | undefined;
+          const summary = stringValue(args.summary);
+          if (!channel || !result || !summary || !s.user?.userId) {
+            return JSON.stringify({
+              ok: false,
+              error: "channel, result, summary, and a signed-in user are required.",
+            });
+          }
+          const nextActionAt =
+            args.follow_up_at === null
+              ? null
+              : validOptionalDate(args.follow_up_at) ?? undefined;
+          const activityId = p.logOutreach({
+            companyId: company.id,
+            contactId: contact.id,
+            userId: s.user.userId,
+            channel,
+            result,
+            summary,
+            nextAction: stringValue(args.next_action),
+            nextActionAt,
+          });
+          return JSON.stringify({ ok: true, activity_id: activityId });
+        }
+
+        if (action === "promote_to_project" && company) {
+          const projectName =
+            stringValue(args.project_name) ||
+            (company.siteName
+              ? `${company.name} — ${company.siteName}`
+              : `${company.name} opportunity`);
+          const projectStage =
+            typeof args.project_stage === "string"
+              ? (args.project_stage as Stage)
+              : "cold-lead";
+          if (!stagesForTrack("sales").includes(projectStage)) {
+            return JSON.stringify({ ok: false, error: "Invalid Sales project stage." });
+          }
+          const id = s.addProject({
+            name: projectName,
+            client: company.name,
+            country: company.country || "—",
+            city: company.city,
+            series: company.system,
+            market: company.market,
+            sizeKw: company.sizeKw > 0 ? company.sizeKw : 0,
+            stage: projectStage,
+            baseDescription:
+              stringValue(args.project_description) ||
+              [
+                company.strategyWhy && `Why: ${company.strategyWhy}`,
+                company.qualification.painPoint && `Pain: ${company.qualification.painPoint}`,
+                company.qualification.identifiedProject && `Project: ${company.qualification.identifiedProject}`,
+                company.notes && `Notes: ${company.notes}`,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            leadUserId: company.ownerId || undefined,
+            track: "sales",
+          });
+          const inserted = await s.waitForProjectInsert(id);
+          if (inserted) {
+            for (const candidate of p.contacts.filter((x) => x.companyId === company.id)) {
+              s.addContact(id, {
+                name: candidate.name || undefined,
+                email: candidate.email || undefined,
+                phone: candidate.phone || undefined,
+                position: candidate.title || undefined,
+              });
+            }
+          }
+          p.markPromoted(company.id, id);
+          appendLog("action", `Promoted ${company.name} to project ${projectName}.`);
+          return JSON.stringify({ ok: true, project_id: id, inserted, project_name: projectName });
+        }
+
+        return JSON.stringify({ ok: false, error: "Unsupported prospect action or missing required entity." });
+      }
+
+      if (name === "manage_prospecting_strategy") {
+        if (!has("sales")) {
+          return JSON.stringify({ ok: false, error: "Prospecting strategies require Sales permission." });
+        }
+        const p = s.prospecting;
+        const action = stringValue(args.action);
+        const strategyId = stringValue(args.strategy_id);
+        if (action === "create") {
+          const strategyName = stringValue(args.name);
+          if (!strategyName) {
+            return JSON.stringify({ ok: false, error: "Strategy name is required." });
+          }
+          const id = p.addStrategy({
+            name: strategyName,
+            ...(Array.isArray(args.markets)
+              ? { markets: args.markets.filter((x): x is string => typeof x === "string") as Parameters<typeof p.addStrategy>[0]["markets"] }
+              : {}),
+            ...(stringValue(args.industries) ? { industries: stringValue(args.industries) } : {}),
+            ...(numberValue(args.weekly_contact_target) != null
+              ? { weeklyContactTarget: Math.max(0, Math.round(numberValue(args.weekly_contact_target)!)) }
+              : {}),
+            ...(booleanValue(args.is_active) != null ? { isActive: booleanValue(args.is_active) } : {}),
+            ...(stringValue(args.notes) ? { notes: stringValue(args.notes) } : {}),
+          });
+          return JSON.stringify({ ok: true, strategy_id: id });
+        }
+        const strategy = strategyId ? p.strategies.find((x) => x.id === strategyId) : undefined;
+        if (!strategy) {
+          return JSON.stringify({ ok: false, error: "A valid strategy_id is required." });
+        }
+        if (action === "delete") {
+          p.deleteStrategy(strategy.id);
+          return JSON.stringify({ ok: true, deleted: "strategy", strategy_id: strategy.id });
+        }
+        if (action === "update") {
+          const patch: Partial<typeof strategy> = {};
+          if (typeof args.name === "string") patch.name = args.name.trim();
+          if (Array.isArray(args.markets)) {
+            patch.markets = args.markets.filter((x): x is string => typeof x === "string") as typeof strategy.markets;
+          }
+          if (typeof args.industries === "string") patch.industries = args.industries.trim();
+          if (typeof args.weekly_contact_target === "number") {
+            patch.weeklyContactTarget = Math.max(0, Math.round(args.weekly_contact_target));
+          }
+          if (typeof args.is_active === "boolean") patch.isActive = args.is_active;
+          if (typeof args.notes === "string") patch.notes = args.notes.trim();
+          p.updateStrategy(strategy.id, patch);
+          return JSON.stringify({ ok: true, strategy_id: strategy.id, updated_fields: Object.keys(patch) });
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported strategy action." });
+      }
+
+      if (name === "manage_project_finance") {
+        const project = findAnyProject(args.project_id);
+        if (!project || !hasFinanceProjectAccess(project)) {
+          return JSON.stringify({ ok: false, error: "Project finance is not available to this user." });
+        }
+        const action = stringValue(args.action);
+        if (action === "update_summary") {
+          const patch: Parameters<typeof s.updateFinancials>[1] = {};
+          const mappings = [
+            ["contract_value", "contractValue"],
+            ["expenses_total", "expenses"],
+            ["max_materials_expense", "maxMaterialsExpense"],
+            ["max_man_hr_expense", "maxManHrExpense"],
+            ["opex_value", "opexValue"],
+            ["opex_expense_percent", "opexExpensePercent"],
+            ["warranty_years", "warrantyYears"],
+            ["system_lifetime_years", "systemLifetimeYears"],
+          ] as const;
+          for (const [argKey, key] of mappings) {
+            const value = args[argKey];
+            if (value === null || typeof value === "number") {
+              (patch as Record<string, unknown>)[key] = value;
+            }
+          }
+          if (args.contract_signed_date === null) patch.contractSignedDate = null;
+          else if (typeof args.contract_signed_date === "string") {
+            if (!isValidDateOnly(args.contract_signed_date)) {
+              return JSON.stringify({ ok: false, error: "contract_signed_date must be YYYY-MM-DD." });
+            }
+            patch.contractSignedDate = args.contract_signed_date;
+          }
+          s.updateFinancials(project.id, patch);
+          return JSON.stringify({ ok: true, updated_fields: Object.keys(patch) });
+        }
+
+        if (action === "add_payment") {
+          const amount = numberValue(args.amount);
+          const dueDate = stringValue(args.due_date);
+          if (amount == null || !dueDate || !isValidDateOnly(dueDate)) {
+            return JSON.stringify({ ok: false, error: "Payment amount and valid due_date are required." });
+          }
+          s.addPayment(project.id, {
+            amount,
+            percent: nullableNumberValue(args.percent),
+            dueDate,
+            label: stringValue(args.label),
+            milestoneId: stringValue(args.milestone_id),
+            actualDate: validOptionalDate(args.actual_date),
+          });
+          return JSON.stringify({ ok: true, saved: "payment" });
+        }
+
+        if (action === "update_payment" || action === "delete_payment") {
+          const recordId = stringValue(args.record_id);
+          const payment = recordId
+            ? project.financials.payments.find((x) => x.id === recordId)
+            : undefined;
+          if (!payment) return JSON.stringify({ ok: false, error: "Payment record not found." });
+          if (action === "delete_payment") {
+            s.deletePayment(project.id, payment.id);
+            return JSON.stringify({ ok: true, deleted: "payment", record_id: payment.id });
+          }
+          const input: Parameters<typeof s.updatePayment>[2] = {
+            amount: numberValue(args.amount) ?? payment.amount,
+            percent:
+              args.percent === null || typeof args.percent === "number"
+                ? (args.percent as number | null)
+                : payment.percent,
+            dueDate:
+              typeof args.due_date === "string" && isValidDateOnly(args.due_date)
+                ? args.due_date
+                : payment.dueDate,
+            label: typeof args.label === "string" ? args.label.trim() : payment.label,
+            milestoneId:
+              args.milestone_id === null
+                ? undefined
+                : stringValue(args.milestone_id) ?? payment.milestoneId,
+            actualDate:
+              args.actual_date === null
+                ? null
+                : validOptionalDate(args.actual_date) ?? payment.actualDate,
+          };
+          s.updatePayment(project.id, payment.id, input);
+          return JSON.stringify({ ok: true, record_id: payment.id });
+        }
+
+        if (action === "add_expense") {
+          const amount = numberValue(args.amount);
+          const dueDate = stringValue(args.due_date);
+          const category = stringValue(args.category) as ProjectExpenseCategory | undefined;
+          if (amount == null || !dueDate || !isValidDateOnly(dueDate) || !category) {
+            return JSON.stringify({
+              ok: false,
+              error: "Expense amount, category, and valid due_date are required.",
+            });
+          }
+          s.addExpense(project.id, {
+            amount,
+            amountExVat: nullableNumberValue(args.amount_ex_vat),
+            percent: nullableNumberValue(args.percent),
+            dueDate,
+            label: stringValue(args.label),
+            milestoneId: stringValue(args.milestone_id),
+            actualDate: validOptionalDate(args.actual_date),
+            category,
+            subcategory: nullableStringValue(args.subcategory) as Parameters<typeof s.addExpense>[1]["subcategory"],
+          });
+          return JSON.stringify({ ok: true, saved: "expense" });
+        }
+
+        if (action === "update_expense" || action === "delete_expense") {
+          const recordId = stringValue(args.record_id);
+          const expense = recordId
+            ? project.financials.expenseSchedule.find((x) => x.id === recordId)
+            : undefined;
+          if (!expense) return JSON.stringify({ ok: false, error: "Expense record not found." });
+          if (action === "delete_expense") {
+            const result = s.deleteExpense(project.id, expense.id);
+            return JSON.stringify(result.ok ? { ok: true, deleted: "expense" } : result);
+          }
+          const input: Parameters<typeof s.updateExpense>[2] = {
+            amount: numberValue(args.amount) ?? expense.amount,
+            amountExVat:
+              args.amount_ex_vat === null || typeof args.amount_ex_vat === "number"
+                ? (args.amount_ex_vat as number | null)
+                : expense.amountExVat,
+            percent:
+              args.percent === null || typeof args.percent === "number"
+                ? (args.percent as number | null)
+                : expense.percent,
+            dueDate:
+              typeof args.due_date === "string" && isValidDateOnly(args.due_date)
+                ? args.due_date
+                : expense.dueDate,
+            label: typeof args.label === "string" ? args.label.trim() : expense.label,
+            milestoneId:
+              args.milestone_id === null
+                ? undefined
+                : stringValue(args.milestone_id) ?? expense.milestoneId,
+            actualDate:
+              args.actual_date === null
+                ? null
+                : validOptionalDate(args.actual_date) ?? expense.actualDate,
+            category:
+              (stringValue(args.category) as ProjectExpenseCategory | undefined) ??
+              expense.category ??
+              "materials",
+            subcategory:
+              args.subcategory === null
+                ? null
+                : (stringValue(args.subcategory) as Parameters<typeof s.updateExpense>[2]["subcategory"]) ??
+                  expense.subcategory,
+            warehouseLotId: expense.warehouseLotId,
+          };
+          s.updateExpense(project.id, expense.id, input);
+          return JSON.stringify({ ok: true, record_id: expense.id });
+        }
+
+        if (action === "add_milestone") {
+          const kind = stringValue(args.milestone_kind) as MilestoneKind | undefined;
+          const date = stringValue(args.milestone_date);
+          if (!kind || !date || !isValidDateOnly(date)) {
+            return JSON.stringify({ ok: false, error: "Milestone kind and valid date are required." });
+          }
+          s.addMilestone(project.id, { kind, date, note: stringValue(args.note) });
+          return JSON.stringify({ ok: true, saved: "milestone" });
+        }
+
+        if (action === "update_milestone" || action === "delete_milestone") {
+          const recordId = stringValue(args.record_id);
+          const milestone = recordId
+            ? project.financials.milestones.find((x) => x.id === recordId)
+            : undefined;
+          if (!milestone) return JSON.stringify({ ok: false, error: "Milestone not found." });
+          if (action === "delete_milestone") {
+            s.deleteMilestone(project.id, milestone.id);
+            return JSON.stringify({ ok: true, deleted: "milestone" });
+          }
+          const date =
+            typeof args.milestone_date === "string" && isValidDateOnly(args.milestone_date)
+              ? args.milestone_date
+              : milestone.date;
+          s.updateMilestone(project.id, milestone.id, {
+            kind:
+              (stringValue(args.milestone_kind) as MilestoneKind | undefined) ??
+              milestone.kind,
+            date,
+            note: typeof args.note === "string" ? args.note.trim() : milestone.note,
+          });
+          return JSON.stringify({ ok: true, record_id: milestone.id });
+        }
+
+        return JSON.stringify({ ok: false, error: "Unsupported finance action." });
+      }
+
+      if (name === "manage_gantt") {
+        const project = findAnyProject(args.project_id);
+        if (!project || !hasGanttWriteAccess(project)) {
+          return JSON.stringify({
+            ok: false,
+            error: "Editing this project schedule is not available to this user.",
+          });
+        }
+        const action = stringValue(args.action);
+        const recordId = stringValue(args.record_id);
+        const phaseId = stringValue(args.phase_id);
+
+        if (action === "add_phase") {
+          const phaseName = stringValue(args.name);
+          const startDate = stringValue(args.start_date);
+          const duration = numberValue(args.duration_days);
+          if (!phaseName || !startDate || !isValidDateOnly(startDate) || duration == null) {
+            return JSON.stringify({ ok: false, error: "Phase name, start_date, and duration_days are required." });
+          }
+          s.addGanttPhase(project.id, {
+            name: phaseName,
+            startDate,
+            durationDays: Math.max(1, Math.round(duration)),
+            actualStartDate: validOptionalDate(args.actual_start_date),
+            actualDurationDays: nullableNumberValue(args.actual_duration_days),
+            wbs: stringValue(args.wbs),
+            owner: stringValue(args.owner),
+            sortOrder: numberValue(args.sort_order),
+          });
+          return JSON.stringify({ ok: true, saved: "gantt_phase" });
+        }
+
+        if (action === "update_phase" || action === "delete_phase") {
+          const phase = recordId ? project.schedule.phases.find((x) => x.id === recordId) : undefined;
+          if (!phase) return JSON.stringify({ ok: false, error: "Gantt phase not found." });
+          if (action === "delete_phase") {
+            s.deleteGanttPhase(project.id, phase.id);
+            return JSON.stringify({ ok: true, deleted: "gantt_phase" });
+          }
+          s.updateGanttPhase(project.id, phase.id, {
+            name: stringValue(args.name) ?? phase.name,
+            startDate:
+              typeof args.start_date === "string" && isValidDateOnly(args.start_date)
+                ? args.start_date
+                : phase.startDate,
+            durationDays: Math.max(1, Math.round(numberValue(args.duration_days) ?? phase.durationDays)),
+            actualStartDate:
+              args.actual_start_date === null
+                ? null
+                : validOptionalDate(args.actual_start_date) ?? phase.actualStartDate,
+            actualDurationDays:
+              args.actual_duration_days === null
+                ? null
+                : numberValue(args.actual_duration_days) ?? phase.actualDurationDays,
+            color: phase.color,
+            wbs: typeof args.wbs === "string" ? args.wbs.trim() : phase.wbs,
+            owner: typeof args.owner === "string" ? args.owner.trim() : phase.owner,
+            sortOrder: numberValue(args.sort_order) ?? phase.sortOrder,
+          });
+          return JSON.stringify({ ok: true, record_id: phase.id });
+        }
+
+        if (action === "add_activity") {
+          const activityName = stringValue(args.name);
+          const startDate = stringValue(args.start_date);
+          const duration = numberValue(args.duration_days);
+          if (!phaseId || !activityName || !startDate || !isValidDateOnly(startDate) || duration == null) {
+            return JSON.stringify({
+              ok: false,
+              error: "phase_id, activity name, start_date, and duration_days are required.",
+            });
+          }
+          if (!project.schedule.phases.some((x) => x.id === phaseId)) {
+            return JSON.stringify({ ok: false, error: "phase_id does not exist on this project." });
+          }
+          s.addGanttActivity(project.id, {
+            phaseId,
+            name: activityName,
+            startDate,
+            durationDays: Math.max(1, Math.round(duration)),
+            actualStartDate: validOptionalDate(args.actual_start_date),
+            actualDurationDays: nullableNumberValue(args.actual_duration_days),
+            wbs: stringValue(args.wbs),
+            owner: stringValue(args.owner),
+            status: stringValue(args.status),
+            sortOrder: numberValue(args.sort_order),
+          });
+          return JSON.stringify({ ok: true, saved: "gantt_activity" });
+        }
+
+        if (action === "update_activity" || action === "delete_activity") {
+          const activity = recordId ? project.schedule.activities.find((x) => x.id === recordId) : undefined;
+          if (!activity) return JSON.stringify({ ok: false, error: "Gantt activity not found." });
+          if (action === "delete_activity") {
+            s.deleteGanttActivity(project.id, activity.id);
+            return JSON.stringify({ ok: true, deleted: "gantt_activity" });
+          }
+          const targetPhaseId = phaseId ?? activity.phaseId;
+          if (!project.schedule.phases.some((x) => x.id === targetPhaseId)) {
+            return JSON.stringify({ ok: false, error: "phase_id does not exist on this project." });
+          }
+          s.updateGanttActivity(project.id, activity.id, {
+            phaseId: targetPhaseId,
+            name: stringValue(args.name) ?? activity.name,
+            startDate:
+              typeof args.start_date === "string" && isValidDateOnly(args.start_date)
+                ? args.start_date
+                : activity.startDate,
+            durationDays: Math.max(1, Math.round(numberValue(args.duration_days) ?? activity.durationDays)),
+            actualStartDate:
+              args.actual_start_date === null
+                ? null
+                : validOptionalDate(args.actual_start_date) ?? activity.actualStartDate,
+            actualDurationDays:
+              args.actual_duration_days === null
+                ? null
+                : numberValue(args.actual_duration_days) ?? activity.actualDurationDays,
+            wbs: typeof args.wbs === "string" ? args.wbs.trim() : activity.wbs,
+            owner: typeof args.owner === "string" ? args.owner.trim() : activity.owner,
+            color: activity.color,
+            status: typeof args.status === "string" ? args.status.trim() : activity.status,
+            sortOrder: numberValue(args.sort_order) ?? activity.sortOrder,
+          });
+          return JSON.stringify({ ok: true, record_id: activity.id });
+        }
+
+        if (action === "add_deadline") {
+          const deadlineName = stringValue(args.name);
+          const date = stringValue(args.date);
+          if (!phaseId || !deadlineName || !date || !isValidDateOnly(date)) {
+            return JSON.stringify({ ok: false, error: "phase_id, deadline name, and valid date are required." });
+          }
+          if (!project.schedule.phases.some((x) => x.id === phaseId)) {
+            return JSON.stringify({ ok: false, error: "phase_id does not exist on this project." });
+          }
+          s.addGanttDeadline(project.id, {
+            phaseId,
+            name: deadlineName,
+            date,
+            actualDate: validOptionalDate(args.actual_date),
+            wbs: stringValue(args.wbs),
+            owner: stringValue(args.owner),
+            note: stringValue(args.note),
+          });
+          return JSON.stringify({ ok: true, saved: "gantt_deadline" });
+        }
+
+        if (action === "update_deadline" || action === "delete_deadline") {
+          const deadline = recordId ? project.schedule.deadlines.find((x) => x.id === recordId) : undefined;
+          if (!deadline) return JSON.stringify({ ok: false, error: "Gantt deadline not found." });
+          if (action === "delete_deadline") {
+            s.deleteGanttDeadline(project.id, deadline.id);
+            return JSON.stringify({ ok: true, deleted: "gantt_deadline" });
+          }
+          const targetPhaseId = phaseId ?? deadline.phaseId;
+          s.updateGanttDeadline(project.id, deadline.id, {
+            phaseId: targetPhaseId,
+            name: stringValue(args.name) ?? deadline.name,
+            date:
+              typeof args.date === "string" && isValidDateOnly(args.date)
+                ? args.date
+                : deadline.date,
+            actualDate:
+              args.actual_date === null
+                ? null
+                : validOptionalDate(args.actual_date) ?? deadline.actualDate,
+            wbs: typeof args.wbs === "string" ? args.wbs.trim() : deadline.wbs,
+            owner: typeof args.owner === "string" ? args.owner.trim() : deadline.owner,
+            note: typeof args.note === "string" ? args.note.trim() : deadline.note,
+          });
+          return JSON.stringify({ ok: true, record_id: deadline.id });
+        }
+
+        if (action === "shift_schedule") {
+          const amount = numberValue(args.amount);
+          const unit = stringValue(args.unit) as ScheduleShiftUnit | undefined;
+          if (amount == null || !unit) {
+            return JSON.stringify({ ok: false, error: "Shift amount and unit are required." });
+          }
+          s.shiftProjectSchedule(project.id, {
+            amount: Math.trunc(amount),
+            unit,
+            includeActuals: booleanValue(args.include_actuals),
+          });
+          return JSON.stringify({ ok: true, shifted: true, amount: Math.trunc(amount), unit });
+        }
+
+        return JSON.stringify({ ok: false, error: "Unsupported Gantt action." });
+      }
+
+      if (name === "manage_warehouse") {
+        if (!has("warehouse")) {
+          return JSON.stringify({ ok: false, error: "Warehouse access requires Warehouse permission." });
+        }
+        const action = stringValue(args.action);
+        const payload = asRecord(args.payload);
+        if (action === "receive_stock") {
+          const result = s.receiveStock(payload as Parameters<typeof s.receiveStock>[0]);
+          if (result.ok) appendLog("action", "Received stock into the warehouse.");
+          return JSON.stringify(result);
+        }
+        if (action === "transfer_stock") {
+          return JSON.stringify(s.transferStock(payload as Parameters<typeof s.transferStock>[0]));
+        }
+        if (action === "consume_stock") {
+          return JSON.stringify(s.consumeStock(payload as Parameters<typeof s.consumeStock>[0]));
+        }
+        if (action === "adjust_stock") {
+          return JSON.stringify(s.adjustStock(payload as Parameters<typeof s.adjustStock>[0]));
+        }
+        if (action === "update_lot") {
+          return JSON.stringify(s.updateWarehouseLot(payload as Parameters<typeof s.updateWarehouseLot>[0]));
+        }
+        if (action === "delete_lot") {
+          const lotId = stringValue(payload.lotId);
+          if (!lotId) return JSON.stringify({ ok: false, error: "payload.lotId is required." });
+          return JSON.stringify(s.deleteWarehouseLot(lotId));
+        }
+        if (action === "upsert_item") {
+          const itemName = stringValue(payload.name);
+          if (!itemName) return JSON.stringify({ ok: false, error: "payload.name is required." });
+          const id = s.upsertWarehouseItem({
+            ...(stringValue(payload.id) ? { id: stringValue(payload.id) } : {}),
+            name: itemName,
+            ...(stringValue(payload.sku) ? { sku: stringValue(payload.sku) } : {}),
+            ...(stringValue(payload.unit) ? { unit: stringValue(payload.unit) } : {}),
+            ...(stringValue(payload.defaultMaterialKind)
+              ? { defaultMaterialKind: stringValue(payload.defaultMaterialKind) as WarehouseMaterialKind }
+              : {}),
+            ...(payload.groupId === null
+              ? { groupId: null }
+              : stringValue(payload.groupId)
+                ? { groupId: stringValue(payload.groupId) }
+                : {}),
+          });
+          return JSON.stringify({ ok: true, item_id: id });
+        }
+        if (action === "upsert_group") {
+          const groupName = stringValue(payload.name);
+          if (!groupName) return JSON.stringify({ ok: false, error: "payload.name is required." });
+          return JSON.stringify(
+            s.upsertWarehouseGroup({
+              ...(stringValue(payload.id) ? { id: stringValue(payload.id) } : {}),
+              name: groupName,
+              ...(payload.parentId === null
+                ? { parentId: null }
+                : stringValue(payload.parentId)
+                  ? { parentId: stringValue(payload.parentId) }
+                  : {}),
+            }),
+          );
+        }
+        if (action === "delete_group") {
+          const groupId = stringValue(payload.groupId);
+          if (!groupId) return JSON.stringify({ ok: false, error: "payload.groupId is required." });
+          return JSON.stringify(s.deleteWarehouseGroup(groupId));
+        }
+        if (action === "save_bom") {
+          return JSON.stringify(s.saveWarehouseBom(payload as Parameters<typeof s.saveWarehouseBom>[0]));
+        }
+        if (action === "delete_bom") {
+          const bomId = stringValue(payload.bomId);
+          if (!bomId) return JSON.stringify({ ok: false, error: "payload.bomId is required." });
+          return JSON.stringify(s.deleteWarehouseBom(bomId));
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported warehouse action." });
+      }
+
+      if (name === "manage_company_settings") {
+        const action = stringValue(args.action);
+        const payload = asRecord(args.payload);
+        if (action === "update_finance") {
+          if (!has("finance")) {
+            return JSON.stringify({ ok: false, error: "Company finance settings require Finance permission." });
+          }
+          s.updateFinanceSettings(payload as Parameters<typeof s.updateFinanceSettings>[0]);
+          return JSON.stringify({ ok: true, updated: "company_finance_settings" });
+        }
+        if (action === "update_metrics") {
+          if (!has("sales")) {
+            return JSON.stringify({ ok: false, error: "Pipeline metrics settings require Sales permission." });
+          }
+          s.updateMetricsSettings(payload as Parameters<typeof s.updateMetricsSettings>[0]);
+          return JSON.stringify({ ok: true, updated: "pipeline_metrics_settings" });
+        }
+        return JSON.stringify({ ok: false, error: "Unsupported company-settings action." });
+      }
+
       if (name === "add_project_comment") {
         const project = findProject(args.project_id);
         const text = typeof args.text === "string" ? args.text.trim() : "";
