@@ -7,6 +7,7 @@ import { ProjectsProvider } from "@/lib/store";
 import { ProspectingProvider } from "@/lib/prospecting-store";
 import Header from "@/components/Header";
 import OutstandingSidebar from "@/components/OutstandingSidebar";
+import VoiceAssistant from "@/components/VoiceAssistant";
 import { ProspectSalesSync } from "@/components/prospecting/ProspectSalesSync";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {!isViewer && <OutstandingSidebar />}
           </div>
         </div>
+        <VoiceAssistant />
       </ProspectingProvider>
     </ProjectsProvider>
   );
