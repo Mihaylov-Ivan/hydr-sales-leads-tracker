@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import { useProjects } from "@/lib/store";
 import {
@@ -285,6 +286,7 @@ export default function VoiceAssistant() {
   const {
     user,
     authEnabled,
+    ready: authReady,
     can,
     canWrite,
     isViewer,
@@ -299,6 +301,7 @@ export default function VoiceAssistant() {
     can("eu_funding_rnd");
 
   const [panelOpen, setPanelOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<VoiceStatus>("off");
   const [micMuted, setMicMuted] = useState(false);
   const [typedInput, setTypedInput] = useState("");
@@ -753,6 +756,7 @@ CRM safety and action rules:
       JSON.stringify({
         type: "session.update",
         session: {
+          type: "realtime",
           instructions,
           tools: CRM_TOOLS,
           tool_choice: "auto",
@@ -1006,79 +1010,67 @@ CRM safety and action rules:
     return "Updating CRM…";
   }, [micMuted, status]);
 
-  if (!enabled || isViewer || !hasAreaAccess) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!enabled || !authReady || isViewer || !hasAreaAccess) {
+    return null;
+  }
 
   const connected = status !== "off" && status !== "connecting";
 
-  return (
-    <>
-      {!panelOpen && (
-        <button
-          type="button"
-          onClick={() => setPanelOpen(true)}
-          className="fixed bottom-5 right-5 z-[70] flex items-center gap-2 rounded-full border border-teal-accent/30 bg-deep px-4 py-3 text-sm font-semibold text-white shadow-xl transition hover:scale-[1.02] hover:bg-deep/95"
-          title="Open Hydr AI voice assistant"
-        >
-          <span
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-accent text-white"
-            aria-hidden
+  const panel =
+    panelOpen && mounted && typeof document !== "undefined"
+      ? createPortal(
+          <section
+            role="dialog"
+            aria-label="Hydr AI"
+            style={{
+              position: "fixed",
+              bottom: 20,
+              right: 20,
+              zIndex: 99999,
+              width: "min(390px, calc(100vw - 2rem))",
+            }}
+            className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl"
           >
-            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-              <path
-                d="M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              />
-              <path
-                d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9.5 21h5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          Ask Hydr
-        </button>
-      )}
-
-      {panelOpen && (
-        <section className="fixed bottom-5 right-5 z-[70] flex w-[min(390px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl">
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    status === "off"
-                      ? "bg-muted/40"
-                      : status === "connecting"
-                        ? "animate-pulse bg-amber-400"
-                        : "bg-teal-accent"
-                  }`}
-                  aria-hidden
-                />
-                <h2 className="text-sm font-bold text-deep">Hydr AI</h2>
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      status === "off"
+                        ? "bg-muted/40"
+                        : status === "connecting"
+                          ? "animate-pulse bg-amber-400"
+                          : "bg-teal-accent"
+                    }`}
+                    aria-hidden
+                  />
+                  <h2 className="text-sm font-bold text-deep">Hydr AI</h2>
+                </div>
+                <p className="mt-0.5 text-[11px] text-muted">{statusLabel}</p>
               </div>
-              <p className="mt-0.5 text-[11px] text-muted">{statusLabel}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  stopSession();
+                  setPanelOpen(false);
+                }}
+                className="cursor-pointer rounded-md p-1.5 text-muted transition hover:bg-surface hover:text-deep"
+                aria-label="Close AI assistant"
+              >
+                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+                  <path
+                    d="m5 5 10 10M15 5 5 15"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                stopSession();
-                setPanelOpen(false);
-              }}
-              className="rounded-md p-1.5 text-muted transition hover:bg-surface hover:text-deep"
-              aria-label="Close AI assistant"
-            >
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
-                <path
-                  d="m5 5 10 10M15 5 5 15"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </div>
 
           <div className="max-h-72 min-h-40 space-y-2 overflow-y-auto px-4 py-3">
             {logs.length === 0 ? (
@@ -1190,8 +1182,35 @@ CRM safety and action rules:
               </button>
             </form>
           </div>
-        </section>
-      )}
+        </section>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPanelOpen(true)}
+        title="Open Hydr AI voice assistant"
+        className="inline-flex cursor-pointer shrink-0 items-center gap-1.5 rounded-lg bg-olive px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-olive-ink shadow-sm transition hover:brightness-95 sm:px-3 sm:text-xs"
+      >
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden>
+          <path
+            d="M12 3a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V6a3 3 0 0 0-3-3Z"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+        </svg>
+        Ask Hydr
+      </button>
+      {panel}
     </>
   );
 }
