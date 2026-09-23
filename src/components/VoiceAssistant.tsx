@@ -11,6 +11,7 @@ import {
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import { useProjects } from "@/lib/store";
+import { useProspecting } from "@/lib/prospecting-store";
 import {
   STAGE_LABELS,
   TODO_KIND_LABELS,
@@ -21,8 +22,24 @@ import {
   type Stage,
   type TeamMember,
   type TodoKind,
+  type MilestoneKind,
+  type PersonalTodoStatus,
+  type ProjectExpenseCategory,
+  type ScheduleShiftUnit,
+  type WarehouseLocation,
+  type WarehouseMaterialKind,
 } from "@/lib/types";
-import { assignableTeamMembers } from "@/lib/permissions";
+import {
+  assignableTeamMembers,
+  type PermissionType,
+} from "@/lib/permissions";
+import type {
+  OutreachChannel,
+  OutreachResult,
+  ProspectPriority,
+  ProspectQualification,
+  ProspectStatus,
+} from "@/lib/prospecting-types";
 
 type VoiceStatus =
   | "off"
