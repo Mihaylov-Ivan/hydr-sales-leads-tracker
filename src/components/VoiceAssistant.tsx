@@ -1691,6 +1691,173 @@ export default function VoiceAssistant() {
         });
       }
 
+      if (name === "manage_project_record") {
+        const project = findProject(args.project_id);
+        if (!project) {
+          return JSON.stringify({
+            ok: false,
+            error: "Project not found or core project access is not available to this user.",
+          });
+        }
+        const action = stringValue(args.action);
+        const recordId = stringValue(args.record_id);
+
+        if (action === "update_comment" || action === "delete_comment") {
+          const comment = recordId
+            ? project.comments.find((candidate) => candidate.id === recordId)
+            : undefined;
+          if (!comment) {
+            return JSON.stringify({
+              ok: false,
+              error: "A valid comment record_id is required.",
+            });
+          }
+          if (action === "delete_comment") {
+            s.deleteComment(project.id, comment.id);
+            appendLog("action", `Deleted an update from ${project.name}.`);
+            return JSON.stringify({
+              ok: true,
+              deleted: "project_comment",
+              record_id: comment.id,
+            });
+          }
+          const text = stringValue(args.text);
+          if (!text) {
+            return JSON.stringify({
+              ok: false,
+              error: "Updated comment text is required.",
+            });
+          }
+          s.updateComment(project.id, comment.id, text);
+          appendLog("action", `Updated an entry on ${project.name}.`);
+          return JSON.stringify({
+            ok: true,
+            updated: "project_comment",
+            record_id: comment.id,
+          });
+        }
+
+        if (action === "regenerate_summary") {
+          s.regenerateSummary(project.id);
+          return JSON.stringify({
+            ok: true,
+            project_id: project.id,
+            requested: "summary_regeneration",
+          });
+        }
+
+        if (
+          action === "get_followup_reminder" ||
+          action === "update_followup_reminder"
+        ) {
+          if (trackOfProject(project) !== "sales") {
+            return JSON.stringify({
+              ok: false,
+              error: "Client follow-up reminders are only used on Sales projects.",
+            });
+          }
+          if (action === "get_followup_reminder") {
+            return JSON.stringify({
+              ok: true,
+              reminder: s.getProjectUserReminder(
+                project.id,
+                s.user?.userId ?? null,
+              ),
+            });
+          }
+
+          const patch: Parameters<typeof s.updateProjectUserReminder>[1] = {};
+          if (typeof args.email_reminder_days === "number") {
+            patch.emailReminderDays = Math.max(
+              1,
+              Math.round(args.email_reminder_days),
+            );
+          }
+          if (typeof args.email_reminder_enabled === "boolean") {
+            patch.emailReminderEnabled = args.email_reminder_enabled;
+          }
+          if (typeof args.last_client_contact_at === "string") {
+            if (!isValidDateOnly(args.last_client_contact_at)) {
+              return JSON.stringify({
+                ok: false,
+                error: "last_client_contact_at must be a valid YYYY-MM-DD date.",
+              });
+            }
+            patch.lastClientContactAt = args.last_client_contact_at;
+          }
+          if (Object.keys(patch).length === 0) {
+            return JSON.stringify({
+              ok: false,
+              error: "No follow-up reminder fields were provided.",
+            });
+          }
+          s.updateProjectUserReminder(project.id, patch);
+          return JSON.stringify({
+            ok: true,
+            updated: "project_followup_reminder",
+            fields: Object.keys(patch),
+          });
+        }
+
+        if (action === "update_file_metadata" || action === "delete_file") {
+          const file = recordId
+            ? project.files.find((candidate) => candidate.id === recordId)
+            : undefined;
+          if (!file) {
+            return JSON.stringify({
+              ok: false,
+              error: "A valid project file record_id is required.",
+            });
+          }
+          if (action === "delete_file") {
+            await s.deleteProjectFile(project.id, file.id);
+            appendLog("action", `Deleted ${file.name} from ${project.name}.`);
+            return JSON.stringify({
+              ok: true,
+              deleted: "project_file",
+              record_id: file.id,
+            });
+          }
+          const patch: Parameters<typeof s.updateProjectFile>[2] = {};
+          if (typeof args.file_kind === "string") {
+            patch.kind = args.file_kind as typeof file.kind;
+          }
+          if (args.note === null) {
+            patch.note = null;
+          } else if (typeof args.note === "string") {
+            patch.note = args.note.trim() || null;
+          }
+          if (Object.keys(patch).length === 0) {
+            return JSON.stringify({
+              ok: false,
+              error: "No file metadata fields were provided.",
+            });
+          }
+          s.updateProjectFile(project.id, file.id, patch);
+          return JSON.stringify({
+            ok: true,
+            updated: "project_file_metadata",
+            record_id: file.id,
+          });
+        }
+
+        if (action === "delete_project") {
+          s.deleteProject(project.id);
+          appendLog("action", `Deleted project ${project.name}.`);
+          return JSON.stringify({
+            ok: true,
+            deleted: "project",
+            project_id: project.id,
+            project_name: project.name,
+          });
+        }
+
+        return JSON.stringify({
+          ok: false,
+          error: "Unsupported project-record action.",
+        });
+      }
+
       if (name === "create_project") {
         const track =
           args.track === "eu" || args.track === "rnd" ? args.track : "sales";
