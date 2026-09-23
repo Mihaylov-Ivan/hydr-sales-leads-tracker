@@ -1032,9 +1032,62 @@ export default function VoiceAssistant() {
       }
 
       const visibleProjects = allowedProjects();
+      const has = (permission: PermissionType): boolean =>
+        !s.authEnabled ||
+        Boolean(
+          s.user &&
+            (s.user.isAdmin || s.user.permissions.includes(permission)),
+        );
+      const hasCoreProjectAccess = (project: Project): boolean => {
+        if (!s.authEnabled || s.user?.isAdmin) return true;
+        if (!s.user) return false;
+        const track = trackOfProject(project);
+        if (track === "sales") {
+          return (
+            s.user.permissions.includes("sales") ||
+            s.user.permissions.includes("technical_sales")
+          );
+        }
+        return s.user.permissions.includes("eu_funding_rnd");
+      };
+      const hasFinanceProjectAccess = (project: Project): boolean => {
+        if (has("finance")) return true;
+        const track = trackOfProject(project);
+        return track !== "sales" && has("eu_funding_rnd");
+      };
+      const hasGanttReadAccess = (project: Project): boolean => {
+        if (has("production")) return true;
+        if (has("technical_sales")) return true;
+        const track = trackOfProject(project);
+        return track !== "sales" && has("eu_funding_rnd");
+      };
+      const hasGanttWriteAccess = (project: Project): boolean => {
+        if (has("technical_sales")) return true;
+        const track = trackOfProject(project);
+        return track !== "sales" && has("eu_funding_rnd");
+      };
+      const searchableProjects = s.projects.filter((project) => {
+        if (
+          isInternalHiddenProject(project) &&
+          !has("finance") &&
+          !has("warehouse")
+        ) {
+          return false;
+        }
+        return (
+          hasCoreProjectAccess(project) ||
+          hasFinanceProjectAccess(project) ||
+          has("warehouse") ||
+          hasGanttReadAccess(project)
+        );
+      });
       const findProject = (id: unknown) =>
         typeof id === "string"
           ? visibleProjects.find((project) => project.id === id)
+          : undefined;
+      const findAnyProject = (id: unknown) =>
+        typeof id === "string"
+          ? searchableProjects.find((project) => project.id === id)
           : undefined;
 
       if (name === "search_projects") {
@@ -1045,7 +1098,7 @@ export default function VoiceAssistant() {
             error: "A project search query is required.",
           });
         }
-        const matches = visibleProjects
+        const matches = searchableProjects
           .map((project) => ({
             project,
             score: matchScore(query, project),
