@@ -431,6 +431,9 @@ const EXTENDED_CRM_TOOLS = [
         priority: { type: "string", enum: ["high", "medium", "low"] },
         owner_user_id: { type: "string" },
         notes: { type: "string" },
+        strategy_why: { type: "string" },
+        strategy_angle: { type: "string" },
+        strategy_message: { type: "string" },
         size_kw: { type: "number" },
         potential_value: { type: ["number", "null"] },
         existing_relationship: { type: "string" },
@@ -2299,6 +2302,9 @@ export default function VoiceAssistant() {
             priority: (stringValue(args.priority) ?? "medium") as ProspectPriority,
             ownerId: requestedOwner,
             notes: stringValue(args.notes),
+            strategyWhy: stringValue(args.strategy_why),
+            strategyAngle: stringValue(args.strategy_angle),
+            strategyMessage: stringValue(args.strategy_message),
             sizeKw: numberValue(args.size_kw),
             ...(hasContactDetails
               ? {
@@ -2313,8 +2319,48 @@ export default function VoiceAssistant() {
                 }
               : {}),
           });
+          const postCreatePatch: Record<string, unknown> = {};
+          if (args.potential_value === null || typeof args.potential_value === "number") {
+            postCreatePatch.potentialValue = args.potential_value;
+          }
+          if (typeof args.existing_relationship === "string") {
+            postCreatePatch.existingRelationship = args.existing_relationship.trim();
+          }
+          if (typeof args.next_action === "string") {
+            postCreatePatch.nextAction = args.next_action.trim();
+          }
+          if (args.next_action_at === null) {
+            postCreatePatch.nextActionAt = null;
+          } else if (typeof args.next_action_at === "string") {
+            if (!isValidDateOnly(args.next_action_at)) {
+              return JSON.stringify({
+                ok: false,
+                error:
+                  "The prospect was created, but next_action_at was invalid. Use YYYY-MM-DD to update it.",
+                company_id: result.companyId,
+              });
+            }
+            postCreatePatch.nextActionAt = args.next_action_at;
+          }
+          if (typeof args.status === "string") {
+            postCreatePatch.status = args.status as ProspectStatus;
+          }
+          if (args.qualification && typeof args.qualification === "object") {
+            postCreatePatch.qualification = args.qualification as ProspectQualification;
+          }
+          if (Object.keys(postCreatePatch).length > 0) {
+            p.updateCompany(
+              result.companyId,
+              postCreatePatch as Parameters<typeof p.updateCompany>[1],
+            );
+          }
           appendLog("action", `Created prospect ${companyName}.`);
-          return JSON.stringify({ ok: true, ...result, company_name: companyName });
+          return JSON.stringify({
+            ok: true,
+            ...result,
+            company_name: companyName,
+            extra_fields_saved: Object.keys(postCreatePatch),
+          });
         }
 
         if (!company && action !== "update_contact" && action !== "delete_contact") {
