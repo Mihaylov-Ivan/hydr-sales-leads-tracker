@@ -1764,6 +1764,50 @@ export default function VoiceAssistant() {
         });
       }
 
+      if (name === "manage_notifications") {
+        const action = stringValue(args.action);
+        if (action === "list") {
+          return JSON.stringify({
+            ok: true,
+            notifications: s.notifications,
+          });
+        }
+        if (action === "mark_all_read") {
+          s.markAllNotificationsRead();
+          return JSON.stringify({ ok: true, marked_all_read: true });
+        }
+        const notificationId = stringValue(args.notification_id);
+        const notification = notificationId
+          ? s.notifications.find((candidate) => candidate.id === notificationId)
+          : undefined;
+        if (!notification) {
+          return JSON.stringify({
+            ok: false,
+            error: "A valid notification_id is required.",
+          });
+        }
+        if (action === "mark_read") {
+          s.markNotificationRead(notification.id);
+          return JSON.stringify({
+            ok: true,
+            notification_id: notification.id,
+            read: true,
+          });
+        }
+        if (action === "delete") {
+          s.deleteNotification(notification.id);
+          return JSON.stringify({
+            ok: true,
+            deleted: "notification",
+            notification_id: notification.id,
+          });
+        }
+        return JSON.stringify({
+          ok: false,
+          error: "Unsupported notification action.",
+        });
+      }
+
       if (name === "manage_project_record") {
         const project = findProject(args.project_id);
         if (!project) {
@@ -1816,6 +1860,22 @@ export default function VoiceAssistant() {
             ok: true,
             project_id: project.id,
             requested: "summary_regeneration",
+          });
+        }
+
+        if (action === "mark_client_contacted") {
+          if (trackOfProject(project) !== "sales") {
+            return JSON.stringify({
+              ok: false,
+              error: "Client contact tracking is only used on Sales projects.",
+            });
+          }
+          s.markClientContacted(project.id);
+          appendLog("action", `Marked ${project.name} as contacted today.`);
+          return JSON.stringify({
+            ok: true,
+            project_id: project.id,
+            marked_contacted: true,
           });
         }
 
@@ -2280,6 +2340,73 @@ export default function VoiceAssistant() {
           if (!comment) return JSON.stringify({ ok: false, error: "Comment text is required." });
           s.addPersonalTodoComment(todo.id, comment);
           return JSON.stringify({ ok: true, todo_id: todo.id, saved: "comment" });
+        }
+        if (action === "update_comment" || action === "delete_comment") {
+          const commentId = stringValue(args.comment_id);
+          const comment = commentId
+            ? todo.comments.find((candidate) => candidate.id === commentId)
+            : undefined;
+          if (!comment) {
+            return JSON.stringify({
+              ok: false,
+              error: "A valid comment_id is required.",
+            });
+          }
+          if (action === "delete_comment") {
+            s.deletePersonalTodoComment(todo.id, comment.id);
+            return JSON.stringify({
+              ok: true,
+              deleted: "personal_todo_comment",
+              comment_id: comment.id,
+            });
+          }
+          const text = stringValue(args.comment);
+          if (!text) {
+            return JSON.stringify({
+              ok: false,
+              error: "Updated comment text is required.",
+            });
+          }
+          s.updatePersonalTodoComment(todo.id, comment.id, text);
+          return JSON.stringify({
+            ok: true,
+            updated: "personal_todo_comment",
+            comment_id: comment.id,
+          });
+        }
+        if (action === "reorder_up" || action === "reorder_down") {
+          s.reorderPersonalTodo(
+            todo.id,
+            action === "reorder_up" ? "up" : "down",
+          );
+          return JSON.stringify({
+            ok: true,
+            todo_id: todo.id,
+            reordered: action === "reorder_up" ? "up" : "down",
+          });
+        }
+        if (action === "move") {
+          const targetStatus = stringValue(args.target_status) as
+            | PersonalTodoStatus
+            | undefined;
+          if (!targetStatus) {
+            return JSON.stringify({
+              ok: false,
+              error: "target_status is required.",
+            });
+          }
+          const targetIndex =
+            typeof args.target_index === "number" &&
+            Number.isFinite(args.target_index)
+              ? Math.max(0, Math.floor(args.target_index))
+              : 0;
+          s.movePersonalTodo(todo.id, targetStatus, targetIndex);
+          return JSON.stringify({
+            ok: true,
+            todo_id: todo.id,
+            target_status: targetStatus,
+            target_index: targetIndex,
+          });
         }
         if (action === "update") {
           const patch: Parameters<typeof s.updatePersonalTodo>[1] = {};
