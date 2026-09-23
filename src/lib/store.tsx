@@ -74,6 +74,9 @@ import {
   phaseEndDate,
   ScheduleShiftUnit,
   isClientFollowUpTodo,
+  isSetNextStepTodo,
+  SET_NEXT_STEP_TODO_TEXT,
+  projectNeedsSetNextStepNudge,
   ProjectUserReminder,
 } from "./types";
 import {
@@ -3311,6 +3314,63 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [updateTodo]);
 
+  /**
+   * Keep a daily "Set next step" our-action on the project lead whenever a
+   * sales project has no meaningful next step (and is not commissioned).
+   * Due date is always today while the nudge is needed; retire when the
+   * project gains real work, a reminder, or leaves the sales active path.
+   */
+  const syncSetNextStepTodos = useCallback(() => {
+    const list = projectsRef.current;
+    const reminders = projectUserRemindersRef.current;
+    const today = todayDate();
+    suppressAssignmentNotifyRef.current = true;
+    try {
+      for (const project of list) {
+        const openNudges = project.todos.filter(
+          (t) => !t.done && isSetNextStepTodo(t),
+        );
+        const needs = projectNeedsSetNextStepNudge(project, reminders);
+        const leadId = project.leadUserId;
+
+        if (!needs || !leadId) {
+          for (const t of openNudges) {
+            updateTodo(project.id, t.id, { done: true });
+          }
+          continue;
+        }
+
+        const [primary, ...extras] = openNudges;
+        for (const t of extras) {
+          updateTodo(project.id, t.id, { done: true });
+        }
+
+        if (!primary) {
+          addTodo(
+            project.id,
+            "our-action",
+            SET_NEXT_STEP_TODO_TEXT,
+            today,
+            leadId,
+          );
+          continue;
+        }
+
+        const patch: {
+          dueDate?: string;
+          ownerUserId?: string;
+        } = {};
+        if (primary.dueDate !== today) patch.dueDate = today;
+        if (primary.ownerUserId !== leadId) patch.ownerUserId = leadId;
+        if (Object.keys(patch).length > 0) {
+          updateTodo(project.id, primary.id, patch);
+        }
+      }
+    } finally {
+      suppressAssignmentNotifyRef.current = false;
+    }
+  }, [addTodo, updateTodo]);
+
   // One-shot cleanup of legacy follow-up action mirrors (never recreates them).
   useEffect(() => {
     if (!ready) return;
@@ -3319,6 +3379,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     }, 300);
     return () => window.clearTimeout(t);
   }, [ready, projects, retireClientFollowUpTodos]);
+
+  // Keep lead "Set next step" nudges in sync with no-action projects.
+  useEffect(() => {
+    if (!ready) return;
+    const t = window.setTimeout(() => {
+      syncSetNextStepTodos();
+    }, 450);
+    return () => window.clearTimeout(t);
+  }, [ready, projects, projectUserReminders, syncSetNextStepTodos]);
 
   const deleteTodo = useCallback(
     (projectId: string, todoId: string) => {

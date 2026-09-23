@@ -827,7 +827,7 @@ export function LogOutreachDialog({
   );
 }
 
-/** Prepare list → Contacted: channel, summary, follow-up date + reminder task. */
+/** Prepare list → Contacted: channel(s), summary, follow-up date + reminder task. */
 export function MarkContactedDialog({
   company,
   contact,
@@ -844,14 +844,14 @@ export function MarkContactedDialog({
       ? currentUserId
       : contact.ownerId || teamMembers[0]?.id || "";
 
-  const [channel, setChannel] = useState<OutreachChannel>(() => {
+  const [channels, setChannels] = useState<Set<OutreachChannel>>(() => {
     if (
       contact.plannedChannel &&
       PROSPECTING_CHANNELS.includes(contact.plannedChannel)
     ) {
-      return contact.plannedChannel;
+      return new Set([contact.plannedChannel]);
     }
-    return "email";
+    return new Set<OutreachChannel>(["email"]);
   });
   const [summary, setSummary] = useState("");
   const [followUpAt, setFollowUpAt] = useState(() => {
@@ -861,16 +861,26 @@ export function MarkContactedDialog({
     return d.toISOString().slice(0, 10);
   });
 
+  function toggleChannel(channel: OutreachChannel) {
+    setChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(channel)) next.delete(channel);
+      else next.add(channel);
+      return next;
+    });
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!followUpAt) return;
+    if (!followUpAt || channels.size === 0) return;
     const text = summary.trim();
+    const selected = PROSPECTING_CHANNELS.filter((c) => channels.has(c));
 
     markContacted({
       companyId: company.id,
       contactId: contact.id,
       userId,
-      channel,
+      channels: selected,
       summary: text,
       followUpAt,
     });
@@ -878,7 +888,7 @@ export function MarkContactedDialog({
     addPersonalTodo({
       title: `Follow up: ${contact.name} @ ${company.name}`,
       description: [
-        `Channel: ${OUTREACH_CHANNEL_LABELS[channel]}`,
+        `Channel: ${selected.map((c) => OUTREACH_CHANNEL_LABELS[c]).join(", ")}`,
         text || undefined,
         `Prospecting contact follow-up for ${company.name}.`,
       ]
@@ -903,18 +913,35 @@ export function MarkContactedDialog({
       </p>
       <form onSubmit={submit} className="grid gap-3">
         <div>
-          <label className={labelCls}>Channel</label>
-          <select
-            className={selectCls}
-            value={channel}
-            onChange={(e) => setChannel(e.target.value as OutreachChannel)}
-          >
-            {PROSPECTING_CHANNELS.map((c) => (
-              <option key={c} value={c}>
-                {OUTREACH_CHANNEL_LABELS[c]}
-              </option>
-            ))}
-          </select>
+          <label className={labelCls}>Channels</label>
+          <div className="flex flex-wrap gap-2">
+            {PROSPECTING_CHANNELS.map((c) => {
+              const on = channels.has(c);
+              return (
+                <label
+                  key={c}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    on
+                      ? "border-teal-accent/50 bg-teal-soft text-teal-accent"
+                      : "border-line bg-panel text-muted hover:border-teal-accent/40"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={on}
+                    onChange={() => toggleChannel(c)}
+                  />
+                  {OUTREACH_CHANNEL_LABELS[c]}
+                </label>
+              );
+            })}
+          </div>
+          {channels.size === 0 && (
+            <p className="mt-1 text-[11px] text-red-700">
+              Select at least one channel.
+            </p>
+          )}
         </div>
         <div>
           <label className={labelCls}>Summary (optional)</label>
@@ -950,7 +977,8 @@ export function MarkContactedDialog({
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white"
+            disabled={channels.size === 0}
+            className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mark contacted
           </button>

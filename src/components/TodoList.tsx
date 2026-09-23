@@ -9,6 +9,7 @@ import {
   TODO_KIND_LABELS,
   addDays,
   isClientFollowUpTodo,
+  isSetNextStepTodo,
   partitionOpenProjectTodos,
   todayDate,
 } from "@/lib/types";
@@ -264,7 +265,8 @@ function TodoItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
-  const nameLocked = isClientFollowUpTodo(todo, client);
+  const nameLocked =
+    isClientFollowUpTodo(todo, client) || isSetNextStepTodo(todo);
 
   function commit() {
     setEditing(false);

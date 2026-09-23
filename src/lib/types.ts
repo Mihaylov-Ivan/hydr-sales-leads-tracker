@@ -1806,23 +1806,52 @@ export function isClientFollowUpTodo(
   );
 }
 
+/** Title used by auto-created lead nudge when a sales project has no next step. */
+export const SET_NEXT_STEP_TODO_TEXT = "Set next step";
+
+export function isSetNextStepTodo(todo: Pick<ProjectTodo, "kind" | "text">): boolean {
+  return (
+    todo.kind === "our-action" &&
+    todo.text.trim() === SET_NEXT_STEP_TODO_TEXT
+  );
+}
+
+/** Open work that counts as a real next step (excludes system nudge todos). */
+export function hasMeaningfulOpenTodo(p: Project): boolean {
+  return (p.todos ?? []).some(
+    (t) =>
+      !t.done &&
+      !isSetNextStepTodo(t) &&
+      !isClientFollowUpTodo(t, p.client),
+  );
+}
+
 /**
  * True when the project has nothing next: no open questions/actions and
  * no user has an enabled follow-up reminder. Project-level
  * `emailReminderEnabled` is ignored — upcoming contact is driven only by
- * per-user prefs. Warehouse holding and cancelled projects are excluded.
+ * per-user prefs. Warehouse holding, cancelled, and commissioned projects
+ * are excluded.
  */
 export function isProjectNextStepMissing(
   p: Project,
   userReminders: readonly ProjectUserReminder[] = [],
 ): boolean {
-  if (isInternalHiddenProject(p) || p.stage === "cancelled") return false;
+  if (isInternalHiddenProject(p)) return false;
+  if (p.stage === "cancelled" || p.stage === "commissioned") return false;
   if (trackOfProject(p) !== "sales") return false;
-  const hasOpenTodo = (p.todos ?? []).some((t) => !t.done);
   const contactPlanned = userReminders.some(
     (r) => r.projectId === p.id && r.emailReminderEnabled === true,
   );
-  return !hasOpenTodo && !contactPlanned;
+  return !hasMeaningfulOpenTodo(p) && !contactPlanned;
+}
+
+/** Lead should get a daily "Set next step" outstanding nudge. */
+export function projectNeedsSetNextStepNudge(
+  p: Project,
+  userReminders: readonly ProjectUserReminder[] = [],
+): boolean {
+  return isProjectNextStepMissing(p, userReminders) && Boolean(p.leadUserId);
 }
 
 /** Positive = days until due; 0 = due today; negative = days overdue */

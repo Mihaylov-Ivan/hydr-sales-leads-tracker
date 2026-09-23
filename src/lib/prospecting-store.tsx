@@ -40,6 +40,8 @@ import {
   ProspectSystem,
   OutreachChannel,
   OutreachResult,
+  OUTREACH_CHANNEL_LABELS,
+  PROSPECTING_CHANNELS,
   ProspectQualification,
   startOfMonth,
   startOfWeekMonday,
@@ -478,7 +480,8 @@ export interface MarkContactedInput {
   companyId: string;
   contactId: string;
   userId: string;
-  channel: OutreachChannel;
+  /** One or more channels used for this outreach. */
+  channels: OutreachChannel[];
   summary: string;
   /** Follow-up date → reminder task for the logger */
   followUpAt: string;
@@ -1217,18 +1220,122 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
 
   const markContacted = useCallback(
     (input: MarkContactedInput) => {
-      return logOutreach({
+      const channels = [
+        ...new Set(
+          input.channels.filter((c) => PROSPECTING_CHANNELS.includes(c)),
+        ),
+      ];
+      if (channels.length === 0) {
+        throw new Error("Select at least one channel");
+      }
+
+      const now = new Date().toISOString();
+      const occurredAt = now;
+      const contact = stateRef.current.contacts.find(
+        (c) => c.id === input.contactId,
+      );
+      const isFirst = !(
+        contact?.firstContactedAt || (contact?.outreachAttempts ?? 0) > 0
+      );
+      let newStatus = statusAfterOutreachResult(
+        "outreach-sent",
+        contact?.status ?? "contacted",
+      );
+      if (input.followUpAt && newStatus === "contacted") {
+        newStatus = "follow-up-due";
+      }
+
+      const summary = input.summary.trim();
+      const activities: ProspectActivity[] = channels.map((channel, index) => ({
+        id: newId(),
         companyId: input.companyId,
         contactId: input.contactId,
         userId: input.userId,
-        channel: input.channel,
-        result: "outreach-sent",
-        summary: input.summary,
+        channel,
+        result: "outreach-sent" as const,
+        summary,
         nextAction: "Follow up",
         nextActionAt: input.followUpAt,
+        // Only the first channel row counts as the new-contact KPI touch.
+        countsAsNewContact: Boolean(isFirst) && index === 0,
+        createdAt: occurredAt,
+      }));
+
+      setState((prev) => {
+        const contacts = prev.contacts.map((c) => {
+          if (c.id !== input.contactId) return c;
+          const next: ProspectContact = {
+            ...c,
+            status: newStatus,
+            outreachAttempts: c.outreachAttempts + 1,
+            firstContactedAt: c.firstContactedAt ?? occurredAt,
+            lastContactedAt: occurredAt,
+            responseStatus: "outreach-sent",
+            nextFollowUpAt: input.followUpAt,
+            followUpReason: "Follow up",
+            updatedAt: now,
+          };
+          persistContact(next, "upsert");
+          return next;
+        });
+        const companies = prev.companies.map((co) => {
+          if (co.id !== input.companyId) return co;
+          let nextStatus = co.status;
+          if (co.status === "promoted" || co.status === "qualified") {
+            nextStatus = co.status;
+          } else if (
+            newStatus === "follow-up-due" ||
+            newStatus === "contacted"
+          ) {
+            nextStatus = newStatus;
+          } else if (co.status === "target-identified") {
+            nextStatus = "contacted";
+          }
+          const next: ProspectCompany = {
+            ...co,
+            status: nextStatus,
+            lastActivityAt: now,
+            nextAction: "Follow up",
+            nextActionAt: input.followUpAt,
+            updatedAt: now,
+          };
+          persistCompany(next, "upsert");
+          return next;
+        });
+        for (const activity of activities) {
+          persistActivity(activity);
+        }
+        return {
+          ...prev,
+          contacts,
+          companies,
+          activities: [...activities, ...prev.activities],
+        };
       });
+
+      const companyName =
+        stateRef.current.companies.find((c) => c.id === input.companyId)?.name ??
+        input.companyId;
+      const channelLabel = channels
+        .map((c) => OUTREACH_CHANNEL_LABELS[c])
+        .join(", ");
+      recordProspectChange({
+        entityType: "prospect_activity",
+        entityId: activities[0]!.id,
+        action: "create",
+        summary: `Logged ${channelLabel} outreach at ${companyName}`,
+        payloadJson: {
+          companyId: input.companyId,
+          contactId: input.contactId,
+          channels,
+          result: "outreach-sent",
+          preview: summary.slice(0, 120),
+        },
+      });
+
+      return activities[0]!.id;
     },
-    [logOutreach],
+    [persistActivity, persistCompany, persistContact, recordProspectChange],
   );
 
   const logEngagement = useCallback(
