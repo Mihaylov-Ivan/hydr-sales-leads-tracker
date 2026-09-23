@@ -190,7 +190,14 @@ const CRM_TOOLS = [
   },
 ] as const;
 
-function normalizeSearch(value: string): string {\n  return value\n    .toLowerCase()\n    .normalize("NFD")\n    .replace(/[\\u0300-\\u036f]/g, "")\n    .replace(/\\s+/g, " ")\n    .trim();\n}
+function normalizeSearch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function matchScore(query: string, project: Project): number {
   const q = normalizeSearch(query);
