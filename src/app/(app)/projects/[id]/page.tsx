@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
-import { Stage, STAGE_LABELS, stagesForTrack, trackOfProject, isClientFollowUpTodo } from "@/lib/types";
+import { Stage, STAGE_LABELS, stagesForTrack, trackOfProject, isClientFollowUpTodo, isSetNextStepTodo } from "@/lib/types";
 import { generateSummary, isProjectSummaryEnabled } from "@/lib/summary";
 import StageBadge from "@/components/StageBadge";
 import TodoList from "@/components/TodoList";
@@ -650,7 +650,9 @@ export default function ProjectPage() {
         kind="our-action"
         todos={project.todos.filter(
           (t) =>
-            t.kind === "our-action" && !isClientFollowUpTodo(t, project.client),
+            t.kind === "our-action" &&
+            !isClientFollowUpTodo(t, project.client) &&
+            !isSetNextStepTodo(t),
         )}
         readOnly={!canWrite}
       />

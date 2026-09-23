@@ -18,6 +18,7 @@ import {
   compareTodosByWorkWindowStart,
   daysBetween,
   isClientFollowUpTodo,
+  isSetNextStepTodo,
   isUserEmailReminderDue,
   nextEmailReminderDateForUser,
   isOwnPersonalTodo,
@@ -733,6 +734,7 @@ export default function OutstandingSidebar() {
         if (todo.done) continue;
         // Follow-ups are reminder Contact rows, not action todos
         if (isClientFollowUpTodo(todo, project.client)) continue;
+        if (isSetNextStepTodo(todo)) continue;
         if (
           !todoMatchesOwnerFilter(todo, selectedOwnerIds, allOwnersSelected)
         ) {
@@ -778,6 +780,7 @@ export default function OutstandingSidebar() {
         if (t.done || projectWorkWindow.excludedIds.has(t.id)) return false;
         // Never list auto follow-ups as actions — they render as Contact reminders
         if (isClientFollowUpTodo(t, project.client)) return false;
+        if (isSetNextStepTodo(t)) return false;
         return todoMatchesOwnerFilter(t, selectedOwnerIds, allOwnersSelected);
       });
 

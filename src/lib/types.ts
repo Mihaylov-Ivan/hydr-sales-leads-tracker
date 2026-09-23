@@ -1806,7 +1806,7 @@ export function isClientFollowUpTodo(
   );
 }
 
-/** Title used by auto-created lead nudge when a sales project has no next step. */
+/** Title used by retired auto-created lead nudges (flag-only now). */
 export const SET_NEXT_STEP_TODO_TEXT = "Set next step";
 
 export function isSetNextStepTodo(todo: Pick<ProjectTodo, "kind" | "text">): boolean {
@@ -1816,7 +1816,7 @@ export function isSetNextStepTodo(todo: Pick<ProjectTodo, "kind" | "text">): boo
   );
 }
 
-/** Open work that counts as a real next step (excludes system nudge todos). */
+/** Open work that counts as a real next step (excludes retired system nudge todos). */
 export function hasMeaningfulOpenTodo(p: Project): boolean {
   return (p.todos ?? []).some(
     (t) =>
@@ -1844,14 +1844,6 @@ export function isProjectNextStepMissing(
     (r) => r.projectId === p.id && r.emailReminderEnabled === true,
   );
   return !hasMeaningfulOpenTodo(p) && !contactPlanned;
-}
-
-/** Lead should get a daily "Set next step" outstanding nudge. */
-export function projectNeedsSetNextStepNudge(
-  p: Project,
-  userReminders: readonly ProjectUserReminder[] = [],
-): boolean {
-  return isProjectNextStepMissing(p, userReminders) && Boolean(p.leadUserId);
 }
 
 /** Positive = days until due; 0 = due today; negative = days overdue */
