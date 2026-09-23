@@ -419,6 +419,7 @@ const EXTENDED_CRM_TOOLS = [
         company_id: { type: "string" },
         contact_id: { type: "string" },
         name: { type: "string" },
+        contact_name: { type: "string" },
         country: { type: "string" },
         city: { type: "string" },
         site_name: { type: "string" },
