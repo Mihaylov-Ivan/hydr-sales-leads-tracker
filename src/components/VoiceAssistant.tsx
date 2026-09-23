@@ -1290,6 +1290,332 @@ export default function VoiceAssistant() {
         });
       }
 
+      if (name === "get_portfolio_update") {
+        const ids = Array.isArray(args.project_ids)
+          ? args.project_ids.filter((x): x is string => typeof x === "string")
+          : [];
+        const query = stringValue(args.query);
+        const days =
+          typeof args.days === "number" && Number.isFinite(args.days)
+            ? Math.max(0, Math.floor(args.days))
+            : null;
+        const limit =
+          typeof args.limit === "number" && Number.isFinite(args.limit)
+            ? Math.max(1, Math.min(100, Math.floor(args.limit)))
+            : 60;
+
+        let selected = visibleProjects;
+        if (ids.length > 0) {
+          const wanted = new Set(ids);
+          selected = selected.filter((project) => wanted.has(project.id));
+        }
+        if (query) {
+          selected = selected.filter((project) => matchScore(query, project) > 0);
+        }
+
+        const cutoff =
+          days == null ? null : Date.now() - days * 24 * 60 * 60 * 1000;
+        const rows = selected
+          .map((project) => {
+            const updates = [...(project.comments ?? [])].sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            );
+            const recentUpdates =
+              cutoff == null
+                ? updates.slice(0, 4)
+                : updates
+                    .filter(
+                      (x) => new Date(x.createdAt).getTime() >= cutoff,
+                    )
+                    .slice(0, 6);
+            const openTasks = (project.todos ?? [])
+              .filter((todo) => !todo.done)
+              .sort((a, b) =>
+                (a.dueDate ?? "9999-12-31").localeCompare(
+                  b.dueDate ?? "9999-12-31",
+                ),
+              )
+              .slice(0, 6)
+              .map((todo) => ({
+                id: todo.id,
+                text: todo.text,
+                due_date: todo.dueDate ?? null,
+                owner_user_id: todo.ownerUserId ?? null,
+              }));
+            const latestActivityAt =
+              recentUpdates[0]?.createdAt ??
+              project.lastMeaningfulActivityAt ??
+              project.createdAt;
+            return {
+              id: project.id,
+              name: project.name,
+              client: project.client,
+              stage: project.stage,
+              stage_label: STAGE_LABELS[project.stage],
+              track: trackOfProject(project),
+              summary: project.aiSummary || project.baseDescription || "",
+              latest_activity_at: latestActivityAt,
+              recent_updates: recentUpdates.map((update) => ({
+                text: update.text,
+                author: update.author,
+                created_at: update.createdAt,
+                stage_change: update.stageChange ?? null,
+              })),
+              open_tasks: openTasks,
+            };
+          })
+          .sort((a, b) =>
+            String(b.latest_activity_at).localeCompare(
+              String(a.latest_activity_at),
+            ),
+          )
+          .slice(0, limit);
+
+        return JSON.stringify({
+          ok: true,
+          count: rows.length,
+          requested_all_projects: ids.length === 0 && !query,
+          projects: rows,
+          instruction:
+            "Summarize these facts in the format the user asked for. For an update request, prioritize what changed recently, current stage, blockers/open actions, and next steps. Do not invent missing events.",
+        });
+      }
+
+      if (name === "search_prospects") {
+        if (!has("sales")) {
+          return JSON.stringify({
+            ok: false,
+            error: "Prospecting requires Sales permission.",
+          });
+        }
+        if (!s.prospecting.ready) {
+          return JSON.stringify({
+            ok: false,
+            error: "Prospecting data is still loading.",
+          });
+        }
+        const query = stringValue(args.query);
+        if (!query) {
+          return JSON.stringify({
+            ok: false,
+            error: "A prospect search query is required.",
+          });
+        }
+        const q = normalizeSearch(query);
+        const matches = s.prospecting.companies
+          .map((company) => {
+            const contacts = s.prospecting.contacts.filter(
+              (contact) => contact.companyId === company.id,
+            );
+            const haystack = normalizeSearch(
+              [
+                company.name,
+                company.country,
+                company.city,
+                company.siteName,
+                company.website,
+                company.industry,
+                company.notes,
+                ...contacts.flatMap((contact) => [
+                  contact.name,
+                  contact.email,
+                  contact.phone,
+                  contact.title,
+                ]),
+              ].join(" "),
+            );
+            let score = 0;
+            const companyName = normalizeSearch(company.name);
+            if (companyName === q) score += 120;
+            if (companyName.startsWith(q)) score += 70;
+            if (companyName.includes(q)) score += 50;
+            if (haystack.includes(q)) score += 35;
+            for (const token of q.split(/\s+/).filter(Boolean)) {
+              if (haystack.includes(token)) score += 8;
+            }
+            return { company, contacts, score };
+          })
+          .filter((row) => row.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10)
+          .map(({ company, contacts, score }) => ({
+            id: company.id,
+            name: company.name,
+            location: [company.city, company.country].filter(Boolean).join(", "),
+            industry: company.industry,
+            status: company.status,
+            priority: company.priority,
+            next_action: company.nextAction,
+            next_action_at: company.nextActionAt,
+            contacts: contacts.slice(0, 5).map((contact) => ({
+              id: contact.id,
+              name: contact.name,
+              email: contact.email,
+              title: contact.title,
+            })),
+            score,
+          }));
+        return JSON.stringify({ ok: true, count: matches.length, prospects: matches });
+      }
+
+      if (name === "get_prospect") {
+        if (!has("sales")) {
+          return JSON.stringify({
+            ok: false,
+            error: "Prospecting requires Sales permission.",
+          });
+        }
+        const companyId = stringValue(args.company_id);
+        const company = companyId
+          ? s.prospecting.companies.find((x) => x.id === companyId)
+          : undefined;
+        if (!company) {
+          return JSON.stringify({ ok: false, error: "Prospect company not found." });
+        }
+        const contacts = s.prospecting.contacts.filter(
+          (contact) => contact.companyId === company.id,
+        );
+        const activities = s.prospecting.activities
+          .filter((activity) => activity.companyId === company.id)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, 25);
+        return JSON.stringify({
+          ok: true,
+          company,
+          contacts,
+          recent_activities: activities,
+        });
+      }
+
+      if (name === "manage_personal_todo" && args.action === "list") {
+        const mine =
+          s.authEnabled && s.user
+            ? s.personalTodos.filter(
+                (todo) => todo.ownerUserId === s.user?.userId,
+              )
+            : s.personalTodos;
+        return JSON.stringify({ ok: true, todos: mine });
+      }
+
+      if (name === "manage_prospecting_strategy" && args.action === "list") {
+        if (!has("sales")) {
+          return JSON.stringify({
+            ok: false,
+            error: "Prospecting strategies require Sales permission.",
+          });
+        }
+        return JSON.stringify({
+          ok: true,
+          strategies: s.prospecting.strategies,
+          targets: s.prospecting.targets,
+          kpis: s.prospecting.kpis,
+        });
+      }
+
+      if (name === "manage_project_finance" && args.action === "get") {
+        const project = findAnyProject(args.project_id);
+        if (!project || !hasFinanceProjectAccess(project)) {
+          return JSON.stringify({
+            ok: false,
+            error: "Project finance is not available to this user.",
+          });
+        }
+        return JSON.stringify({
+          ok: true,
+          project_id: project.id,
+          project_name: project.name,
+          financials: project.financials,
+        });
+      }
+
+      if (name === "manage_gantt" && args.action === "get") {
+        const project = findAnyProject(args.project_id);
+        if (!project || !hasGanttReadAccess(project)) {
+          return JSON.stringify({
+            ok: false,
+            error: "Project schedule is not available to this user.",
+          });
+        }
+        return JSON.stringify({
+          ok: true,
+          project_id: project.id,
+          project_name: project.name,
+          schedule: project.schedule,
+          can_edit: hasGanttWriteAccess(project) && (!s.authEnabled || s.canWrite),
+        });
+      }
+
+      if (name === "manage_warehouse") {
+        const action = stringValue(args.action);
+        if (action === "summary" || action === "search_items") {
+          if (!has("warehouse")) {
+            return JSON.stringify({
+              ok: false,
+              error: "Warehouse access requires Warehouse permission.",
+            });
+          }
+          if (action === "summary") {
+            const onHand = s.warehouse.balances.reduce(
+              (sum, balance) => sum + Math.max(0, balance.qty),
+              0,
+            );
+            return JSON.stringify({
+              ok: true,
+              item_count: s.warehouse.items.length,
+              lot_count: s.warehouse.lots.length,
+              balance_count: s.warehouse.balances.length,
+              total_quantity_units: onHand,
+              groups: s.warehouse.groups,
+              boms: s.warehouse.boms,
+            });
+          }
+          const q = normalizeSearch(stringValue(args.query) ?? "");
+          const items = s.warehouse.items
+            .filter((item) => {
+              if (!q) return true;
+              return normalizeSearch(
+                [item.name, item.sku ?? "", item.preferredSupplier ?? ""].join(" "),
+              ).includes(q);
+            })
+            .slice(0, 30)
+            .map((item) => ({
+              ...item,
+              on_hand: s.warehouse.balances
+                .filter((balance) => {
+                  const lot = s.warehouse.lots.find(
+                    (candidate) => candidate.id === balance.lotId,
+                  );
+                  return lot?.itemId === item.id;
+                })
+                .reduce((sum, balance) => sum + balance.qty, 0),
+            }));
+          return JSON.stringify({ ok: true, items });
+        }
+      }
+
+      if (name === "manage_company_settings") {
+        const action = stringValue(args.action);
+        if (action === "get_finance") {
+          if (!has("finance")) {
+            return JSON.stringify({
+              ok: false,
+              error: "Company finance settings require Finance permission.",
+            });
+          }
+          return JSON.stringify({ ok: true, finance_settings: s.financeSettings });
+        }
+        if (action === "get_metrics") {
+          if (!has("sales")) {
+            return JSON.stringify({
+              ok: false,
+              error: "Pipeline metrics settings require Sales permission.",
+            });
+          }
+          return JSON.stringify({ ok: true, metrics_settings: s.metricsSettings });
+        }
+      }
+
       const canMutate = !s.authEnabled || s.canWrite;
       if (!canMutate) {
         return JSON.stringify({
