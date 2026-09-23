@@ -407,3 +407,211 @@ export async function executeVoiceTool(
         email: member.email ?? null,
         score,
       }));
+    return JSON.stringify({ ok: true, count: matches.length, team_members: matches });
+  }
+
+  if (name === "workspace_read") {
+    const area = str("area");
+    if (area === "personal_todos") {
+      return JSON.stringify({
+        ok: true,
+        personal_todos: p.personalTodos.filter((todo) => {
+          if (!ctx.authEnabled) return true;
+          return Boolean(
+            currentUserId &&
+              (!todo.ownerUserId || todo.ownerUserId === currentUserId),
+          );
+        }),
+      });
+    }
+    if (area === "finance_settings") {
+      if (!has("finance")) {
+        return JSON.stringify({ ok: false, error: "Finance permission is required." });
+      }
+      return JSON.stringify({ ok: true, finance_settings: p.financeSettings });
+    }
+    if (area === "metrics_settings") {
+      if (!has("sales")) {
+        return JSON.stringify({ ok: false, error: "Sales permission is required." });
+      }
+      return JSON.stringify({ ok: true, metrics_settings: p.metricsSettings });
+    }
+    if (area === "notifications") {
+      return JSON.stringify({
+        ok: true,
+        notifications: p.notifications,
+        unread_count: p.unreadNotificationCount,
+      });
+    }
+    if (area === "prospecting_summary") {
+      if (!canProspecting()) {
+        return JSON.stringify({ ok: false, error: "Sales permission is required." });
+      }
+      return JSON.stringify({
+        ok: true,
+        kpis: prospect.kpis,
+        targets: prospect.targets,
+        strategies: prospect.strategies,
+        company_count: prospect.companies.length,
+        contact_count: prospect.contacts.length,
+      });
+    }
+    if (area === "warehouse_summary") {
+      if (!canWarehouse()) {
+        return JSON.stringify({ ok: false, error: "Warehouse permission is required." });
+      }
+      return JSON.stringify({
+        ok: true,
+        counts: {
+          items: p.warehouse.items.length,
+          lots: p.warehouse.lots.length,
+          balances: p.warehouse.balances.length,
+          groups: p.warehouse.groups.length,
+          serials: p.warehouse.serials.length,
+          boms: p.warehouse.boms.length,
+        },
+        holding_project_id: p.warehouse.holdingProjectId,
+      });
+    }
+    return JSON.stringify({ ok: false, error: "Unknown workspace area." });
+  }
+
+  if (name === "search_prospects") {
+    if (!canProspecting()) {
+      return JSON.stringify({ ok: false, error: "Sales permission is required." });
+    }
+    const query = normalizeSearch(str("query"));
+    if (!query) {
+      return JSON.stringify({ ok: false, error: "A prospect search query is required." });
+    }
+    const companies = prospect.companies
+      .map((company) => {
+        const haystack = normalizeSearch(
+          [
+            company.name,
+            company.country,
+            company.city,
+            company.siteName,
+            company.website,
+            company.industry,
+            company.market,
+            company.system,
+          ].join(" "),
+        );
+        let score = haystack.includes(query) ? 50 : 0;
+        if (normalizeSearch(company.name) === query) score += 100;
+        if (normalizeSearch(company.name).startsWith(query)) score += 60;
+        return { company, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ company, score }) => ({
+        id: company.id,
+        name: company.name,
+        location: [company.city, company.country].filter(Boolean).join(", "),
+        status: company.status,
+        market: company.market,
+        system: company.system,
+        owner_user_id: company.ownerId || null,
+        promoted_project_id: company.promotedProjectId,
+        score,
+      }));
+    const contacts = prospect.contacts
+      .map((contact) => {
+        const company = prospect.companies.find(
+          (candidate) => candidate.id === contact.companyId,
+        );
+        const haystack = normalizeSearch(
+          [
+            contact.name,
+            contact.title,
+            contact.department,
+            contact.email,
+            contact.phone,
+            company?.name ?? "",
+          ].join(" "),
+        );
+        let score = haystack.includes(query) ? 40 : 0;
+        if (normalizeSearch(contact.name) === query) score += 100;
+        if (normalizeSearch(contact.email) === query) score += 100;
+        return { contact, company, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ contact, company, score }) => ({
+        id: contact.id,
+        company_id: contact.companyId,
+        company_name: company?.name ?? "",
+        name: contact.name,
+        title: contact.title,
+        email: contact.email,
+        phone: contact.phone,
+        status: contact.status,
+        score,
+      }));
+    return JSON.stringify({ ok: true, companies, contacts });
+  }
+
+  if (name === "get_prospect_company") {
+    if (!canProspecting()) {
+      return JSON.stringify({ ok: false, error: "Sales permission is required." });
+    }
+    const company = prospect.companies.find(
+      (candidate) => candidate.id === str("company_id"),
+    );
+    if (!company) {
+      return JSON.stringify({ ok: false, error: "Prospect company not found." });
+    }
+    return JSON.stringify({
+      ok: true,
+      company,
+      contacts: prospect.contacts.filter((contact) => contact.companyId === company.id),
+      recent_activities: prospect.activities
+        .filter((activity) => activity.companyId === company.id)
+        .slice(0, 30),
+    });
+  }
+
+  if (name === "warehouse_search") {
+    if (!canWarehouse()) {
+      return JSON.stringify({ ok: false, error: "Warehouse permission is required." });
+    }
+    const query = normalizeSearch(str("query"));
+    if (!query) {
+      return JSON.stringify({ ok: false, error: "A warehouse search query is required." });
+    }
+    const items = p.warehouse.items
+      .filter((item) =>
+        normalizeSearch(
+          [item.name, item.sku ?? "", item.preferredSupplier ?? ""].join(" "),
+        ).includes(query),
+      )
+      .slice(0, 20);
+    const itemIds = new Set(items.map((item) => item.id));
+    const lots = p.warehouse.lots
+      .filter(
+        (lot) =>
+          itemIds.has(lot.itemId) ||
+          normalizeSearch(
+            [lot.supplier ?? "", lot.label ?? "", lot.notes ?? ""].join(" "),
+          ).includes(query),
+      )
+      .slice(0, 30);
+    const lotIds = new Set(lots.map((lot) => lot.id));
+    return JSON.stringify({
+      ok: true,
+      items,
+      lots,
+      groups: p.warehouse.groups
+        .filter((group) => normalizeSearch(group.name).includes(query))
+        .slice(0, 20),
+      boms: p.warehouse.boms
+        .filter((bom) =>
+          normalizeSearch(
+            [bom.name, bom.outputGroup ?? "", bom.productFamily ?? ""].join(" "),
+          ).includes(query),
+        )
+        .slice(0, 20),
+      balances: p.warehouse.balances
