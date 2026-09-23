@@ -51,13 +51,11 @@ export async function POST(request: NextRequest) {
     }
 
     const user = sessionUserFromPayload(payload);
-    const hasCrmAccess =
-      user.isAdmin ||
-      user.permissions.includes("sales") ||
-      user.permissions.includes("technical_sales") ||
-      user.permissions.includes("eu_funding_rnd");
 
-    if (isViewerUser(user) || !hasCrmAccess) {
+    // Hydr AI mirrors the signed-in user's permissions. Any authenticated
+    // non-viewer may use it (including finance/warehouse/production-only users);
+    // individual CRM tools enforce the same area permissions as the UI.
+    if (isViewerUser(user)) {
       return NextResponse.json(
         { error: "This account cannot use the CRM voice assistant" },
         { status: 403 },
