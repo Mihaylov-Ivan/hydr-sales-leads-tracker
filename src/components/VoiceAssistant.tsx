@@ -3893,10 +3893,13 @@ CRM safety and action rules:
                   Speak normally — no special commands needed.
                 </p>
                 <p>
-                  “Update Project DW: we visited the site and optimized the burners…”
+                  “Give me a bullet-point update on all projects and what happened lately.”
                 </p>
                 <p>
-                  “Add a task to contact Volkswagen next Thursday and assign it to Elena.”
+                  “Add a new prospect for ACME. I’ll give you the contact details.”
+                </p>
+                <p>
+                  “Update the DW Gantt: move engineering to 5 October and make it 12 days.”
                 </p>
                 <p className="text-[11px]">
                   If a project, person, or date is unclear, Hydr AI will ask you before changing the CRM.
@@ -3907,7 +3910,7 @@ CRM safety and action rules:
                 {logs.map((entry) => (
                   <div
                     key={entry.id}
-                    className={`rounded-lg px-3 py-2 text-xs leading-relaxed ${
+                    className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-xs leading-relaxed ${
                       entry.kind === "action"
                         ? "border border-teal-accent/20 bg-teal-soft text-deep"
                         : entry.kind === "error"
