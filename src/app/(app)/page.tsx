@@ -21,7 +21,11 @@ import {
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import ProjectMultiSelect from "@/components/ProjectMultiSelect";
 import NewProjectDialog from "@/components/NewProjectDialog";
+import FilterMultiSelect from "@/components/FilterMultiSelect";
 import { useAuth } from "@/lib/auth-context";
+import { assignableTeamMembers } from "@/lib/permissions";
+
+const UNASSIGNED_LEAD = "__unassigned__";
 
 type SizeBucket = "any" | "small" | "medium" | "large";
 
@@ -336,9 +340,11 @@ export default function Dashboard() {
     projects,
     ready,
     updateProject,
+    teamMembers,
   } = useProjects();
   const { user, canWrite } = useAuth();
   const [countryFilter, setCountryFilter] = useState("all");
+  const [leadFilterIds, setLeadFilterIds] = useState<Set<string> | null>(null);
   const [marketFilter, setMarketFilter] = useState<Set<MarketTag>>(
     () => new Set(MARKETS),
   );
@@ -383,6 +389,31 @@ export default function Dashboard() {
     [projects],
   );
 
+  const leadFilterOptions = useMemo(() => {
+    const assignable = assignableTeamMembers(teamMembers);
+    const byId = new Map(assignable.map((m) => [m.id, m]));
+    for (const p of projects) {
+      if (!p.leadUserId || byId.has(p.leadUserId)) continue;
+      const member = teamMembers.find((m) => m.id === p.leadUserId);
+      if (member) byId.set(member.id, member);
+    }
+    const people = [...byId.values()]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((m) => ({ id: m.id, label: m.name }));
+    return [...people, { id: UNASSIGNED_LEAD, label: "Unassigned" }];
+  }, [teamMembers, projects]);
+
+  const selectedLeadIds = useMemo(() => {
+    if (leadFilterIds === null) {
+      return new Set(leadFilterOptions.map((o) => o.id));
+    }
+    return leadFilterIds;
+  }, [leadFilterIds, leadFilterOptions]);
+
+  const allLeadsSelected =
+    leadFilterOptions.length > 0 &&
+    leadFilterOptions.every((o) => selectedLeadIds.has(o.id));
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === sizeFilter)!;
@@ -391,6 +422,10 @@ export default function Dashboard() {
         !p.isWarehouseHolding &&
         (p.track == null || p.track === "sales") &&
         (countryFilter === "all" || p.country === countryFilter) &&
+        (allLeadsSelected ||
+          (p.leadUserId
+            ? selectedLeadIds.has(p.leadUserId)
+            : selectedLeadIds.has(UNASSIGNED_LEAD))) &&
         MARKETS.some(
           (m) => marketFilter.has(m) && marketIncludesTag(p.market, m),
         ) &&
@@ -401,7 +436,15 @@ export default function Dashboard() {
             .toLowerCase()
             .includes(q)),
     );
-  }, [projects, countryFilter, marketFilter, sizeFilter, search]);
+  }, [
+    projects,
+    countryFilter,
+    allLeadsSelected,
+    selectedLeadIds,
+    marketFilter,
+    sizeFilter,
+    search,
+  ]);
 
   function toggleMarket(m: MarketTag) {
     setMarketFilter((prev) => {
@@ -546,6 +589,26 @@ export default function Dashboard() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search projects, clients, cities…"
           className="min-w-56 flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm placeholder:text-muted/60 outline-none focus:border-teal-accent"
+        />
+        <FilterMultiSelect
+          title="Leads"
+          options={leadFilterOptions}
+          selectedIds={selectedLeadIds}
+          onToggle={(id) => {
+            setLeadFilterIds(() => {
+              const next = new Set(selectedLeadIds);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              return next;
+            });
+          }}
+          onSelectAll={() =>
+            setLeadFilterIds(new Set(leadFilterOptions.map((o) => o.id)))
+          }
+          onClear={() => setLeadFilterIds(new Set())}
+          allLabel="All leads"
+          noneLabel="No leads"
+          manyLabel={(n) => `${n} leads`}
         />
         <select
           className={selectCls}
