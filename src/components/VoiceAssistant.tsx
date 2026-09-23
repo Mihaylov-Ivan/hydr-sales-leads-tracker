@@ -2014,7 +2014,7 @@ export default function VoiceAssistant() {
           const raw = args[argKey];
           if (raw === null) {
             if (patchKey !== "coldLeadEnteredAt" && patchKey !== "lastMeaningfulActivityAt") {
-              (patch as Record<string, unknown>)[patchKey] = undefined;
+              (patch as Record<string, unknown>)[patchKey] = "";
             }
           } else if (typeof raw === "string") {
             if (!isValidDateOnly(raw)) {
@@ -2027,7 +2027,7 @@ export default function VoiceAssistant() {
           }
         }
         if (args.cancellation_reason === null) {
-          patch.cancellationReason = undefined;
+          patch.cancellationReason = "";
         } else if (typeof args.cancellation_reason === "string") {
           patch.cancellationReason = args.cancellation_reason.trim() || undefined;
         }
