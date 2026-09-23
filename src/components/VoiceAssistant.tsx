@@ -26,7 +26,6 @@ import {
   type PersonalTodoStatus,
   type ProjectExpenseCategory,
   type ScheduleShiftUnit,
-  type WarehouseLocation,
   type WarehouseMaterialKind,
 } from "@/lib/types";
 import {
@@ -925,7 +924,6 @@ export default function VoiceAssistant() {
     user,
     authEnabled,
     ready: authReady,
-    can,
     canWrite,
     isViewer,
   } = useAuth();
