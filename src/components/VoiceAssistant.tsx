@@ -353,7 +353,18 @@ const EXTENDED_CRM_TOOLS = [
       properties: {
         action: {
           type: "string",
-          enum: ["list", "create", "update", "delete", "add_comment"],
+          enum: [
+            "list",
+            "create",
+            "update",
+            "delete",
+            "add_comment",
+            "update_comment",
+            "delete_comment",
+            "reorder_up",
+            "reorder_down",
+            "move"
+          ],
         },
         todo_id: { type: "string" },
         title: { type: "string" },
@@ -366,6 +377,29 @@ const EXTENDED_CRM_TOOLS = [
         start_date: { type: ["string", "null"] },
         end_date: { type: ["string", "null"] },
         comment: { type: "string" },
+        comment_id: { type: "string" },
+        target_status: {
+          type: "string",
+          enum: ["cancelled", "todo", "doing", "done"],
+        },
+        target_index: { type: "integer" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_notifications",
+    description:
+      "Read and manage the signed-in user's in-app notifications.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list", "mark_read", "mark_all_read", "delete"],
+        },
+        notification_id: { type: "string" },
       },
       required: ["action"],
     },
@@ -644,6 +678,7 @@ const EXTENDED_CRM_TOOLS = [
             "regenerate_summary",
             "get_followup_reminder",
             "update_followup_reminder",
+            "mark_client_contacted",
             "update_file_metadata",
             "delete_file",
             "delete_project"
