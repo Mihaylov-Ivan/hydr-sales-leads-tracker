@@ -42,6 +42,8 @@ OPENAI_REALTIME_VOICE=marin
 
 If `OPENAI_BASE_URL` is set, the realtime route uses that base URL too; the endpoint must support `/v1/realtime/calls`.
 
+Browser microphone access requires a secure context. `http://localhost` works for local testing, but opening the CRM from another device over a plain `http://192.168.x.x` LAN URL will normally block microphone access; use HTTPS for LAN/mobile voice testing.
+
 ### Voice v1 actions
 
 - Search for a project by project name, client, country, or city
@@ -57,7 +59,7 @@ The assistant executes writes through the existing CRM store methods, so comment
 
 ## Data storage
 
-Data is currently stored in the browser's `localStorage` (key `hydrogenera-lead-tracker-v1`) and seeded with sample projects on first run. A real database can be plugged in later by replacing `src/lib/store.tsx` with API-backed calls.
+CRM data uses Supabase when the Supabase environment variables are configured, with local browser fallbacks retained for supported offline/development data. Voice actions call the same existing store methods as the manual UI instead of writing to a separate AI database path.
 
 ## Development
 
