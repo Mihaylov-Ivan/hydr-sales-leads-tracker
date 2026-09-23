@@ -1122,16 +1122,15 @@ export default function VoiceAssistant() {
         const track = trackOfProject(project);
         return track !== "sales" && has("eu_funding_rnd");
       };
+      const hasGanttWriteAccess = (project: Project): boolean => {
+        if (!s.authEnabled || s.user?.isAdmin) return true;
+        const track = trackOfProject(project);
+        if (track === "sales") return has("technical_sales");
+        return has("eu_funding_rnd");
+      };
       const hasGanttReadAccess = (project: Project): boolean => {
         if (has("production")) return true;
-        if (has("technical_sales")) return true;
-        const track = trackOfProject(project);
-        return track !== "sales" && has("eu_funding_rnd");
-      };
-      const hasGanttWriteAccess = (project: Project): boolean => {
-        if (has("technical_sales")) return true;
-        const track = trackOfProject(project);
-        return track !== "sales" && has("eu_funding_rnd");
+        return hasGanttWriteAccess(project);
       };
       const searchableProjects = s.projects.filter((project) => {
         if (
