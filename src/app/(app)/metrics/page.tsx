@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
-import { TEAM_MEMBERS, todayDate, trackOfProject } from "@/lib/types";
+import { TEAM_MEMBERS, todayDate, isSalesBoardProject } from "@/lib/types";
 import {
   buildMetricsSnapshot,
   outcomeLabel,
@@ -114,7 +114,7 @@ export default function MetricsPage() {
   const metricsProjects = useMemo(() => {
     if (useDemoData) return PLACEHOLDER_METRICS_PROJECTS;
     return projects
-      .filter((p) => !p.isWarehouseHolding && trackOfProject(p) === "sales")
+      .filter((p) => isSalesBoardProject(p))
       .map(projectToMetricsProject);
   }, [projects, useDemoData]);
 

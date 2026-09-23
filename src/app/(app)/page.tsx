@@ -11,6 +11,7 @@ import {
   BOARD_STAGES,
   STAGES,
   isProjectNextStepMissing,
+  isSalesBoardProject,
   marketIncludesTag,
 } from "@/lib/types";
 import {
@@ -419,8 +420,7 @@ export default function Dashboard() {
     const bucket = SIZE_BUCKETS.find((b) => b.id === sizeFilter)!;
     return projects.filter(
       (p) =>
-        !p.isWarehouseHolding &&
-        (p.track == null || p.track === "sales") &&
+        isSalesBoardProject(p) &&
         (countryFilter === "all" || p.country === countryFilter) &&
         (allLeadsSelected ||
           (p.leadUserId

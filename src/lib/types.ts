@@ -120,11 +120,25 @@ export function trackOfProject(p: {
   return normalizeProjectTrack(p.track);
 }
 
+/** Demo / cost-baseline project used by warehouse manufacturing costs — not a real lead. */
+export const MANUFACTURING_COST_DEMO_PROJECT_NAME = "Example 500kW Z-Series";
+
+/** Hidden from sales board / outstanding (warehouse holding + cost demo). */
+export function isInternalHiddenProject(p: {
+  name?: string;
+  isWarehouseHolding?: boolean;
+}): boolean {
+  if (p.isWarehouseHolding) return true;
+  const name = p.name?.trim().toLowerCase() ?? "";
+  return name === MANUFACTURING_COST_DEMO_PROJECT_NAME.toLowerCase();
+}
+
 export function isSalesBoardProject(p: {
+  name?: string;
   track?: ProjectTrack | null;
   isWarehouseHolding?: boolean;
 }): boolean {
-  return !p.isWarehouseHolding && trackOfProject(p) === "sales";
+  return !isInternalHiddenProject(p) && trackOfProject(p) === "sales";
 }
 
 /** Map legacy / unknown stage ids onto a valid Stage. */
@@ -1798,7 +1812,7 @@ export function isClientFollowUpTodo(
  * projects are excluded.
  */
 export function isProjectNextStepMissing(p: Project): boolean {
-  if (p.isWarehouseHolding || p.stage === "cancelled") return false;
+  if (isInternalHiddenProject(p) || p.stage === "cancelled") return false;
   if (trackOfProject(p) !== "sales") return false;
   const hasOpenTodo = (p.todos ?? []).some((t) => !t.done);
   const contactPlanned = p.emailReminderEnabled !== false;

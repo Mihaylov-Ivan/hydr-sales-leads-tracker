@@ -8,12 +8,13 @@ import {
   WarehouseMovement,
   WarehouseState,
   amountIncFromEx,
+  MANUFACTURING_COST_DEMO_PROJECT_NAME,
 } from "./types";
 import { cloneLocation, roundMoney } from "./warehouse";
 import { newId } from "@/lib/id";
 
 export const SEBESTOYNOST_SEED_SOURCE = "sebestoynost-500kw-z-series";
-export const SEBESTOYNOST_PROJECT_NAME = "Example 500kW Z-Series";
+export const SEBESTOYNOST_PROJECT_NAME = MANUFACTURING_COST_DEMO_PROJECT_NAME;
 export const SEBESTOYNOST_BOM_SOURCE_KEY = `manual:${SEBESTOYNOST_SEED_SOURCE}`;
 
 export type SebestoynostSeedItem = {

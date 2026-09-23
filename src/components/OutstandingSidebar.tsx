@@ -22,6 +22,7 @@ import {
   nextEmailReminderDateForUser,
   isOwnPersonalTodo,
   isPersonalTodoOpen,
+  isInternalHiddenProject,
   isTodoInWorkWindow,
   isTodoWorkWindowUpcoming,
   personalTodoSortDate,
@@ -727,6 +728,7 @@ export default function OutstandingSidebar() {
     const excludedIds = new Set<string>();
 
     for (const project of projects) {
+      if (isInternalHiddenProject(project)) continue;
       for (const todo of project.todos) {
         if (todo.done) continue;
         // Follow-ups are reminder Contact rows, not action todos
@@ -771,6 +773,7 @@ export default function OutstandingSidebar() {
       (allOwnersSelected || selectedOwnerIds.has(currentUserId!));
 
     for (const project of projects) {
+      if (isInternalHiddenProject(project)) continue;
       const todos = project.todos.filter((t) => {
         if (t.done || projectWorkWindow.excludedIds.has(t.id)) return false;
         // Never list auto follow-ups as actions — they render as Contact reminders
