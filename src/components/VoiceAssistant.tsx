@@ -624,6 +624,42 @@ const EXTENDED_CRM_TOOLS = [
   },
   {
     type: "function",
+    name: "manage_project_record",
+    description:
+      "Manage project-level records not covered by the other tools: edit/delete an existing update comment, regenerate the stored AI summary, read/update the signed-in user's follow-up reminder, edit/delete project file metadata, or explicitly delete a project. New binary file uploads still require the browser file picker.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: [
+            "update_comment",
+            "delete_comment",
+            "regenerate_summary",
+            "get_followup_reminder",
+            "update_followup_reminder",
+            "update_file_metadata",
+            "delete_file",
+            "delete_project"
+          ],
+        },
+        project_id: { type: "string" },
+        record_id: { type: "string" },
+        text: { type: "string" },
+        email_reminder_days: { type: "integer" },
+        email_reminder_enabled: { type: "boolean" },
+        last_client_contact_at: { type: "string" },
+        file_kind: {
+          type: "string",
+          enum: ["offer", "financial-model", "other"],
+        },
+        note: { type: ["string", "null"] },
+      },
+      required: ["action", "project_id"],
+    },
+  },
+  {
+    type: "function",
     name: "manage_company_settings",
     description:
       "Read/update company finance settings or Sales pipeline metrics settings. Finance settings require Finance permission; metrics settings require Sales permission.",
