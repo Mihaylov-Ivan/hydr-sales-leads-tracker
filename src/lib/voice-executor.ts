@@ -211,3 +211,199 @@ export async function executeVoiceTool(
       ? generalProjects.find((project) => project.id === id)
       : undefined;
 
+  const assignable = assignableTeamMembers(p.teamMembers);
+  const validateOwner = (id: string): boolean =>
+    !id || assignable.some((member) => member.id === id);
+
+  const parseLocation = (value: unknown): WarehouseLocation | null => {
+    if (!value || typeof value !== "object") return null;
+    const raw = value as Record<string, unknown>;
+    const site = typeof raw.site === "string" ? raw.site : "";
+    const slot = typeof raw.slot === "string" ? raw.slot : "";
+    if (!["ELX", "MH", "Van"].includes(site)) return null;
+    if (!["project", "spare", "buffer"].includes(slot)) return null;
+    const projectId =
+      typeof raw.project_id === "string" && raw.project_id.trim()
+        ? raw.project_id.trim()
+        : undefined;
+    if (slot === "project" && !projectId) return null;
+    return {
+      site: site as WarehouseLocation["site"],
+      slot: slot as WarehouseLocation["slot"],
+      ...(projectId ? { projectId } : {}),
+    };
+  };
+
+  if (name === "search_projects") {
+    const query = str("query");
+    if (!query) {
+      return JSON.stringify({ ok: false, error: "A project search query is required." });
+    }
+    const matches = referenceProjects
+      .map((project) => ({ project, score: projectMatchScore(query, project) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ project, score }) => ({
+        id: project.id,
+        name: project.name,
+        ...(canGeneralProject(project)
+          ? {
+              client: project.client,
+              location: [project.city, project.country].filter(Boolean).join(", "),
+            }
+          : {}),
+        stage: project.stage,
+        stage_label: STAGE_LABELS[project.stage],
+        track: trackOfProject(project),
+        score,
+      }));
+    return JSON.stringify({
+      ok: true,
+      count: matches.length,
+      projects: matches,
+      instruction:
+        matches.length === 1
+          ? "One clear project match was found."
+          : matches.length === 0
+            ? "No project matched. Ask for another project/client name."
+            : "Multiple projects matched. Ask which one they mean if the target is not obvious.",
+    });
+  }
+
+  if (name === "get_project") {
+    const project = findReferenceProject(args.project_id);
+    if (!project) {
+      return JSON.stringify({
+        ok: false,
+        error: "Project not found or not available to this user.",
+      });
+    }
+    const payload: Record<string, unknown> = {
+      id: project.id,
+      name: project.name,
+      stage: project.stage,
+      stage_label: STAGE_LABELS[project.stage],
+      track: trackOfProject(project),
+    };
+    if (canGeneralProject(project)) {
+      Object.assign(payload, {
+        client: project.client,
+        country: project.country,
+        city: project.city,
+        series: project.series,
+        market: project.market,
+        size_kw: project.sizeKw,
+        base_description: project.baseDescription,
+        ai_summary: project.aiSummary ?? null,
+        lead_user_id: project.leadUserId ?? null,
+        last_client_contact_at: project.lastClientContactAt,
+        email_reminder_days: project.emailReminderDays,
+        email_reminder_enabled: project.emailReminderEnabled,
+        pipeline_activity: {
+          cold_lead_entered_at: project.coldLeadEnteredAt,
+          hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
+          under_development_at: project.underDevelopmentAt ?? null,
+          commissioned_at: project.commissionedAt ?? null,
+          cancelled_at: project.cancelledAt ?? null,
+          last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+          cancellation_reason: project.cancellationReason ?? null,
+        },
+        recent_updates: [...project.comments]
+          .sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .slice(0, 20)
+          .map((comment) => ({
+            id: comment.id,
+            text: comment.text,
+            author: comment.author,
+            author_user_id: comment.authorUserId ?? null,
+            created_at: comment.createdAt,
+            stage_change: comment.stageChange ?? null,
+          })),
+        tasks: project.todos.map((todo) => ({
+          id: todo.id,
+          text: todo.text,
+          answer: todo.answer ?? null,
+          done: todo.done,
+          due_date: todo.dueDate ?? null,
+          start_date: todo.startDate ?? null,
+          end_date: todo.endDate ?? null,
+          owner_user_id: todo.ownerUserId ?? null,
+          created_at: todo.createdAt,
+          done_at: todo.doneAt ?? null,
+        })),
+        contacts: project.contacts.map((contact) => ({
+          id: contact.id,
+          name: contact.name ?? "",
+          email: contact.email ?? "",
+          phone: contact.phone ?? "",
+          position: contact.position ?? "",
+          created_at: contact.createdAt,
+        })),
+        files: project.files.map((file) => ({
+          id: file.id,
+          name: file.name,
+          kind: file.kind,
+          note: file.note ?? null,
+          mime_type: file.mimeType,
+          size_bytes: file.sizeBytes,
+          uploaded_by_name: file.uploadedByName ?? null,
+          created_at: file.createdAt,
+        })),
+      });
+    }
+    if (canReadGanttProject(project)) {
+      payload.schedule = project.schedule;
+    }
+    if (canFinanceProject(project)) {
+      payload.financials = project.financials;
+    }
+    if (canWarehouse()) {
+      const projectLotIds = new Set(
+        p.warehouse.balances
+          .filter(
+            (balance) =>
+              balance.location.slot === "project" &&
+              balance.location.projectId === project.id,
+          )
+          .map((balance) => balance.lotId),
+      );
+      payload.warehouse = {
+        balances: p.warehouse.balances.filter(
+          (balance) =>
+            (balance.location.slot === "project" &&
+              balance.location.projectId === project.id) ||
+            projectLotIds.has(balance.lotId),
+        ),
+        lots: p.warehouse.lots.filter(
+          (lot) =>
+            lot.purchaseProjectId === project.id || projectLotIds.has(lot.id),
+        ),
+      };
+    }
+    return JSON.stringify({ ok: true, project: payload });
+  }
+
+  if (name === "search_team_members") {
+    const query = str("query");
+    if (!query) {
+      return JSON.stringify({
+        ok: false,
+        error: "A team-member search query is required.",
+      });
+    }
+    const matches = assignable
+      .map((member) => ({ member, score: memberMatchScore(query, member) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10)
+      .map(({ member, score }) => ({
+        id: member.id,
+        name: member.name,
+        username: member.username ?? null,
+        email: member.email ?? null,
+        score,
+      }));
