@@ -239,7 +239,7 @@ const EXTENDED_CRM_TOOLS = [
         },
         limit: {
           type: "integer",
-          description: "Maximum projects to return. Defaults to 60.",
+          description: "Maximum projects to return. Defaults to 100.",
         },
       },
     },
@@ -1376,8 +1376,8 @@ export default function VoiceAssistant() {
             : null;
         const limit =
           typeof args.limit === "number" && Number.isFinite(args.limit)
-            ? Math.max(1, Math.min(100, Math.floor(args.limit)))
-            : 60;
+            ? Math.max(1, Math.min(200, Math.floor(args.limit)))
+            : 100;
 
         let selected = visibleProjects;
         if (ids.length > 0) {
