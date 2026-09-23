@@ -1131,7 +1131,7 @@ export default function VoiceAssistant() {
       }
 
       if (name === "get_project") {
-        const project = findProject(args.project_id);
+        const project = findAnyProject(args.project_id);
         if (!project) {
           return JSON.stringify({
             ok: false,
@@ -1139,49 +1139,119 @@ export default function VoiceAssistant() {
           });
         }
 
-        const updates = [...(project.comments ?? [])]
-          .sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )
-          .slice(0, 10)
-          .map((comment) => ({
-            text: comment.text,
-            author: comment.author,
-            created_at: comment.createdAt,
-            stage_change: comment.stageChange ?? null,
-          }));
+        const coreAllowed = hasCoreProjectAccess(project);
+        const financeAllowed = hasFinanceProjectAccess(project);
+        const ganttAllowed = hasGanttReadAccess(project);
+        const warehouseAllowed = has("warehouse");
 
-        const openTasks = (project.todos ?? [])
-          .filter((todo) => !todo.done)
-          .slice(0, 12)
-          .map((todo) => ({
+        const projectData: Record<string, unknown> = {
+          id: project.id,
+          name: project.name,
+          client: project.client,
+          country: project.country,
+          city: project.city,
+          track: trackOfProject(project),
+          permissions: {
+            core: coreAllowed,
+            finance: financeAllowed,
+            gantt: ganttAllowed,
+            warehouse: warehouseAllowed,
+          },
+        };
+
+        if (coreAllowed) {
+          const updates = [...(project.comments ?? [])]
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            .slice(0, 12)
+            .map((comment) => ({
+              id: comment.id,
+              text: comment.text,
+              author: comment.author,
+              created_at: comment.createdAt,
+              stage_change: comment.stageChange ?? null,
+            }));
+
+          const tasks = (project.todos ?? []).map((todo) => ({
             id: todo.id,
-            kind: todo.kind,
             text: todo.text,
+            answer: todo.answer ?? null,
+            done: todo.done,
             due_date: todo.dueDate ?? null,
+            start_date: todo.startDate ?? null,
+            end_date: todo.endDate ?? null,
             owner_user_id: todo.ownerUserId ?? null,
           }));
 
-        return JSON.stringify({
-          ok: true,
-          project: {
-            id: project.id,
-            name: project.name,
-            client: project.client,
-            country: project.country,
-            city: project.city,
+          Object.assign(projectData, {
             series: project.series,
             market: project.market,
             size_kw: project.sizeKw,
             stage: project.stage,
             stage_label: STAGE_LABELS[project.stage],
-            track: trackOfProject(project),
             summary: project.aiSummary || project.baseDescription || "",
+            base_description: project.baseDescription,
+            lead_user_id: project.leadUserId ?? null,
+            last_client_contact_at: project.lastClientContactAt,
+            email_reminder_days: project.emailReminderDays,
+            email_reminder_enabled: project.emailReminderEnabled,
+            pipeline_activity: {
+              cold_lead_entered_at: project.coldLeadEnteredAt,
+              hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
+              under_development_at: project.underDevelopmentAt ?? null,
+              commissioned_at: project.commissionedAt ?? null,
+              cancelled_at: project.cancelledAt ?? null,
+              last_meaningful_activity_at: project.lastMeaningfulActivityAt,
+              cancellation_reason: project.cancellationReason ?? null,
+            },
             recent_updates: updates,
-            open_tasks: openTasks,
-          },
-        });
+            tasks,
+            contacts: (project.contacts ?? []).map((contact) => ({
+              id: contact.id,
+              name: contact.name ?? "",
+              email: contact.email ?? "",
+              phone: contact.phone ?? "",
+              position: contact.position ?? "",
+            })),
+          });
+        }
+
+        if (financeAllowed) {
+          projectData.financials = project.financials;
+        }
+
+        if (ganttAllowed) {
+          projectData.schedule = project.schedule;
+        }
+
+        if (warehouseAllowed) {
+          const projectBalances = s.warehouse.balances
+            .filter(
+              (balance) =>
+                balance.location.slot === "project" &&
+                balance.location.projectId === project.id,
+            )
+            .map((balance) => {
+              const lot = s.warehouse.lots.find((x) => x.id === balance.lotId);
+              const item = lot
+                ? s.warehouse.items.find((x) => x.id === lot.itemId)
+                : undefined;
+              return {
+                balance_id: balance.id,
+                lot_id: balance.lotId,
+                item_id: lot?.itemId ?? null,
+                item_name: item?.name ?? null,
+                qty: balance.qty,
+                unit: item?.unit ?? null,
+                site: balance.location.site,
+              };
+            });
+          projectData.warehouse_stock = projectBalances;
+        }
+
+        return JSON.stringify({ ok: true, project: projectData });
       }
 
       if (name === "search_team_members") {
