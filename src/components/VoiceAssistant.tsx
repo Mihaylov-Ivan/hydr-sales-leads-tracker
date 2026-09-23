@@ -2448,6 +2448,21 @@ export default function VoiceAssistant() {
           return JSON.stringify({ ok: true, updated_fields: Object.keys(patch) });
         }
 
+        if (action === "generate_incomes_from_schedule") {
+          const result = s.generateIncomesFromSchedule(project.id);
+          return JSON.stringify(result);
+        }
+
+        if (action === "generate_opex_schedule") {
+          const result = s.generateOpexSchedule(project.id);
+          return JSON.stringify(result);
+        }
+
+        if (action === "generate_material_expenses_from_incomes") {
+          const result = s.generateMaterialsExpensesFromIncomes(project.id);
+          return JSON.stringify(result);
+        }
+
         if (action === "add_payment") {
           const amount = numberValue(args.amount);
           const dueDate = stringValue(args.due_date);
