@@ -9,11 +9,11 @@ import { isViewerUser } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
-const BASE_URL = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(
-  /\/$/,
-  "",
-);
-const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2.1";
+const BASE_URL = (
+  process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1"
+).replace(/\/$/, "");
+const REALTIME_MODEL =
+  process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2.1";
 const REALTIME_VOICE = process.env.OPENAI_REALTIME_VOICE ?? "marin";
 
 async function safetyIdentifier(userId: string): Promise<string> {
@@ -51,9 +51,15 @@ export async function POST(request: NextRequest) {
     }
 
     const user = sessionUserFromPayload(payload);
-    if (isViewerUser(user)) {
+    const hasCrmAccess =
+      user.isAdmin ||
+      user.permissions.includes("sales") ||
+      user.permissions.includes("technical_sales") ||
+      user.permissions.includes("eu_funding_rnd");
+
+    if (isViewerUser(user) || !hasCrmAccess) {
       return NextResponse.json(
-        { error: "Viewer accounts cannot use CRM voice actions" },
+        { error: "This account cannot use the CRM voice assistant" },
         { status: 403 },
       );
     }
@@ -63,7 +69,10 @@ export async function POST(request: NextRequest) {
 
   const offerSdp = await request.text();
   if (!offerSdp.trim()) {
-    return NextResponse.json({ error: "Missing WebRTC SDP offer" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing WebRTC SDP offer" },
+      { status: 400 },
+    );
   }
 
   const sessionConfig = {
