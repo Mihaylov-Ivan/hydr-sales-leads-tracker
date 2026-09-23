@@ -549,7 +549,7 @@ export interface GanttDeadlineInput {
   note?: string;
 }
 
-interface ProjectsApi {
+export interface ProjectsApi {
   teamMembers: TeamMember[];
   reloadTeamMembers: () => Promise<void>;
   addTeamMember: (input: { name: string; email?: string }) => void;
