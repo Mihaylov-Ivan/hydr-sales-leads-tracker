@@ -195,7 +195,8 @@ function normalizeSearch(value: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[.,/#!$%^&*;:{}=\\-_\`~()\[\]<>?|"'+]+/g, " ")
+    .replace(/\\s+/g, " ")
     .trim();
 }
 
@@ -768,6 +769,11 @@ CRM safety and action rules:
     toolResultsRef.current.clear();
 
     try {
+      if (!window.isSecureContext) {
+        throw new Error(
+          "Microphone access requires HTTPS (or localhost). Open the CRM over HTTPS to use voice.",
+        );
+      }
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("This browser does not support microphone access.");
       }
@@ -778,6 +784,8 @@ CRM safety and action rules:
       const audio = document.createElement("audio");
       audio.autoplay = true;
       audio.setAttribute("playsinline", "true");
+      audio.style.display = "none";
+      document.body.appendChild(audio);
       audioRef.current = audio;
 
       pc.ontrack = (event) => {
