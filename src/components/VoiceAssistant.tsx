@@ -717,6 +717,40 @@ function localDateOnly(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function nullableStringValue(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function nullableNumberValue(value: unknown): number | null | undefined {
+  if (value === null) return null;
+  return numberValue(value);
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function validOptionalDate(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return isValidDateOnly(value.trim()) ? value.trim() : undefined;
+}
+
 function assistantTextFromResponse(event: RealtimeEvent): string | null {
   const output = event.response?.output ?? [];
   const parts: string[] = [];
@@ -735,10 +769,62 @@ export default function VoiceAssistant() {
     projects,
     teamMembers,
     ready,
+    addProject,
+    waitForProjectInsert,
     addComment,
+    updateComment,
+    deleteComment,
     addTodo,
+    toggleTodo,
+    updateTodo,
+    deleteTodo,
+    personalTodos,
+    addPersonalTodo,
+    updatePersonalTodo,
+    deletePersonalTodo,
+    addPersonalTodoComment,
+    addContact,
+    updateContact,
+    deleteContact,
     updateProject,
+    updateFinancials,
+    addPayment,
+    updatePayment,
+    deletePayment,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    addMilestone,
+    updateMilestone,
+    deleteMilestone,
+    addGanttPhase,
+    updateGanttPhase,
+    deleteGanttPhase,
+    addGanttActivity,
+    updateGanttActivity,
+    deleteGanttActivity,
+    addGanttDeadline,
+    updateGanttDeadline,
+    deleteGanttDeadline,
+    shiftProjectSchedule,
+    financeSettings,
+    updateFinanceSettings,
+    metricsSettings,
+    updateMetricsSettings,
+    warehouse,
+    receiveStock,
+    transferStock,
+    consumeStock,
+    adjustStock,
+    updateWarehouseLot,
+    deleteWarehouseLot,
+    upsertWarehouseItem,
+    upsertWarehouseGroup,
+    deleteWarehouseGroup,
+    saveWarehouseBom,
+    deleteWarehouseBom,
   } = useProjects();
+  const prospecting = useProspecting();
   const {
     user,
     authEnabled,
@@ -749,12 +835,7 @@ export default function VoiceAssistant() {
   } = useAuth();
 
   const enabled = process.env.NEXT_PUBLIC_AI_VOICE === "true";
-  const hasAreaAccess =
-    !authEnabled ||
-    user?.isAdmin ||
-    can("sales") ||
-    can("technical_sales") ||
-    can("eu_funding_rnd");
+  const hasAreaAccess = !authEnabled || Boolean(user && !isViewer);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -776,9 +857,61 @@ export default function VoiceAssistant() {
     projects,
     teamMembers,
     ready,
+    addProject,
+    waitForProjectInsert,
     addComment,
+    updateComment,
+    deleteComment,
     addTodo,
+    toggleTodo,
+    updateTodo,
+    deleteTodo,
+    personalTodos,
+    addPersonalTodo,
+    updatePersonalTodo,
+    deletePersonalTodo,
+    addPersonalTodoComment,
+    addContact,
+    updateContact,
+    deleteContact,
     updateProject,
+    updateFinancials,
+    addPayment,
+    updatePayment,
+    deletePayment,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    addMilestone,
+    updateMilestone,
+    deleteMilestone,
+    addGanttPhase,
+    updateGanttPhase,
+    deleteGanttPhase,
+    addGanttActivity,
+    updateGanttActivity,
+    deleteGanttActivity,
+    addGanttDeadline,
+    updateGanttDeadline,
+    deleteGanttDeadline,
+    shiftProjectSchedule,
+    financeSettings,
+    updateFinanceSettings,
+    metricsSettings,
+    updateMetricsSettings,
+    warehouse,
+    receiveStock,
+    transferStock,
+    consumeStock,
+    adjustStock,
+    updateWarehouseLot,
+    deleteWarehouseLot,
+    upsertWarehouseItem,
+    upsertWarehouseGroup,
+    deleteWarehouseGroup,
+    saveWarehouseBom,
+    deleteWarehouseBom,
+    prospecting,
     user,
     authEnabled,
     canWrite,
@@ -787,9 +920,61 @@ export default function VoiceAssistant() {
     projects,
     teamMembers,
     ready,
+    addProject,
+    waitForProjectInsert,
     addComment,
+    updateComment,
+    deleteComment,
     addTodo,
+    toggleTodo,
+    updateTodo,
+    deleteTodo,
+    personalTodos,
+    addPersonalTodo,
+    updatePersonalTodo,
+    deletePersonalTodo,
+    addPersonalTodoComment,
+    addContact,
+    updateContact,
+    deleteContact,
     updateProject,
+    updateFinancials,
+    addPayment,
+    updatePayment,
+    deletePayment,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    addMilestone,
+    updateMilestone,
+    deleteMilestone,
+    addGanttPhase,
+    updateGanttPhase,
+    deleteGanttPhase,
+    addGanttActivity,
+    updateGanttActivity,
+    deleteGanttActivity,
+    addGanttDeadline,
+    updateGanttDeadline,
+    deleteGanttDeadline,
+    shiftProjectSchedule,
+    financeSettings,
+    updateFinanceSettings,
+    metricsSettings,
+    updateMetricsSettings,
+    warehouse,
+    receiveStock,
+    transferStock,
+    consumeStock,
+    adjustStock,
+    updateWarehouseLot,
+    deleteWarehouseLot,
+    upsertWarehouseItem,
+    upsertWarehouseGroup,
+    deleteWarehouseGroup,
+    saveWarehouseBom,
+    deleteWarehouseBom,
+    prospecting,
     user,
     authEnabled,
     canWrite,
