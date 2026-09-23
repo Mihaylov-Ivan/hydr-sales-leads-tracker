@@ -194,8 +194,7 @@ function normalizeSearch(value: string): string {
   return value
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[.,/#!$%^&*;:{}=\\-_\`~()\[\]<>?|"'+]+/g, " ")
+    .replace(/[\\u0300-\\u036f]/g, "")
     .replace(/\\s+/g, " ")
     .trim();
 }
