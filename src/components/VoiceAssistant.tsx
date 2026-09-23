@@ -151,7 +151,7 @@ const CRM_TOOLS = [
     type: "function",
     name: "create_project_task",
     description:
-      "Create a CRM task or reminder on a project. Use our-action for work our team must do, client-action for something the client must do, and question for an open question.",
+      "Create a CRM action item or reminder on a project.",
     parameters: {
       type: "object",
       properties: {
@@ -159,7 +159,8 @@ const CRM_TOOLS = [
         text: { type: "string" },
         kind: {
           type: "string",
-          enum: ["question", "our-action", "client-action"],
+          enum: ["our-action"],
+          description: "Always our-action. Kept for compatibility with older prompts.",
         },
         due_date: {
           type: "string",
@@ -172,7 +173,7 @@ const CRM_TOOLS = [
             "Optional assignee id returned by search_team_members. Never invent this value.",
         },
       },
-      required: ["project_id", "text", "kind"],
+      required: ["project_id", "text"],
     },
   },
   {
@@ -581,12 +582,7 @@ export default function VoiceAssistant() {
       if (name === "create_project_task") {
         const project = findProject(args.project_id);
         const text = typeof args.text === "string" ? args.text.trim() : "";
-        const kind =
-          args.kind === "question" ||
-          args.kind === "our-action" ||
-          args.kind === "client-action"
-            ? (args.kind as TodoKind)
-            : "our-action";
+        const kind: TodoKind = "our-action";
         const dueDate =
           typeof args.due_date === "string" && args.due_date.trim()
             ? args.due_date.trim()
@@ -753,7 +749,7 @@ CRM safety and action rules:
 - For relative dates, calculate the exact YYYY-MM-DD using the user's local date above. If the wording genuinely has two plausible dates, say the exact date you intend and ask the user to confirm before creating the task.
 - Do not add unnecessary confirmations for routine, unambiguous actions. Execute them and confirm concisely afterwards.
 - A spoken project update should normally be stored as a project comment/update. Preserve the factual content and only clean up filler or obvious speech disfluencies.
-- A spoken reminder or follow-up should normally become a project task with an appropriate due date. Use our-action unless the user clearly says it is a client action or an open question.
+- A spoken reminder or follow-up should normally become a project action item with an appropriate due date.
 - Only change a project stage if the user explicitly asks for it or clearly states that the stage itself has changed.
 - If the user requests a CRM operation not exposed by the available tools, explain that limitation in one sentence and ask the smallest useful follow-up.
 - After a successful write, confirm what was changed in one short sentence.

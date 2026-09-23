@@ -80,7 +80,7 @@ create table if not exists public.project_todos (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects (id) on delete cascade,
   kind text not null default 'our-action'
-    check (kind in ('question', 'our-action', 'client-action')),
+    check (kind in ('our-action')),
   text text not null,
   answer text,
   done boolean not null default false,

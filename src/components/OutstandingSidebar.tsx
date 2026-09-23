@@ -41,21 +41,15 @@ type ScopeMode = "project" | "personal";
 type OwnerFilterIds = string[] | null;
 
 const KIND_SHORT: Record<TodoKind, string> = {
-  question: "Q",
-  "our-action": "Us",
-  "client-action": "Client",
+  "our-action": "Action",
 };
 
 const KIND_FULL: Record<TodoKind, string> = {
-  question: "Question",
-  "our-action": "Our action",
-  "client-action": "Client action",
+  "our-action": "Action item",
 };
 
 const KIND_TONE: Record<TodoKind, string> = {
-  question: "bg-teal-soft text-teal-accent",
   "our-action": "bg-olive/15 text-olive-ink",
-  "client-action": "bg-amber-accent/15 text-amber-accent",
 };
 
 type UrgencyBucket = "overdue" | "today" | "upcoming" | "nodate";
@@ -240,11 +234,13 @@ function SidebarDueDate({
 function SidebarAnswer({
   todo,
   onSave,
+  editable = true,
 }: {
   todo: ProjectTodo;
   onSave: (answer: string | null) => void;
+  editable?: boolean;
 }) {
-  const [editing, setEditing] = useState(!todo.answer);
+  const [editing, setEditing] = useState(editable && !todo.answer);
   const [draft, setDraft] = useState(todo.answer ?? "");
 
   function commit() {
@@ -252,6 +248,16 @@ function SidebarAnswer({
     setEditing(false);
     if (next !== (todo.answer ?? "")) onSave(next || null);
     else setDraft(todo.answer ?? "");
+  }
+
+  if (!editable) {
+    if (!todo.answer) return null;
+    return (
+      <p className="mt-1.5 whitespace-pre-wrap rounded-md bg-surface px-2 py-1.5 text-xs leading-relaxed text-ink">
+        <span className="font-semibold text-teal-accent">A · </span>
+        {todo.answer}
+      </p>
+    );
   }
 
   if (!editing && todo.answer) {
@@ -411,12 +417,11 @@ function OutstandingItem({
           <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
             Owner: {ownerName}
           </p>
-          {todo.kind === "question" && (
-            <SidebarAnswer
-              todo={todo}
-              onSave={(answer) => updateTodo(projectId, todo.id, { answer })}
-            />
-          )}
+          <SidebarAnswer
+            todo={todo}
+            editable={expanded}
+            onSave={(answer) => updateTodo(projectId, todo.id, { answer })}
+          />
         </div>
       </div>
     </li>

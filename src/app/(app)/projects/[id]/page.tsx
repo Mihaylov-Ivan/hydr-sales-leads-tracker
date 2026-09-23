@@ -636,31 +636,15 @@ export default function ProjectPage() {
       )}
 
 
-      {/* Questions and action items */}
+      {/* Action items */}
       <TodoList
         projectId={project.id}
         client={project.client}
-        kind="question"
-        todos={project.todos.filter((t) => t.kind === "question")}
-        readOnly={!canWrite}
-      />
-      <TodoList
-        projectId={project.id}
-        client={project.client}
-        kind="our-action"
         todos={project.todos.filter(
           (t) =>
-            t.kind === "our-action" &&
             !isClientFollowUpTodo(t, project.client) &&
             !isSetNextStepTodo(t),
         )}
-        readOnly={!canWrite}
-      />
-      <TodoList
-        projectId={project.id}
-        client={project.client}
-        kind="client-action"
-        todos={project.todos.filter((t) => t.kind === "client-action")}
         readOnly={!canWrite}
       />
 

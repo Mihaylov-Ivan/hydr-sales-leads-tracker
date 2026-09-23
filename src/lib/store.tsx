@@ -67,6 +67,7 @@ import {
   isOwnPersonalTodo,
   normalizeStage,
   normalizeProjectTrack,
+  normalizeTodoKind,
   parseSeriesTags,
   parseMarketTags,
   todayDate,
@@ -853,7 +854,10 @@ function loadLocal(): Project[] {
         emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
         emailReminderEnabled: p.emailReminderEnabled !== false,
         ...(p.leadUserId ? { leadUserId: p.leadUserId } : {}),
-        todos: (p.todos ?? []).map((t) => ({ ...t, kind: t.kind ?? "our-action" })),
+        todos: (p.todos ?? []).map((t) => ({
+          ...t,
+          kind: normalizeTodoKind(t.kind),
+        })),
         contacts: p.contacts ?? [],
         files: (p.files ?? []).map((f) => ({
           ...f,
@@ -3041,7 +3045,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo: ProjectTodo = {
         id: newId(),
-        kind,
+        kind: normalizeTodoKind(kind),
         text,
         done: false,
         ...(dueDate ? { dueDate } : {}),

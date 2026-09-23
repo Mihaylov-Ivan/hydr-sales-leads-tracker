@@ -322,19 +322,18 @@ export interface ProjectComment {
   stageChange?: Stage;
 }
 
-export type TodoKind = "question" | "our-action" | "client-action";
+export type TodoKind = "our-action";
 
-export const TODO_KINDS: TodoKind[] = [
-  "question",
-  "our-action",
-  "client-action",
-];
+export const TODO_KINDS: TodoKind[] = ["our-action"];
 
 export const TODO_KIND_LABELS: Record<TodoKind, string> = {
-  question: "Questions to Clear",
-  "our-action": "Action Items (Us)",
-  "client-action": "Action Items (Client)",
+  "our-action": "Action Items",
 };
+
+/** Map any legacy todo kind from older data onto the single action-item kind. */
+export function normalizeTodoKind(kind: string | null | undefined): TodoKind {
+  return "our-action";
+}
 
 export interface ProjectContact {
   id: string;
@@ -1296,7 +1295,7 @@ export interface ProjectTodo {
   id: string;
   kind: TodoKind;
   text: string;
-  /** The answer, for "question" items */
+  /** Optional answer / resolution note on the action item */
   answer?: string;
   done: boolean;
   /** Date (yyyy-mm-dd) the item should be completed by */
@@ -1511,9 +1510,7 @@ export const GANTT_PHASE_COLORS = [
 ] as const;
 
 const TODO_KIND_ORDER: Record<TodoKind, number> = {
-  question: 0,
-  "our-action": 1,
-  "client-action": 2,
+  "our-action": 0,
 };
 
 /** Deadline first, then window end; undated last. */
@@ -1827,7 +1824,7 @@ export function hasMeaningfulOpenTodo(p: Project): boolean {
 }
 
 /**
- * True when the project has nothing next: no open questions/actions and
+ * True when the project has nothing next: no open action items and
  * no user has an enabled follow-up reminder. Project-level
  * `emailReminderEnabled` is ignored — upcoming contact is driven only by
  * per-user prefs. Warehouse holding, cancelled, and commissioned projects

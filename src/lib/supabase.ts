@@ -28,6 +28,7 @@ import {
   formatMarketTags,
   normalizePersonalTodoStatus,
   normalizeProjectTrack,
+  normalizeTodoKind,
   normalizeStage,
   normalizeStageForTrack,
   parseSeriesTags,
@@ -120,8 +121,7 @@ export interface TodoRow {
 export function todoFromRow(row: TodoRow): ProjectTodo {
   return {
     id: row.id,
-    // Rows created before the kinds feature have no kind column value
-    kind: row.kind ?? "our-action",
+    kind: normalizeTodoKind(row.kind),
     text: row.text,
     ...(row.answer ? { answer: row.answer } : {}),
     done: row.done,

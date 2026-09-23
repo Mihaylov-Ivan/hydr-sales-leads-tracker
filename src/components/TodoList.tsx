@@ -5,7 +5,6 @@ import { useProjects } from "@/lib/store";
 import {
   ProjectTodo,
   TeamMember,
-  TodoKind,
   TODO_KIND_LABELS,
   addDays,
   isClientFollowUpTodo,
@@ -396,22 +395,17 @@ function TodoItem({
   );
 }
 
-const PLACEHOLDERS: Record<TodoKind, string> = {
-  question: "Add an open question… e.g. What pressure does the offtaker need?",
-  "our-action": "Add an action for us… e.g. Send revised offer",
-  "client-action": "Add an action for the client… e.g. Share site electrical drawings",
-};
+const PLACEHOLDER =
+  "Add an action item… e.g. Send revised offer, or clarify site pressure with the client";
 
 export default function TodoList({
   projectId,
   client,
-  kind,
   todos,
   readOnly = false,
 }: {
   projectId: string;
   client: string;
-  kind: TodoKind;
   todos: ProjectTodo[];
   readOnly?: boolean;
 }) {
@@ -434,7 +428,7 @@ export default function TodoList({
         todo={t}
         client={client}
         teamMembers={assignable}
-        showAnswer={kind === "question"}
+        showAnswer
         highlight={highlight}
         onToggle={readOnly ? () => {} : () => toggleTodo(projectId, t.id)}
         onPatch={readOnly ? () => {} : (patch) => updateTodo(projectId, t.id, patch)}
@@ -450,7 +444,7 @@ export default function TodoList({
     if (!t) return;
     addTodo(
       projectId,
-      kind,
+      "our-action",
       t,
       dueDate || undefined,
       ownerUserId || undefined,
@@ -468,7 +462,7 @@ export default function TodoList({
     <section className="rounded-xl border border-line bg-panel p-5 shadow-sm">
       <div className="mb-3 flex items-center gap-3">
         <h2 className="text-sm font-bold uppercase tracking-wide text-deep">
-          {TODO_KIND_LABELS[kind]}
+          {TODO_KIND_LABELS["our-action"]}
         </h2>
         {todos.length > 0 && (
           <>
@@ -479,7 +473,7 @@ export default function TodoList({
               <div
                 className="h-full rounded-full bg-teal-accent transition-all duration-300"
                 style={{ width: `${progress}%` }}
-              />
+                />
             </div>
           </>
         )}
@@ -497,7 +491,7 @@ export default function TodoList({
             }
           }}
           rows={2}
-          placeholder={PLACEHOLDERS[kind]}
+          placeholder={PLACEHOLDER}
           className="w-full resize-y rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink placeholder:text-muted/60 outline-none focus:border-teal-accent"
         />
         <label className="flex shrink-0 flex-col gap-0.5">
@@ -559,13 +553,9 @@ export default function TodoList({
 
       {todos.length === 0 ? (
         <p className="px-2 py-3 text-sm text-muted/80">
-          {kind === "question"
-            ? readOnly
-              ? "No open questions."
-              : "No open questions. Add one so it doesn't get forgotten."
-            : readOnly
-              ? "Nothing here yet."
-              : "Nothing here yet. Add the next step so it doesn't slip."}
+          {readOnly
+            ? "No action items yet."
+            : "Nothing here yet. Add the next step so it doesn't slip."}
         </p>
       ) : (
         <ChainScroll
