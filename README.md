@@ -9,7 +9,7 @@ A simple Next.js app for tracking electrolyser sales leads from first contact to
 - **Project pages**: key facts, activity timeline, and update posting
 - **Stage changes via comments**: posting an update can also move the project to a new stage
 - **Living summary**: each project's summary paragraph is regenerated automatically after every comment. With an OpenAI API key configured it is AI-generated; without one it falls back to a built-in rule-based generator
-- **Hydr AI voice assistant (v1)**: natural speech-to-speech CRM control for finding projects, reading project context, adding project updates, creating/assigning tasks and reminders, and changing project stages. Ambiguous project/person/date requests are clarified conversationally before a write.
+- **Hydr AI voice/text assistant**: natural conversational control across the CRM. It can summarize all or selected projects, create and edit projects/prospects/tasks/contacts, manage pipeline activity, Gantt schedules, finance and warehouse data, and continue multi-step data entry by voice or typed replies. Its reads and writes are limited by the signed-in user's existing permissions.
 
 ## AI summaries
 
@@ -44,18 +44,22 @@ If `OPENAI_BASE_URL` is set, the realtime route uses that base URL too; the endp
 
 Browser microphone access requires a secure context. `http://localhost` works for local testing, but opening the CRM from another device over a plain `http://192.168.x.x` LAN URL will normally block microphone access; use HTTPS for LAN/mobile voice testing.
 
-### Voice v1 actions
+### Hydr AI actions
 
-- Search for a project by project name, client, country, or city
-- Read the current project details, recent updates, and open tasks
-- Add a project update/comment
-- Create a project task/reminder with an optional due date
-- Resolve and assign a task to a team member
-- Change a project stage
-- Ask a short spoken follow-up when the project, assignee, or date is ambiguous
-- Accept typed CRM requests in the same assistant panel for testing/fallback
+Hydr AI uses the same application stores and permission model as the manual UI. Depending on the signed-in user's permissions it can:
 
-The assistant executes writes through the existing CRM store methods, so comments, tasks, assignment notifications, change history, Supabase persistence, and AI-summary refreshes follow the same path as manual UI actions. Viewer accounts cannot use voice write actions.
+- Summarize all accessible projects, or only user-selected projects, with latest updates, stage, open actions and next steps
+- Search/read/create/edit projects, pipeline fields, project comments, tasks, contacts, follow-up reminders and attachment metadata
+- Create and maintain Prospecting companies/contacts, qualification data, outreach, follow-ups and prospecting strategies
+- Create, read and edit project Gantt phases, activities and deadlines, including planned/actual dates, durations, owners, WBS/status and whole-schedule shifts
+- Read/edit project finance, payments, expenses, milestones and schedule-generated finance only when the user has the same Finance/EU-RnD access as the UI
+- Read/edit warehouse inventory, lots, catalog items/groups and BOMs only when the user has Warehouse permission
+- Manage the signed-in user's personal To-Dos and notifications
+- Continue multi-step forms conversationally: Hydr AI keeps fields already supplied and asks only for genuinely required missing values; the answer can be spoken or typed
+
+Destructive actions are only performed when explicitly requested. Viewer accounts cannot use Hydr AI. New local file uploads/imports still require the browser file picker, and account/password administration remains outside the conversational CRM tool surface.
+
+The assistant executes writes through the existing CRM store methods, so change history, notifications, Supabase persistence, task assignment behaviour and summary refreshes follow the same paths as manual UI actions.
 
 ## Data storage
 
