@@ -216,7 +216,7 @@ const EXTENDED_CRM_TOOLS = [
     type: "function",
     name: "get_portfolio_update",
     description:
-      "Return concise current-state and latest-activity data for all CRM projects the signed-in user may access, or only selected projects. Use this for requests such as 'give me an update on all projects', 'what happened lately', summaries, and bullet-point status reports.",
+      "Return concise current-state and latest-activity data for all CRM projects the signed-in user may access, or only selected projects. Use this for requests such as 'give me an update on all projects', 'what happened lately', summaries, and bullet-point status reports. When presenting the answer, give one complete block per project (stage + recent updates + open tasks/next steps together) — never list one topic across all projects and then revisit them.",
     parameters: {
       type: "object",
       properties: {
@@ -943,9 +943,13 @@ export default function VoiceAssistant() {
   const dcRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const silentAudioCtxRef = useRef<AudioContext | null>(null);
   const toolResultsRef = useRef<Map<string, string>>(new Map());
+  const pendingTextRef = useRef<string[]>([]);
+  const wantsMicRef = useRef(false);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
   const logsScrollRef = useRef<HTMLDivElement | null>(null);
+  const [hasMic, setHasMic] = useState(false);
 
   const stateRef = useRef({
     projects,
@@ -1516,7 +1520,7 @@ export default function VoiceAssistant() {
           requested_all_projects: ids.length === 0 && !query,
           projects: rows,
           instruction:
-            "Summarize these facts in the format the user asked for. For an update request, prioritize what changed recently, current stage, blockers/open actions, and next steps. Do not invent missing events.",
+            "Present one self-contained block per project, in the same order as this list. Inside each project block cover: project name/client, current stage, what happened lately (recent updates), open tasks/blockers, and next steps. Do not group by topic across projects (for example do not list all recent posts first and then revisit every project for tasks). Do not invent missing events.",
         });
       }
 
@@ -3478,6 +3482,11 @@ export default function VoiceAssistant() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
 
+    if (silentAudioCtxRef.current) {
+      void silentAudioCtxRef.current.close().catch(() => {});
+      silentAudioCtxRef.current = null;
+    }
+
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.srcObject = null;
@@ -3485,7 +3494,10 @@ export default function VoiceAssistant() {
       audioRef.current = null;
     }
 
+    pendingTextRef.current = [];
+    wantsMicRef.current = false;
     toolResultsRef.current.clear();
+    setHasMic(false);
     setStatus("off");
     setMicMuted(false);
   }, []);
@@ -3495,11 +3507,54 @@ export default function VoiceAssistant() {
       dcRef.current?.close();
       pcRef.current?.close();
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (silentAudioCtxRef.current) {
+        void silentAudioCtxRef.current.close().catch(() => {});
+      }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.srcObject = null;
       }
     };
+  }, []);
+
+  const flushPendingText = useCallback(
+    (dc: RTCDataChannel) => {
+      if (dc.readyState !== "open") return;
+      const pending = pendingTextRef.current.splice(0);
+      if (pending.length === 0) return;
+      for (const text of pending) {
+        dc.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text }],
+            },
+          }),
+        );
+      }
+      dc.send(JSON.stringify({ type: "response.create" }));
+      setStatus("thinking");
+    },
+    [],
+  );
+
+  const createSilentMicStream = useCallback((): MediaStream => {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new AudioCtx();
+    silentAudioCtxRef.current = ctx;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    const dest = ctx.createMediaStreamDestination();
+    oscillator.connect(gain);
+    gain.connect(dest);
+    oscillator.start();
+    return dest.stream;
   }, []);
 
   const sendSessionConfiguration = useCallback((dc: RTCDataChannel) => {
@@ -3536,7 +3591,7 @@ CRM safety and action rules:
 - A spoken reminder or follow-up should normally become a project action item or prospect follow-up with the appropriate exact date.
 - Only change a project stage if the user explicitly asks for it or clearly states that the stage itself has changed.
 - You can create and edit project Gantt charts: phases, activities, deadlines, dates, durations, owners, WBS/status, actuals, and whole-schedule shifts, but only when the user's permissions allow the same edit in the UI.
-- For 'give me an update', 'summarize the projects', 'what has happened lately', or bullet-point status requests, use get_portfolio_update. Omit project_ids for all accessible projects; pass resolved project_ids for a requested subset. Present a concise useful summary with latest happenings, current stage, open actions/blockers, and next steps.
+- For 'give me an update', 'summarize the projects', 'what has happened lately', or bullet-point status requests, use get_portfolio_update. Omit project_ids for all accessible projects; pass resolved project_ids for a requested subset. Structure the spoken/typed answer as one complete block per project: name/client, stage, recent happenings, open tasks/blockers, and next steps together. Never walk the portfolio by topic (updates for everyone, then tasks for everyone). Keep each project block concise.
 - If the user requests an operation that genuinely cannot be completed through the available CRM tools (for example selecting a new local file for upload), explain that limitation in one sentence and continue with everything else you can do.
 - After a successful write, confirm what changed in one short sentence.
 `;
@@ -3561,20 +3616,19 @@ CRM safety and action rules:
     );
   }, []);
 
-  const startSession = useCallback(async () => {
+  const startSession = useCallback(async (options?: { withMic?: boolean }) => {
+    const withMic = options?.withMic !== false;
     if (pcRef.current || status === "connecting") return;
     setError(null);
     setStatus("connecting");
     toolResultsRef.current.clear();
+    wantsMicRef.current = withMic;
 
     try {
       if (!window.isSecureContext) {
         throw new Error(
-          "Microphone access requires HTTPS (or localhost). Open the CRM over HTTPS to use voice.",
+          "This assistant requires HTTPS (or localhost).",
         );
-      }
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("This browser does not support microphone access.");
       }
 
       const pc = new RTCPeerConnection();
@@ -3611,16 +3665,26 @@ CRM safety and action rules:
         }
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      let stream: MediaStream;
+      if (withMic) {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("This browser does not support microphone access.");
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        setHasMic(true);
+      } else {
+        stream = createSilentMicStream();
+        setHasMic(false);
+      }
       streamRef.current = stream;
       for (const track of stream.getAudioTracks()) {
-        // Do not transmit speech until our CRM instructions/tools are active.
+        // Keep muted until session tools/instructions are active (and forever for text-only).
         track.enabled = false;
         pc.addTrack(track, stream);
       }
@@ -3642,11 +3706,19 @@ CRM safety and action rules:
           }
 
           if (event.type === "session.updated") {
-            streamRef.current?.getAudioTracks().forEach((track) => {
-              track.enabled = true;
-            });
-            setMicMuted(false);
+            if (wantsMicRef.current) {
+              streamRef.current?.getAudioTracks().forEach((track) => {
+                track.enabled = true;
+              });
+              setMicMuted(false);
+            } else {
+              streamRef.current?.getAudioTracks().forEach((track) => {
+                track.enabled = false;
+              });
+              setMicMuted(true);
+            }
             setStatus("listening");
+            flushPendingText(dc);
             return;
           }
 
@@ -3767,53 +3839,119 @@ CRM safety and action rules:
     }
   }, [
     appendLog,
+    createSilentMicStream,
     executeTool,
+    flushPendingText,
     sendSessionConfiguration,
     status,
     stopSession,
   ]);
 
+  const enableMicrophone = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) {
+      await startSession({ withMic: true });
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser does not support microphone access.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const senders = pc.getSenders().filter((s) => s.track?.kind === "audio");
+      const newTrack = stream.getAudioTracks()[0];
+      if (!newTrack) throw new Error("No microphone track available.");
+
+      if (senders[0]) {
+        await senders[0].replaceTrack(newTrack);
+      } else {
+        pc.addTrack(newTrack, stream);
+      }
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (silentAudioCtxRef.current) {
+        void silentAudioCtxRef.current.close().catch(() => {});
+        silentAudioCtxRef.current = null;
+      }
+      streamRef.current = stream;
+      newTrack.enabled = true;
+      wantsMicRef.current = true;
+      setHasMic(true);
+      setMicMuted(false);
+      setStatus("listening");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not enable the microphone.",
+      );
+    }
+  }, [startSession]);
+
   const toggleMic = useCallback(() => {
+    if (!hasMic) {
+      void enableMicrophone();
+      return;
+    }
     const nextMuted = !micMuted;
     streamRef.current?.getAudioTracks().forEach((track) => {
       track.enabled = !nextMuted;
     });
     setMicMuted(nextMuted);
-  }, [micMuted]);
+  }, [enableMicrophone, hasMic, micMuted]);
 
   const sendTypedMessage = useCallback(
     (event?: FormEvent) => {
       event?.preventDefault();
       const text = typedInput.trim();
-      const dc = dcRef.current;
-      if (!text || !dc || dc.readyState !== "open") return;
+      if (!text) return;
 
-      dc.send(
-        JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [{ type: "input_text", text }],
-          },
-        }),
-      );
-      dc.send(JSON.stringify({ type: "response.create" }));
+      const dc = dcRef.current;
+      if (dc && dc.readyState === "open") {
+        dc.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text }],
+            },
+          }),
+        );
+        dc.send(JSON.stringify({ type: "response.create" }));
+        appendLog("user", text);
+        setTypedInput("");
+        setStatus("thinking");
+        return;
+      }
+
+      // Auto-connect a text session (no mic) and send once ready.
+      pendingTextRef.current.push(text);
       appendLog("user", text);
       setTypedInput("");
-      setStatus("thinking");
+      if (!pcRef.current && status !== "connecting") {
+        void startSession({ withMic: false });
+      }
     },
-    [appendLog, typedInput],
+    [appendLog, startSession, status, typedInput],
   );
 
   const statusLabel = useMemo(() => {
     if (status === "off") return "Not connected";
     if (status === "connecting") return "Connecting…";
-    if (status === "listening") return micMuted ? "Microphone muted" : "Listening";
+    if (status === "listening") {
+      if (!hasMic) return "Text chat ready";
+      return micMuted ? "Microphone muted" : "Listening";
+    }
     if (status === "thinking") return "Thinking…";
     if (status === "speaking") return "Speaking";
     return "Updating CRM…";
-  }, [micMuted, status]);
+  }, [hasMic, micMuted, status]);
 
   useEffect(() => {
     setMounted(true);
@@ -3829,8 +3967,6 @@ CRM safety and action rules:
     return null;
   }
 
-  const connected = status !== "off" && status !== "connecting";
-
   const panel =
     panelOpen && mounted && typeof document !== "undefined"
       ? createPortal(
@@ -3843,10 +3979,12 @@ CRM safety and action rules:
               right: 20,
               zIndex: 99999,
               width: "min(390px, calc(100vw - 2rem))",
+              // Header is h-16; leave a small gap under it and above the bottom inset.
+              maxHeight: "calc(100dvh - 4rem - 1.5rem - 20px)",
             }}
             className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
               <div>
                 <div className="flex items-center gap-2">
                   <span
@@ -3885,7 +4023,7 @@ CRM safety and action rules:
 
           <div
             ref={logsScrollRef}
-            className="min-h-40 max-h-[min(22rem,45vh)] space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
+            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
           >
             {logs.length === 0 ? (
               <div className="space-y-2 text-xs leading-relaxed text-muted">
@@ -3938,17 +4076,17 @@ CRM safety and action rules:
           </div>
 
           {error && (
-            <div className="border-t border-line bg-red-50 px-4 py-2 text-[11px] text-red-700">
+            <div className="shrink-0 border-t border-line bg-red-50 px-4 py-2 text-[11px] text-red-700">
               {error}
             </div>
           )}
 
-          <div className="border-t border-line px-4 py-3">
+          <div className="shrink-0 border-t border-line px-4 py-3">
             {status === "off" || status === "connecting" ? (
               <button
                 type="button"
                 disabled={status === "connecting" || !ready}
-                onClick={() => void startSession()}
+                onClick={() => void startSession({ withMic: true })}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-accent px-3 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -3972,12 +4110,18 @@ CRM safety and action rules:
                   type="button"
                   onClick={toggleMic}
                   className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                    micMuted
-                      ? "border-amber-300 bg-amber-50 text-amber-800"
-                      : "border-line bg-surface text-deep hover:border-teal-accent/40"
+                    !hasMic
+                      ? "border-teal-accent/40 bg-teal-soft text-deep hover:brightness-95"
+                      : micMuted
+                        ? "border-amber-300 bg-amber-50 text-amber-800"
+                        : "border-line bg-surface text-deep hover:border-teal-accent/40"
                   }`}
                 >
-                  {micMuted ? "Unmute microphone" : "Mute microphone"}
+                  {!hasMic
+                    ? "Enable microphone"
+                    : micMuted
+                      ? "Unmute microphone"
+                      : "Mute microphone"}
                 </button>
                 <button
                   type="button"
@@ -3993,15 +4137,12 @@ CRM safety and action rules:
               <input
                 value={typedInput}
                 onChange={(event) => setTypedInput(event.target.value)}
-                disabled={!connected}
-                placeholder={
-                  connected ? "Or type a CRM request…" : "Start voice to enable chat"
-                }
-                className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-deep outline-none placeholder:text-muted/60 focus:border-teal-accent disabled:opacity-60"
+                placeholder="Type a CRM request…"
+                className="min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-deep outline-none placeholder:text-muted/60 focus:border-teal-accent"
               />
               <button
                 type="submit"
-                disabled={!connected || !typedInput.trim()}
+                disabled={!typedInput.trim()}
                 className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-deep transition hover:border-teal-accent/40 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Send
