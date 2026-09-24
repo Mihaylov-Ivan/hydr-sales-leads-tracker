@@ -61,6 +61,33 @@ Destructive actions are only performed when explicitly requested. Viewer account
 
 The assistant executes writes through the existing CRM store methods, so change history, notifications, Supabase persistence, task assignment behaviour and summary refreshes follow the same paths as manual UI actions.
 
+## Fireflies meeting inbox (localhost-safe)
+
+Hydr can import completed Fireflies transcripts without exposing the CRM to the public internet. A local polling worker makes outbound HTTPS requests through the Hydr server, stores each Fireflies transcript once in a review inbox, and leaves it there until Hydr AI reconciles it with the current CRM.
+
+Apply `supabase/migration-056-fireflies-meeting-inbox.sql`, then add these server-side values to `.env.local`:
+
+```
+FIREFLIES_API_KEY=your-fireflies-api-key
+FIREFLIES_POLL_SECRET=use-a-long-random-local-secret
+FIREFLIES_POLL_INTERVAL_MS=300000
+FIREFLIES_IMPORT_LOOKBACK_DAYS=30
+FIREFLIES_IMPORT_BATCH_SIZE=10
+```
+
+`npm run dev` now starts both Next.js and the local Fireflies poller. The default poll interval is five minutes. The poller calls only `http://127.0.0.1:3000` locally and Fireflies' outbound API; Fireflies never needs an inbound URL to the Hydr machine.
+
+Optional commands:
+
+```bash
+npm run fireflies:poll:once
+npm run fireflies:poll
+```
+
+When an admin opens Hydr AI and actionable meetings are waiting, the assistant starts with the oldest meeting. It reads the stored transcript, compares it with current CRM records, ignores already-accounted-for information, applies clear net-new updates, and keeps ambiguous/conflicting items in `needs-clarification` until the user resolves them by voice or text. Meetings are only marked `processed` after the reconciliation is complete, with a concise summary of what changed and links to affected project IDs.
+
+Meeting review is deliberately admin-only in this first version so imported transcript contents cannot bypass the CRM's existing area permissions. Per-meeting/per-user transcript access can be added later if needed.
+
 ## Data storage
 
 CRM data uses Supabase when the Supabase environment variables are configured, with local browser fallbacks retained for supported offline/development data. Voice actions call the same existing store methods as the manual UI instead of writing to a separate AI database path.
