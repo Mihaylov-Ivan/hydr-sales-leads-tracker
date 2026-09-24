@@ -84,9 +84,9 @@ interface RealtimeEvent {
     output?: Array<
       | FunctionCallItem
       | {
-          type?: string;
-          content?: Array<{ text?: string; transcript?: string }>;
-        }
+        type?: string;
+        content?: Array<{ text?: string; transcript?: string }>;
+      }
     >;
   };
 }
@@ -1321,7 +1321,7 @@ export default function VoiceAssistant() {
         !s.authEnabled ||
         Boolean(
           s.user &&
-            (s.user.isAdmin || s.user.permissions.includes(permission)),
+          (s.user.isAdmin || s.user.permissions.includes(permission)),
         );
       const hasCoreProjectAccess = (project: Project): boolean => {
         if (!s.authEnabled || s.user?.isAdmin) return true;
@@ -1638,10 +1638,10 @@ export default function VoiceAssistant() {
               cutoff == null
                 ? updates.slice(0, 4)
                 : updates
-                    .filter(
-                      (x) => new Date(x.createdAt).getTime() >= cutoff,
-                    )
-                    .slice(0, 6);
+                  .filter(
+                    (x) => new Date(x.createdAt).getTime() >= cutoff,
+                  )
+                  .slice(0, 6);
             const openTasks = (project.todos ?? [])
               .filter((todo) => !todo.done)
               .sort((a, b) =>
@@ -1805,8 +1805,8 @@ export default function VoiceAssistant() {
         const mine =
           s.authEnabled && s.user
             ? s.personalTodos.filter(
-                (todo) => todo.ownerUserId === s.user?.userId,
-              )
+              (todo) => todo.ownerUserId === s.user?.userId,
+            )
             : s.personalTodos;
         return JSON.stringify({ ok: true, todos: mine });
       }
@@ -1933,8 +1933,8 @@ export default function VoiceAssistant() {
         const action = stringValue(args.action);
         const readPayload = async (response: Response) =>
           (await response.json().catch(() => null)) as
-            | Record<string, unknown>
-            | null;
+          | Record<string, unknown>
+          | null;
         const errorFrom = (
           payload: Record<string, unknown> | null,
           fallback: string,
@@ -2007,7 +2007,7 @@ export default function VoiceAssistant() {
             const chunkCount = Math.max(1, Math.ceil(transcript.length / chunkSize));
             const requested =
               typeof args.chunk_index === "number" &&
-              Number.isFinite(args.chunk_index)
+                Number.isFinite(args.chunk_index)
                 ? Math.round(args.chunk_index)
                 : 0;
             const chunkIndex = Math.min(
@@ -2750,7 +2750,7 @@ export default function VoiceAssistant() {
           }
           const targetIndex =
             typeof args.target_index === "number" &&
-            Number.isFinite(args.target_index)
+              Number.isFinite(args.target_index)
               ? Math.max(0, Math.floor(args.target_index))
               : 0;
           s.movePersonalTodo(todo.id, targetStatus, targetIndex);
@@ -2850,15 +2850,15 @@ export default function VoiceAssistant() {
             sizeKw: numberValue(args.size_kw),
             ...(hasContactDetails
               ? {
-                  contact: {
-                    name: contactName,
-                    title: stringValue(args.title),
-                    email: stringValue(args.email),
-                    phone: stringValue(args.phone),
-                    linkedinUrl: stringValue(args.linkedin_url),
-                    isPrimary: true,
-                  },
-                }
+                contact: {
+                  name: contactName,
+                  title: stringValue(args.title),
+                  email: stringValue(args.email),
+                  phone: stringValue(args.phone),
+                  linkedinUrl: stringValue(args.linkedin_url),
+                  isPrimary: true,
+                },
+              }
               : {}),
           });
           const postCreatePatch: Record<string, unknown> = {};
@@ -3342,7 +3342,7 @@ export default function VoiceAssistant() {
               args.subcategory === null
                 ? null
                 : (stringValue(args.subcategory) as Parameters<typeof s.updateExpense>[2]["subcategory"]) ??
-                  expense.subcategory,
+                expense.subcategory,
             warehouseLotId: expense.warehouseLotId,
           };
           s.updateExpense(project.id, expense.id, input);
@@ -3834,7 +3834,7 @@ export default function VoiceAssistant() {
     streamRef.current = null;
 
     if (silentAudioCtxRef.current) {
-      void silentAudioCtxRef.current.close().catch(() => {});
+      void silentAudioCtxRef.current.close().catch(() => { });
       silentAudioCtxRef.current = null;
     }
 
@@ -3860,7 +3860,7 @@ export default function VoiceAssistant() {
       pcRef.current?.close();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (silentAudioCtxRef.current) {
-        void silentAudioCtxRef.current.close().catch(() => {});
+        void silentAudioCtxRef.current.close().catch(() => { });
       }
       if (audioRef.current) {
         audioRef.current.pause();
@@ -3918,30 +3918,37 @@ export default function VoiceAssistant() {
 
   const sendSessionConfiguration = useCallback(
     (dc: RTCDataChannel, options?: { voiceOutput?: boolean }) => {
-    const voiceOutput = options?.voiceOutput ?? wantsMicRef.current;
-    const now = new Date();
-    const timeZone =
-      Intl.DateTimeFormat().resolvedOptions().timeZone || "local timezone";
-    const localTime = now.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const localDate = localDateOnly(now);
+      const voiceOutput = options?.voiceOutput ?? wantsMicRef.current;
+      const now = new Date();
+      const timeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "local timezone";
+      const localTime = now.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const localDate = localDateOnly(now);
 
-    const instructions = `You are Hydr AI, the voice assistant inside the Hydrogenera CRM.
+      const instructions = `You are Hydr AI, the voice assistant inside the Hydrogenera CRM.
 
 The user's local date is ${localDate}, local time is ${localTime}, timezone ${timeZone}.
 
+Scope (hard limits):
+- Your work and knowledge are constrained ONLY to what exists in this platform and its database (CRM tools). Never use or invent external research, web knowledge, market data, or facts not returned by the tools.
+- If you lack enough platform context to act or answer, do ONE of these two things only — nothing else:
+  1) Ask clearly which project (or record) we are talking about, or
+  2) Ask the user to wait while you run an analysis/summary or a task that updates the platform (via tools).
+- Do not speculate, fill gaps from general knowledge, or offer advice outside the CRM data.
+
 Conversation style:
-- Talk naturally and briefly, like a capable colleague. Do not sound like a command parser.
+- Keep replies short: minimal words, clear and concise. Avoid unnecessary explanations, filler, and long preambles.
+- Talk naturally, like a capable colleague. Do not sound like a command parser.
 - The user may speak in incomplete or conversational sentences. Infer ordinary wording, but never invent CRM facts.
 - If something important is unclear, ask one short follow-up question and wait for the answer.
 - Do not recite internal IDs, tool names, JSON, or implementation details.
-${
-  voiceOutput
-    ? "- Voice mode is ON: speak your replies out loud. Keep chat log text available via transcripts."
-    : "- Text mode is ON: reply in chat text only. Do not speak or produce audio."
-}
+${voiceOutput
+          ? "- Voice mode is ON: speak your replies out loud. Keep chat log text available via transcripts."
+          : "- Text mode is ON: reply in chat text only. Do not speak or produce audio."
+        }
 
 CRM safety and action rules:
 - Use the CRM tools for CRM facts and actions. Do not claim an action happened unless its tool returned ok:true.
@@ -3977,41 +3984,41 @@ CRM safety and action rules:
 - After a successful write, confirm what changed in one short sentence.
 `;
 
-    dc.send(
-      JSON.stringify({
-        type: "session.update",
-        session: {
-          type: "realtime",
-          instructions,
-          tools: ALL_CRM_TOOLS,
-          tool_choice: "auto",
-          output_modalities: voiceOutput ? ["audio"] : ["text"],
-          audio: {
-            input: {
-              turn_detection: voiceOutput
-                ? { type: "semantic_vad" }
-                : null,
-              transcription: {
-                model: "gpt-4o-mini-transcribe",
+      dc.send(
+        JSON.stringify({
+          type: "session.update",
+          session: {
+            type: "realtime",
+            instructions,
+            tools: ALL_CRM_TOOLS,
+            tool_choice: "auto",
+            output_modalities: voiceOutput ? ["audio"] : ["text"],
+            audio: {
+              input: {
+                turn_detection: voiceOutput
+                  ? { type: "semantic_vad" }
+                  : null,
+                transcription: {
+                  model: "gpt-4o-mini-transcribe",
+                },
               },
-            },
-            ...(voiceOutput
-              ? {
+              ...(voiceOutput
+                ? {
                   output: {
                     voice: "marin",
                   },
                 }
-              : {}),
+                : {}),
+            },
           },
-        },
-      }),
-    );
+        }),
+      );
 
-    if (audioRef.current) {
-      audioRef.current.muted = !voiceOutput;
-    }
-  },
-  [],
+      if (audioRef.current) {
+        audioRef.current.muted = !voiceOutput;
+      }
+    },
+    [],
   );
 
   const startSession = useCallback(async (options?: { withMic?: boolean }) => {
@@ -4290,7 +4297,7 @@ CRM safety and action rules:
 
       streamRef.current?.getTracks().forEach((track) => track.stop());
       if (silentAudioCtxRef.current) {
-        void silentAudioCtxRef.current.close().catch(() => {});
+        void silentAudioCtxRef.current.close().catch(() => { });
         silentAudioCtxRef.current = null;
       }
       streamRef.current = stream;
@@ -4642,102 +4649,209 @@ CRM safety and action rules:
   const panel =
     panelOpen && mounted && typeof document !== "undefined"
       ? createPortal(
-          <section
-            role="dialog"
-            aria-label="Hydr AI"
-            style={{
-              position: "fixed",
-              bottom: 20,
-              right: 20,
-              zIndex: 99999,
-              width: "min(480px, calc(100vw - 2rem))",
-              // Header is h-16; leave a small gap under it and above the bottom inset.
-              maxHeight: "calc(100dvh - 4rem - 1rem - 16px)",
-            }}
-            className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      status === "off"
-                        ? "bg-muted/40"
-                        : status === "connecting"
-                          ? "animate-pulse bg-amber-400"
-                          : "bg-teal-accent"
+        <section
+          role="dialog"
+          aria-label="Hydr AI"
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 99999,
+            width: "min(480px, calc(100vw - 2rem))",
+            // Header is h-16; leave a small gap under it and above the bottom inset.
+            maxHeight: "calc(100dvh - 4rem - 1rem - 16px)",
+          }}
+          className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl"
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${status === "off"
+                    ? "bg-muted/40"
+                    : status === "connecting"
+                      ? "animate-pulse bg-amber-400"
+                      : "bg-teal-accent"
                     }`}
-                    aria-hidden
-                  />
-                  <h2 className="text-sm font-bold text-deep">Hydr AI</h2>
-                </div>
-                <p className="mt-0.5 text-[11px] text-muted">{statusLabel}</p>
+                  aria-hidden
+                />
+                <h2 className="text-sm font-bold text-deep">Hydr AI</h2>
               </div>
+              <p className="mt-0.5 text-[11px] text-muted">{statusLabel}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                stopSession();
+                setPanelOpen(false);
+              }}
+              className="cursor-pointer rounded-md p-1.5 text-muted transition hover:bg-surface hover:text-deep"
+              aria-label="Close AI assistant"
+            >
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+                <path
+                  d="m5 5 10 10M15 5 5 15"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <div className="relative flex shrink-0 items-stretch border-b border-line bg-[#f3f1ec]">
+            <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {openChats.map((chat) => {
+                const active = chat.id === chatStore.activeId;
+                return (
+                  <div
+                    key={chat.id}
+                    className={`group relative flex max-w-[9.5rem] shrink-0 items-center gap-1.5 border-r border-line/70 px-2.5 py-2 text-left transition ${active
+                      ? "bg-white text-deep"
+                      : "text-muted hover:bg-white/60 hover:text-deep"
+                      }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectChat(chat.id)}
+                      className="flex min-w-0 flex-1 items-center gap-1.5"
+                      title={chat.title}
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-3.5 w-3.5 shrink-0 opacity-70"
+                        fill="none"
+                        aria-hidden
+                      >
+                        <path
+                          d="M3 3.5h10a1 1 0 0 1 1 1V9a1 1 0 0 1-1 1H7l-2.5 2v-2H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
+                          stroke="currentColor"
+                          strokeWidth="1.2"
+                        />
+                      </svg>
+                      <span className="truncate text-[11px] font-medium">
+                        {chat.title}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        closeChatTab(chat.id);
+                      }}
+                      className={`shrink-0 rounded p-0.5 text-muted transition hover:bg-surface hover:text-deep ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        }`}
+                      aria-label={`Close ${chat.title}`}
+                    >
+                      <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                        <path
+                          d="m3 3 6 6M9 3 3 9"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="relative z-20 flex shrink-0 items-center gap-0.5 border-l border-line/70 px-1.5 py-1">
               <button
                 type="button"
-                onClick={() => {
-                  stopSession();
-                  setPanelOpen(false);
-                }}
-                className="cursor-pointer rounded-md p-1.5 text-muted transition hover:bg-surface hover:text-deep"
-                aria-label="Close AI assistant"
+                onClick={startNewChat}
+                className="rounded-md p-1.5 text-muted transition hover:bg-white hover:text-deep"
+                aria-label="New chat"
+                title="New chat"
               >
-                <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none">
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
                   <path
-                    d="m5 5 10 10M15 5 5 15"
+                    d="M8 3v10M3 8h10"
                     stroke="currentColor"
                     strokeWidth="1.6"
                     strokeLinecap="round"
                   />
                 </svg>
               </button>
+              <button
+                type="button"
+                data-hydr-history-toggle="true"
+                onClick={() => setHistoryOpen((open) => !open)}
+                className={`rounded-md p-1.5 transition hover:bg-white hover:text-deep ${historyOpen ? "bg-white text-deep" : "text-muted"
+                  }`}
+                aria-label="Chat history"
+                title="Chat history"
+                aria-expanded={historyOpen}
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="5.25"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                  />
+                  <path
+                    d="M8 5v3.25L10 10"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
+          </div>
 
-            <div className="relative flex shrink-0 items-stretch border-b border-line bg-[#f3f1ec]">
-              <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {openChats.map((chat) => {
-                  const active = chat.id === chatStore.activeId;
-                  return (
+          {historyOpen && (
+            <div
+              ref={historyMenuRef}
+              className="shrink-0 border-b border-line bg-white"
+            >
+              <div className="flex items-center justify-between border-b border-line px-3 py-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  History
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(false)}
+                  className="rounded p-1 text-muted hover:bg-surface hover:text-deep"
+                  aria-label="Close history"
+                >
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                    <path
+                      d="m3 3 6 6M9 3 3 9"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div className="max-h-40 overflow-y-auto py-1">
+                {historyChats.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted">No chats yet.</p>
+                ) : (
+                  historyChats.map((chat) => (
                     <div
                       key={chat.id}
-                      className={`group relative flex max-w-[9.5rem] shrink-0 items-center gap-1.5 border-r border-line/70 px-2.5 py-2 text-left transition ${
-                        active
-                          ? "bg-white text-deep"
-                          : "text-muted hover:bg-white/60 hover:text-deep"
-                      }`}
+                      className={`flex items-center gap-1 px-1 ${chat.id === chatStore.activeId ? "bg-teal-soft/60" : ""
+                        }`}
                     >
                       <button
                         type="button"
                         onClick={() => selectChat(chat.id)}
-                        className="flex min-w-0 flex-1 items-center gap-1.5"
+                        className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs text-deep hover:bg-surface"
                         title={chat.title}
                       >
-                        <svg
-                          viewBox="0 0 16 16"
-                          className="h-3.5 w-3.5 shrink-0 opacity-70"
-                          fill="none"
-                          aria-hidden
-                        >
-                          <path
-                            d="M3 3.5h10a1 1 0 0 1 1 1V9a1 1 0 0 1-1 1H7l-2.5 2v-2H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
-                            stroke="currentColor"
-                            strokeWidth="1.2"
-                          />
-                        </svg>
-                        <span className="truncate text-[11px] font-medium">
-                          {chat.title}
-                        </span>
+                        {chat.title}
                       </button>
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          closeChatTab(chat.id);
-                        }}
-                        className={`shrink-0 rounded p-0.5 text-muted transition hover:bg-surface hover:text-deep ${
-                          active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                        }`}
-                        aria-label={`Close ${chat.title}`}
+                        onClick={() => deleteChatFromHistory(chat.id)}
+                        className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-700"
+                        aria-label={`Delete ${chat.title}`}
                       >
                         <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
                           <path
@@ -4749,123 +4863,11 @@ CRM safety and action rules:
                         </svg>
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-
-              <div className="relative z-20 flex shrink-0 items-center gap-0.5 border-l border-line/70 px-1.5 py-1">
-                <button
-                  type="button"
-                  onClick={startNewChat}
-                  className="rounded-md p-1.5 text-muted transition hover:bg-white hover:text-deep"
-                  aria-label="New chat"
-                  title="New chat"
-                >
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
-                    <path
-                      d="M8 3v10M3 8h10"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  data-hydr-history-toggle="true"
-                  onClick={() => setHistoryOpen((open) => !open)}
-                  className={`rounded-md p-1.5 transition hover:bg-white hover:text-deep ${
-                    historyOpen ? "bg-white text-deep" : "text-muted"
-                  }`}
-                  aria-label="Chat history"
-                  title="Chat history"
-                  aria-expanded={historyOpen}
-                >
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="5.25"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                    />
-                    <path
-                      d="M8 5v3.25L10 10"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </button>
+                  ))
+                )}
               </div>
             </div>
-
-            {historyOpen && (
-              <div
-                ref={historyMenuRef}
-                className="shrink-0 border-b border-line bg-white"
-              >
-                <div className="flex items-center justify-between border-b border-line px-3 py-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    History
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setHistoryOpen(false)}
-                    className="rounded p-1 text-muted hover:bg-surface hover:text-deep"
-                    aria-label="Close history"
-                  >
-                    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
-                      <path
-                        d="m3 3 6 6M9 3 3 9"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <div className="max-h-40 overflow-y-auto py-1">
-                  {historyChats.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-muted">No chats yet.</p>
-                  ) : (
-                    historyChats.map((chat) => (
-                      <div
-                        key={chat.id}
-                        className={`flex items-center gap-1 px-1 ${
-                          chat.id === chatStore.activeId ? "bg-teal-soft/60" : ""
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => selectChat(chat.id)}
-                          className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs text-deep hover:bg-surface"
-                          title={chat.title}
-                        >
-                          {chat.title}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteChatFromHistory(chat.id)}
-                          className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-700"
-                          aria-label={`Delete ${chat.title}`}
-                        >
-                          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
-                            <path
-                              d="m3 3 6 6M9 3 3 9"
-                              stroke="currentColor"
-                              strokeWidth="1.4"
-                              strokeLinecap="round"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
+          )}
 
           <div
             ref={logsScrollRef}
@@ -4894,15 +4896,14 @@ CRM safety and action rules:
                 {logs.map((entry) => (
                   <div
                     key={entry.id}
-                    className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-xs leading-relaxed ${
-                      entry.kind === "action"
-                        ? "border border-teal-accent/20 bg-teal-soft text-deep"
-                        : entry.kind === "error"
-                          ? "border border-red-200 bg-red-50 text-red-700"
-                          : entry.kind === "user"
-                            ? "ml-8 bg-deep text-white"
-                            : "mr-8 bg-surface text-deep"
-                    }`}
+                    className={`whitespace-pre-wrap rounded-lg px-3 py-2 text-xs leading-relaxed ${entry.kind === "action"
+                      ? "border border-teal-accent/20 bg-teal-soft text-deep"
+                      : entry.kind === "error"
+                        ? "border border-red-200 bg-red-50 text-red-700"
+                        : entry.kind === "user"
+                          ? "ml-8 bg-deep text-white"
+                          : "mr-8 bg-surface text-deep"
+                      }`}
                   >
                     {entry.kind === "action" && (
                       <span className="mr-1 font-bold text-teal-accent">CRM:</span>
@@ -4933,11 +4934,10 @@ CRM safety and action rules:
                 <button
                   type="button"
                   onClick={toggleMic}
-                  className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                    micMuted
-                      ? "border-amber-300 bg-amber-50 text-amber-800"
-                      : "border-line bg-surface text-deep hover:border-teal-accent/40"
-                  }`}
+                  className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${micMuted
+                    ? "border-amber-300 bg-amber-50 text-amber-800"
+                    : "border-line bg-surface text-deep hover:border-teal-accent/40"
+                    }`}
                 >
                   {micMuted ? "Unmute microphone" : "Mute microphone"}
                 </button>
@@ -4990,8 +4990,8 @@ CRM safety and action rules:
             </form>
           </div>
         </section>,
-          document.body,
-        )
+        document.body,
+      )
       : null;
 
   return (
