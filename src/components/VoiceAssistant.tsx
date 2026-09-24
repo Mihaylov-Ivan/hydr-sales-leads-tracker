@@ -10,6 +10,17 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
+import {
+  createEmptyChat,
+  createDefaultStore,
+  fetchChatStore,
+  loadLocalChatStore,
+  persistChatStore,
+  saveLocalChatStore,
+  titleFromLogs,
+  type HydrAiChat,
+  type HydrAiChatStore,
+} from "@/lib/hydr-ai-chats";
 import { useProjects } from "@/lib/store";
 import { useProspecting } from "@/lib/prospecting-store";
 import {
@@ -936,7 +947,8 @@ export default function VoiceAssistant() {
   const [status, setStatus] = useState<VoiceStatus>("off");
   const [micMuted, setMicMuted] = useState(false);
   const [typedInput, setTypedInput] = useState("");
-  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [chatStore, setChatStore] = useState<HydrAiChatStore>(createDefaultStore);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -949,8 +961,27 @@ export default function VoiceAssistant() {
   const wantsMicRef = useRef(false);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
   const logsScrollRef = useRef<HTMLDivElement | null>(null);
+  const historyMenuRef = useRef<HTMLDivElement | null>(null);
+  const chatHydratedRef = useRef(false);
   const [hasMic, setHasMic] = useState(false);
   const [voiceConnecting, setVoiceConnecting] = useState(false);
+
+  const userId = user?.userId ?? null;
+  const logs = useMemo((): LogEntry[] => {
+    return (
+      chatStore.chats.find((c) => c.id === chatStore.activeId)?.logs ?? []
+    );
+  }, [chatStore]);
+  const openChats = useMemo((): HydrAiChat[] => {
+    return chatStore.openIds
+      .map((id) => chatStore.chats.find((c) => c.id === id))
+      .filter((c): c is HydrAiChat => Boolean(c));
+  }, [chatStore]);
+  const historyChats = useMemo(() => {
+    return chatStore.chats
+      .slice()
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [chatStore]);
 
   const stateRef = useRef({
     projects,
@@ -1118,14 +1149,24 @@ export default function VoiceAssistant() {
   const appendLog = useCallback((kind: LogKind, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    setLogs((prev) => [
-      ...prev.slice(-49),
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        kind,
-        text: trimmed,
-      },
-    ]);
+    const entry: LogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      kind,
+      text: trimmed,
+    };
+    setChatStore((prev) => {
+      const chats = prev.chats.map((chat) => {
+        if (chat.id !== prev.activeId) return chat;
+        const nextLogs = [...chat.logs.slice(-79), entry];
+        return {
+          ...chat,
+          logs: nextLogs,
+          title: titleFromLogs(nextLogs),
+          updatedAt: Date.now(),
+        };
+      });
+      return { ...prev, chats };
+    });
   }, []);
 
   const allowedProjects = useCallback((): Project[] => {
@@ -4014,15 +4055,161 @@ CRM safety and action rules:
     return "Updating CRM…";
   }, [hasMic, micMuted, status]);
 
+  const resetLiveSession = useCallback(() => {
+    stopSession();
+    setTypedInput("");
+    setError(null);
+    pendingTextRef.current = [];
+  }, [stopSession]);
+
+  const selectChat = useCallback(
+    (id: string) => {
+      if (id !== chatStore.activeId) resetLiveSession();
+      setChatStore((prev) => {
+        if (prev.activeId === id) {
+          if (!prev.openIds.includes(id)) {
+            return { ...prev, openIds: [...prev.openIds, id] };
+          }
+          return prev;
+        }
+        return {
+          ...prev,
+          activeId: id,
+          openIds: prev.openIds.includes(id)
+            ? prev.openIds
+            : [...prev.openIds, id],
+        };
+      });
+      setHistoryOpen(false);
+    },
+    [chatStore.activeId, resetLiveSession],
+  );
+
+  const startNewChat = useCallback(() => {
+    const chat = createEmptyChat();
+    setChatStore((prev) => ({
+      chats: [chat, ...prev.chats],
+      openIds: [...prev.openIds, chat.id],
+      activeId: chat.id,
+    }));
+    resetLiveSession();
+    setHistoryOpen(false);
+  }, [resetLiveSession]);
+
+  const closeChatTab = useCallback(
+    (id: string) => {
+      const closingActive = chatStore.activeId === id;
+      setChatStore((prev) => {
+        const wasActive = prev.activeId === id;
+        const openIds = prev.openIds.filter((openId) => openId !== id);
+        if (openIds.length === 0) {
+          const chat = createEmptyChat();
+          return {
+            chats: [chat, ...prev.chats],
+            openIds: [chat.id],
+            activeId: chat.id,
+          };
+        }
+        if (!wasActive) return { ...prev, openIds };
+        const idx = prev.openIds.indexOf(id);
+        const nextActive =
+          openIds[Math.min(Math.max(idx - 1, 0), openIds.length - 1)] ??
+          openIds[0];
+        return { ...prev, openIds, activeId: nextActive };
+      });
+      if (closingActive) resetLiveSession();
+    },
+    [chatStore.activeId, resetLiveSession],
+  );
+
+  const deleteChatFromHistory = useCallback(
+    (id: string) => {
+      const deletingActive = chatStore.activeId === id;
+      setChatStore((prev) => {
+        const chats = prev.chats.filter((c) => c.id !== id);
+        let openIds = prev.openIds.filter((openId) => openId !== id);
+        let activeId = prev.activeId;
+        if (chats.length === 0) {
+          const chat = createEmptyChat();
+          return { chats: [chat], openIds: [chat.id], activeId: chat.id };
+        }
+        if (activeId === id) {
+          activeId = openIds[0] ?? chats[0].id;
+          if (!openIds.includes(activeId)) openIds = [activeId, ...openIds];
+        }
+        if (openIds.length === 0) openIds = [activeId];
+        return { chats, openIds, activeId };
+      });
+      if (deletingActive) resetLiveSession();
+    },
+    [chatStore.activeId, resetLiveSession],
+  );
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    chatHydratedRef.current = false;
+
+    async function hydrate() {
+      if (authEnabled && userId) {
+        const fromDb = await fetchChatStore();
+        if (cancelled) return;
+        if (fromDb) {
+          setChatStore(fromDb);
+        } else {
+          setChatStore(loadLocalChatStore(userId));
+        }
+      } else {
+        setChatStore(loadLocalChatStore(userId));
+      }
+      if (!cancelled) chatHydratedRef.current = true;
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [authEnabled, userId]);
+
+  useEffect(() => {
+    if (!chatHydratedRef.current) return;
+
+    if (!authEnabled || !userId) {
+      saveLocalChatStore(userId, chatStore);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void persistChatStore(chatStore).then((ok) => {
+        if (!ok) saveLocalChatStore(userId, chatStore);
+      });
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [authEnabled, chatStore, userId]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (historyMenuRef.current?.contains(target)) return;
+      const el = target instanceof Element ? target : target.parentElement;
+      if (el?.closest?.('[data-hydr-history-toggle="true"]')) return;
+      setHistoryOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [historyOpen]);
+
+  useEffect(() => {
     const scroller = logsScrollRef.current;
     if (!scroller) return;
     scroller.scrollTop = scroller.scrollHeight;
-  }, [logs, panelOpen]);
+  }, [logs, panelOpen, chatStore.activeId]);
 
   if (!enabled || !authReady || isViewer || !hasAreaAccess) {
     return null;
@@ -4039,9 +4226,9 @@ CRM safety and action rules:
               bottom: 20,
               right: 20,
               zIndex: 99999,
-              width: "min(390px, calc(100vw - 2rem))",
+              width: "min(480px, calc(100vw - 2rem))",
               // Header is h-16; leave a small gap under it and above the bottom inset.
-              maxHeight: "calc(100dvh - 4rem - 1.5rem - 20px)",
+              maxHeight: "calc(100dvh - 4rem - 1rem - 16px)",
             }}
             className="flex flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-2xl"
           >
@@ -4081,6 +4268,180 @@ CRM safety and action rules:
                 </svg>
               </button>
             </div>
+
+            <div className="relative flex shrink-0 items-stretch border-b border-line bg-[#f3f1ec]">
+              <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {openChats.map((chat) => {
+                  const active = chat.id === chatStore.activeId;
+                  return (
+                    <div
+                      key={chat.id}
+                      className={`group relative flex max-w-[9.5rem] shrink-0 items-center gap-1.5 border-r border-line/70 px-2.5 py-2 text-left transition ${
+                        active
+                          ? "bg-white text-deep"
+                          : "text-muted hover:bg-white/60 hover:text-deep"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => selectChat(chat.id)}
+                        className="flex min-w-0 flex-1 items-center gap-1.5"
+                        title={chat.title}
+                      >
+                        <svg
+                          viewBox="0 0 16 16"
+                          className="h-3.5 w-3.5 shrink-0 opacity-70"
+                          fill="none"
+                          aria-hidden
+                        >
+                          <path
+                            d="M3 3.5h10a1 1 0 0 1 1 1V9a1 1 0 0 1-1 1H7l-2.5 2v-2H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"
+                            stroke="currentColor"
+                            strokeWidth="1.2"
+                          />
+                        </svg>
+                        <span className="truncate text-[11px] font-medium">
+                          {chat.title}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          closeChatTab(chat.id);
+                        }}
+                        className={`shrink-0 rounded p-0.5 text-muted transition hover:bg-surface hover:text-deep ${
+                          active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        }`}
+                        aria-label={`Close ${chat.title}`}
+                      >
+                        <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                          <path
+                            d="m3 3 6 6M9 3 3 9"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="relative z-20 flex shrink-0 items-center gap-0.5 border-l border-line/70 px-1.5 py-1">
+                <button
+                  type="button"
+                  onClick={startNewChat}
+                  className="rounded-md p-1.5 text-muted transition hover:bg-white hover:text-deep"
+                  aria-label="New chat"
+                  title="New chat"
+                >
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+                    <path
+                      d="M8 3v10M3 8h10"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  data-hydr-history-toggle="true"
+                  onClick={() => setHistoryOpen((open) => !open)}
+                  className={`rounded-md p-1.5 transition hover:bg-white hover:text-deep ${
+                    historyOpen ? "bg-white text-deep" : "text-muted"
+                  }`}
+                  aria-label="Chat history"
+                  title="Chat history"
+                  aria-expanded={historyOpen}
+                >
+                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+                    <circle
+                      cx="8"
+                      cy="8"
+                      r="5.25"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                    />
+                    <path
+                      d="M8 5v3.25L10 10"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {historyOpen && (
+              <div
+                ref={historyMenuRef}
+                className="shrink-0 border-b border-line bg-white"
+              >
+                <div className="flex items-center justify-between border-b border-line px-3 py-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    History
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen(false)}
+                    className="rounded p-1 text-muted hover:bg-surface hover:text-deep"
+                    aria-label="Close history"
+                  >
+                    <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                      <path
+                        d="m3 3 6 6M9 3 3 9"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-y-auto py-1">
+                  {historyChats.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-muted">No chats yet.</p>
+                  ) : (
+                    historyChats.map((chat) => (
+                      <div
+                        key={chat.id}
+                        className={`flex items-center gap-1 px-1 ${
+                          chat.id === chatStore.activeId ? "bg-teal-soft/60" : ""
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => selectChat(chat.id)}
+                          className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-xs text-deep hover:bg-surface"
+                          title={chat.title}
+                        >
+                          {chat.title}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteChatFromHistory(chat.id)}
+                          className="shrink-0 rounded p-1 text-muted hover:bg-red-50 hover:text-red-700"
+                          aria-label={`Delete ${chat.title}`}
+                        >
+                          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none">
+                            <path
+                              d="m3 3 6 6M9 3 3 9"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
 
           <div
             ref={logsScrollRef}
