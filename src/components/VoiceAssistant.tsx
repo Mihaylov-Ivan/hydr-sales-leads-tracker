@@ -3233,21 +3233,21 @@ export default function VoiceAssistant() {
         const action = stringValue(args.action);
         const payload = asRecord(args.payload);
         if (action === "receive_stock") {
-          const result = s.receiveStock(payload as Parameters<typeof s.receiveStock>[0]);
+          const result = s.receiveStock(payload as unknown as Parameters<typeof s.receiveStock>[0]);
           if (result.ok) appendLog("action", "Received stock into the warehouse.");
           return JSON.stringify(result);
         }
         if (action === "transfer_stock") {
-          return JSON.stringify(s.transferStock(payload as Parameters<typeof s.transferStock>[0]));
+          return JSON.stringify(s.transferStock(payload as unknown as Parameters<typeof s.transferStock>[0]));
         }
         if (action === "consume_stock") {
-          return JSON.stringify(s.consumeStock(payload as Parameters<typeof s.consumeStock>[0]));
+          return JSON.stringify(s.consumeStock(payload as unknown as Parameters<typeof s.consumeStock>[0]));
         }
         if (action === "adjust_stock") {
-          return JSON.stringify(s.adjustStock(payload as Parameters<typeof s.adjustStock>[0]));
+          return JSON.stringify(s.adjustStock(payload as unknown as Parameters<typeof s.adjustStock>[0]));
         }
         if (action === "update_lot") {
-          return JSON.stringify(s.updateWarehouseLot(payload as Parameters<typeof s.updateWarehouseLot>[0]));
+          return JSON.stringify(s.updateWarehouseLot(payload as unknown as Parameters<typeof s.updateWarehouseLot>[0]));
         }
         if (action === "delete_lot") {
           const lotId = stringValue(payload.lotId);
@@ -3294,7 +3294,7 @@ export default function VoiceAssistant() {
           return JSON.stringify(s.deleteWarehouseGroup(groupId));
         }
         if (action === "save_bom") {
-          return JSON.stringify(s.saveWarehouseBom(payload as Parameters<typeof s.saveWarehouseBom>[0]));
+          return JSON.stringify(s.saveWarehouseBom(payload as unknown as Parameters<typeof s.saveWarehouseBom>[0]));
         }
         if (action === "delete_bom") {
           const bomId = stringValue(payload.bomId);
@@ -3311,14 +3311,14 @@ export default function VoiceAssistant() {
           if (!has("finance")) {
             return JSON.stringify({ ok: false, error: "Company finance settings require Finance permission." });
           }
-          s.updateFinanceSettings(payload as Parameters<typeof s.updateFinanceSettings>[0]);
+          s.updateFinanceSettings(payload as unknown as Parameters<typeof s.updateFinanceSettings>[0]);
           return JSON.stringify({ ok: true, updated: "company_finance_settings" });
         }
         if (action === "update_metrics") {
           if (!has("sales")) {
             return JSON.stringify({ ok: false, error: "Pipeline metrics settings require Sales permission." });
           }
-          s.updateMetricsSettings(payload as Parameters<typeof s.updateMetricsSettings>[0]);
+          s.updateMetricsSettings(payload as unknown as Parameters<typeof s.updateMetricsSettings>[0]);
           return JSON.stringify({ ok: true, updated: "pipeline_metrics_settings" });
         }
         return JSON.stringify({ ok: false, error: "Unsupported company-settings action." });

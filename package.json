@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cert:generate": "node scripts/generate-dev-cert.mjs",
+    "start:https": "node scripts/https-proxy.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
