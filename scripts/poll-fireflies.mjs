@@ -87,11 +87,14 @@ if (once) {
 }
 
 while (!stopped) {
-  await poll();
+  const ok = await poll();
+  // The app may still be starting when the poller launches. Retry failures
+  // quickly instead of waiting the full normal interval.
+  const delayMs = ok ? intervalMs : Math.min(intervalMs, 15_000);
   const step = 1000;
   let waited = 0;
-  while (!stopped && waited < intervalMs) {
-    await sleep(Math.min(step, intervalMs - waited));
+  while (!stopped && waited < delayMs) {
+    await sleep(Math.min(step, delayMs - waited));
     waited += step;
   }
 }
