@@ -950,6 +950,7 @@ export default function VoiceAssistant() {
   const logsEndRef = useRef<HTMLDivElement | null>(null);
   const logsScrollRef = useRef<HTMLDivElement | null>(null);
   const [hasMic, setHasMic] = useState(false);
+  const [voiceConnecting, setVoiceConnecting] = useState(false);
 
   const stateRef = useRef({
     projects,
@@ -3498,6 +3499,7 @@ export default function VoiceAssistant() {
     wantsMicRef.current = false;
     toolResultsRef.current.clear();
     setHasMic(false);
+    setVoiceConnecting(false);
     setStatus("off");
     setMicMuted(false);
   }, []);
@@ -3534,7 +3536,14 @@ export default function VoiceAssistant() {
           }),
         );
       }
-      dc.send(JSON.stringify({ type: "response.create" }));
+      dc.send(
+        JSON.stringify({
+          type: "response.create",
+          response: {
+            output_modalities: wantsMicRef.current ? ["audio"] : ["text"],
+          },
+        }),
+      );
       setStatus("thinking");
     },
     [],
@@ -3557,7 +3566,9 @@ export default function VoiceAssistant() {
     return dest.stream;
   }, []);
 
-  const sendSessionConfiguration = useCallback((dc: RTCDataChannel) => {
+  const sendSessionConfiguration = useCallback(
+    (dc: RTCDataChannel, options?: { voiceOutput?: boolean }) => {
+    const voiceOutput = options?.voiceOutput ?? wantsMicRef.current;
     const now = new Date();
     const timeZone =
       Intl.DateTimeFormat().resolvedOptions().timeZone || "local timezone";
@@ -3576,6 +3587,11 @@ Conversation style:
 - The user may speak in incomplete or conversational sentences. Infer ordinary wording, but never invent CRM facts.
 - If something important is unclear, ask one short follow-up question and wait for the answer.
 - Do not recite internal IDs, tool names, JSON, or implementation details.
+${
+  voiceOutput
+    ? "- Voice mode is ON: speak your replies out loud. Keep chat log text available via transcripts."
+    : "- Text mode is ON: reply in chat text only. Do not speak or produce audio."
+}
 
 CRM safety and action rules:
 - Use the CRM tools for CRM facts and actions. Do not claim an action happened unless its tool returned ok:true.
@@ -3604,23 +3620,42 @@ CRM safety and action rules:
           instructions,
           tools: ALL_CRM_TOOLS,
           tool_choice: "auto",
+          output_modalities: voiceOutput ? ["audio"] : ["text"],
           audio: {
             input: {
+              turn_detection: voiceOutput
+                ? { type: "semantic_vad" }
+                : null,
               transcription: {
                 model: "gpt-4o-mini-transcribe",
               },
             },
+            ...(voiceOutput
+              ? {
+                  output: {
+                    voice: "marin",
+                  },
+                }
+              : {}),
           },
         },
       }),
     );
-  }, []);
+
+    if (audioRef.current) {
+      audioRef.current.muted = !voiceOutput;
+    }
+  },
+  [],
+  );
 
   const startSession = useCallback(async (options?: { withMic?: boolean }) => {
-    const withMic = options?.withMic !== false;
+    // Mic is opt-in only — text sends start a silent session without voice chrome.
+    const withMic = options?.withMic === true;
     if (pcRef.current || status === "connecting") return;
     setError(null);
     setStatus("connecting");
+    setVoiceConnecting(withMic);
     toolResultsRef.current.clear();
     wantsMicRef.current = withMic;
 
@@ -3693,7 +3728,7 @@ CRM safety and action rules:
       dcRef.current = dc;
 
       dc.addEventListener("open", () => {
-        sendSessionConfiguration(dc);
+        sendSessionConfiguration(dc, { voiceOutput: withMic });
       });
 
       dc.addEventListener("message", (message) => {
@@ -3711,6 +3746,7 @@ CRM safety and action rules:
                 track.enabled = true;
               });
               setMicMuted(false);
+              setVoiceConnecting(false);
             } else {
               streamRef.current?.getAudioTracks().forEach((track) => {
                 track.enabled = false;
@@ -3745,7 +3781,7 @@ CRM safety and action rules:
             event.type === "response.output_audio.delta" ||
             event.type === "response.audio.delta"
           ) {
-            setStatus("speaking");
+            if (wantsMicRef.current) setStatus("speaking");
             return;
           }
 
@@ -3790,7 +3826,16 @@ CRM safety and action rules:
             }
 
             if (dc.readyState === "open") {
-              dc.send(JSON.stringify({ type: "response.create" }));
+              dc.send(
+                JSON.stringify({
+                  type: "response.create",
+                  response: {
+                    output_modalities: wantsMicRef.current
+                      ? ["audio"]
+                      : ["text"],
+                  },
+                }),
+              );
               setStatus("thinking");
             }
             return;
@@ -3849,11 +3894,14 @@ CRM safety and action rules:
 
   const enableMicrophone = useCallback(async () => {
     const pc = pcRef.current;
+    const dc = dcRef.current;
+    setVoiceConnecting(true);
     if (!pc) {
       await startSession({ withMic: true });
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceConnecting(false);
       setError("This browser does not support microphone access.");
       return;
     }
@@ -3885,13 +3933,19 @@ CRM safety and action rules:
       wantsMicRef.current = true;
       setHasMic(true);
       setMicMuted(false);
+      setVoiceConnecting(false);
+      if (dc && dc.readyState === "open") {
+        sendSessionConfiguration(dc, { voiceOutput: true });
+      }
+      if (audioRef.current) audioRef.current.muted = false;
       setStatus("listening");
     } catch (e) {
+      setVoiceConnecting(false);
       setError(
         e instanceof Error ? e.message : "Could not enable the microphone.",
       );
     }
-  }, [startSession]);
+  }, [sendSessionConfiguration, startSession]);
 
   const toggleMic = useCallback(() => {
     if (!hasMic) {
@@ -3923,14 +3977,21 @@ CRM safety and action rules:
             },
           }),
         );
-        dc.send(JSON.stringify({ type: "response.create" }));
+        dc.send(
+          JSON.stringify({
+            type: "response.create",
+            response: {
+              output_modalities: wantsMicRef.current ? ["audio"] : ["text"],
+            },
+          }),
+        );
         appendLog("user", text);
         setTypedInput("");
         setStatus("thinking");
         return;
       }
 
-      // Auto-connect a text session (no mic) and send once ready.
+      // Auto-connect a text session (no mic / no spoken replies) and send once ready.
       pendingTextRef.current.push(text);
       appendLog("user", text);
       setTypedInput("");
@@ -3945,8 +4006,8 @@ CRM safety and action rules:
     if (status === "off") return "Not connected";
     if (status === "connecting") return "Connecting…";
     if (status === "listening") {
-      if (!hasMic) return "Text chat ready";
-      return micMuted ? "Microphone muted" : "Listening";
+      if (!hasMic) return "Text chat · replies in chat only";
+      return micMuted ? "Voice on · microphone muted" : "Voice on · listening";
     }
     if (status === "thinking") return "Thinking…";
     if (status === "speaking") return "Speaking";
@@ -4082,11 +4143,32 @@ CRM safety and action rules:
           )}
 
           <div className="shrink-0 border-t border-line px-4 py-3">
-            {status === "off" || status === "connecting" ? (
+            {hasMic ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                    micMuted
+                      ? "border-amber-300 bg-amber-50 text-amber-800"
+                      : "border-line bg-surface text-deep hover:border-teal-accent/40"
+                  }`}
+                >
+                  {micMuted ? "Unmute microphone" : "Mute microphone"}
+                </button>
+                <button
+                  type="button"
+                  onClick={stopSession}
+                  className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted transition hover:text-deep"
+                >
+                  Stop
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
-                disabled={status === "connecting" || !ready}
-                onClick={() => void startSession({ withMic: true })}
+                disabled={!ready || status === "connecting" || voiceConnecting}
+                onClick={() => void enableMicrophone()}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-teal-accent px-3 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
@@ -4102,35 +4184,8 @@ CRM safety and action rules:
                     strokeLinecap="round"
                   />
                 </svg>
-                {status === "connecting" ? "Connecting…" : "Start voice conversation"}
+                {voiceConnecting ? "Connecting…" : "Start voice conversation"}
               </button>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  className={`flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                    !hasMic
-                      ? "border-teal-accent/40 bg-teal-soft text-deep hover:brightness-95"
-                      : micMuted
-                        ? "border-amber-300 bg-amber-50 text-amber-800"
-                        : "border-line bg-surface text-deep hover:border-teal-accent/40"
-                  }`}
-                >
-                  {!hasMic
-                    ? "Enable microphone"
-                    : micMuted
-                      ? "Unmute microphone"
-                      : "Mute microphone"}
-                </button>
-                <button
-                  type="button"
-                  onClick={stopSession}
-                  className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted transition hover:text-deep"
-                >
-                  Stop
-                </button>
-              </div>
             )}
 
             <form onSubmit={sendTypedMessage} className="mt-2 flex gap-2">

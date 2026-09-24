@@ -76,12 +76,11 @@ export async function POST(request: NextRequest) {
   const sessionConfig = {
     type: "realtime",
     model: REALTIME_MODEL,
-    output_modalities: ["audio"],
+    // Start text-only; the client upgrades to audio when the user enables the mic.
+    output_modalities: ["text"],
     audio: {
       input: {
-        turn_detection: {
-          type: "semantic_vad",
-        },
+        turn_detection: null,
         transcription: {
           model: "gpt-4o-mini-transcribe",
         },
