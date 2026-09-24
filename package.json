@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "cert:generate": "node scripts/generate-dev-cert.mjs",
-    "start:https": "node scripts/https-proxy.mjs"
+    "start:https": "node scripts/https-proxy.mjs",
+    "fireflies:poll": "node scripts/poll-fireflies.mjs",
+    "fireflies:poll:once": "node scripts/poll-fireflies.mjs --once"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
