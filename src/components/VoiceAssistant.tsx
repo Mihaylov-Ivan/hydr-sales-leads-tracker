@@ -2551,7 +2551,7 @@ export default function VoiceAssistant() {
           ) {
             return JSON.stringify({ ok: false, error: "Task assignee is not assignable." });
           }
-          s.addTodo(
+          const saved = await s.addTodo(
             project.id,
             "our-action",
             text,
@@ -2560,6 +2560,12 @@ export default function VoiceAssistant() {
             start ?? undefined,
             endDate ?? undefined,
           );
+          if (!saved) {
+            return JSON.stringify({
+              ok: false,
+              error: "Could not save the task to the database. Try again.",
+            });
+          }
           appendLog("action", `Created task on ${project.name}.`);
           return JSON.stringify({ ok: true, saved: "task", project_id: project.id });
         }
@@ -3701,7 +3707,13 @@ export default function VoiceAssistant() {
           });
         }
 
-        s.addComment(project.id, text, stageChange);
+        const saved = await s.addComment(project.id, text, stageChange);
+        if (!saved) {
+          return JSON.stringify({
+            ok: false,
+            error: "Could not save the update to the database. Try again.",
+          });
+        }
         appendLog(
           "action",
           `Added update to ${project.name}${stageChange ? ` and moved it to ${STAGE_LABELS[stageChange]}` : ""}.`,
@@ -3756,13 +3768,19 @@ export default function VoiceAssistant() {
           });
         }
 
-        s.addTodo(
+        const saved = await s.addTodo(
           project.id,
           kind,
           text,
           dueDate,
           ownerUserId,
         );
+        if (!saved) {
+          return JSON.stringify({
+            ok: false,
+            error: "Could not save the task to the database. Try again.",
+          });
+        }
 
         const ownerName = ownerUserId
           ? s.teamMembers.find((member) => member.id === ownerUserId)?.name
@@ -3940,8 +3958,8 @@ Scope (hard limits):
 - Do not speculate, fill gaps from general knowledge, or offer advice outside the CRM data.
 
 Conversation style:
-- Keep replies short: minimal words, clear and concise. Avoid unnecessary explanations, filler, and long preambles.
-- Talk naturally, like a capable colleague. Do not sound like a command parser.
+- Keep replies extremely short: a few words or one short sentence. Never explain yourself, never add preamble or rationale. Confirm actions in the fewest words possible.
+- Talk naturally. Do not sound like a command parser.
 - The user may speak in incomplete or conversational sentences. Infer ordinary wording, but never invent CRM facts.
 - If something important is unclear, ask one short follow-up question and wait for the answer.
 - Do not recite internal IDs, tool names, JSON, or implementation details.
@@ -3981,7 +3999,7 @@ CRM safety and action rules:
 - Mark a meeting processed only after all clear/resolved CRM changes have succeeded. Save a concise review_summary and linked_project_ids, then tell the user exactly what changed. If the meeting contains only information already represented in the CRM, mark it processed with a summary such as "No CRM changes needed." Then continue to the next actionable meeting.
 - For 'give me an update', 'summarize the projects', 'what has happened lately', or bullet-point status requests, use get_portfolio_update. Omit project_ids for all accessible projects; pass resolved project_ids for a requested subset. Structure the spoken/typed answer as one complete block per project: name/client, stage, recent happenings, open tasks/blockers, and next steps together. Never walk the portfolio by topic (updates for everyone, then tasks for everyone). Keep each project block concise.
 - If the user requests an operation that genuinely cannot be completed through the available CRM tools (for example selecting a new local file for upload), explain that limitation in one sentence and continue with everything else you can do.
-- After a successful write, confirm what changed in one short sentence.
+- After a successful write, confirm in a few words only (e.g. "Saved on Metlen.").
 `;
 
       dc.send(
@@ -4640,7 +4658,7 @@ CRM safety and action rules:
     const scroller = logsScrollRef.current;
     if (!scroller) return;
     scroller.scrollTop = scroller.scrollHeight;
-  }, [logs, panelOpen, chatStore.activeId]);
+  }, [logs, panelOpen, chatStore.activeId, status]);
 
   if (!enabled || !authReady || isViewer || !hasAreaAccess) {
     return null;
@@ -4873,7 +4891,9 @@ CRM safety and action rules:
             ref={logsScrollRef}
             className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
           >
-            {logs.length === 0 ? (
+            {logs.length === 0 &&
+            status !== "thinking" &&
+            status !== "working" ? (
               <div className="space-y-2 text-xs leading-relaxed text-muted">
                 <p className="font-semibold text-deep">
                   Speak normally — no special commands needed.
@@ -4917,6 +4937,20 @@ CRM safety and action rules:
                     {entry.text}
                   </div>
                 ))}
+                {(status === "thinking" || status === "working") && (
+                  <div
+                    className="mr-8 flex items-center gap-2 rounded-lg bg-surface px-3 py-2.5 text-xs text-muted"
+                    aria-live="polite"
+                    aria-label="Hydr is thinking"
+                  >
+                    <span className="font-semibold text-teal-accent">Hydr:</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-accent [animation-delay:-0.3s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-accent [animation-delay:-0.15s]" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-teal-accent" />
+                    </span>
+                  </div>
+                )}
                 <div ref={logsEndRef} />
               </>
             )}

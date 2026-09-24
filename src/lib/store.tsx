@@ -587,7 +587,11 @@ interface ProjectsApi {
   addProject: (input: NewProjectInput) => string;
   /** Resolves when a newly created project row is in Supabase (or immediately offline). */
   waitForProjectInsert: (projectId: string) => Promise<boolean>;
-  addComment: (projectId: string, text: string, stageChange?: Stage) => void;
+  addComment: (
+    projectId: string,
+    text: string,
+    stageChange?: Stage,
+  ) => Promise<boolean>;
   updateProject: (projectId: string, patch: ProjectPatch) => void;
   /** Mark client as contacted today — restarts this user's follow-up window */
   markClientContacted: (projectId: string) => void;
@@ -625,7 +629,7 @@ interface ProjectsApi {
     ownerUserId?: string,
     startDate?: string,
     endDate?: string,
-  ) => void;
+  ) => Promise<boolean>;
   toggleTodo: (projectId: string, todoId: string) => void;
   updateTodo: (projectId: string, todoId: string, patch: TodoPatch) => void;
   deleteTodo: (projectId: string, todoId: string) => void;
@@ -2494,9 +2498,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addComment = useCallback(
-    (projectId: string, text: string, stageChange?: Stage) => {
+    async (
+      projectId: string,
+      text: string,
+      stageChange?: Stage,
+    ): Promise<boolean> => {
       const current = projectsRef.current.find((p) => p.id === projectId);
-      if (!current) return;
+      if (!current) return false;
       const authorInfo = resolveAuthor();
       const comment: ProjectComment = {
         id: newId(),
@@ -2557,20 +2565,32 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         });
       }
       if (supabase) {
-        void supabase
-          .from("project_comments")
-          .insert({
-            id: comment.id,
-            project_id: projectId,
-            text: comment.text,
-            author: comment.author,
-            ...(supportsCommentAuthorId
-              ? { author_user_id: comment.authorUserId ?? null }
-              : {}),
-            stage_change: stageChange ?? null,
-            created_at: comment.createdAt,
-          })
-          .then(logDbError("comment insert"));
+        const { error } = await supabase.from("project_comments").insert({
+          id: comment.id,
+          project_id: projectId,
+          text: comment.text,
+          author: comment.author,
+          ...(supportsCommentAuthorId
+            ? { author_user_id: comment.authorUserId ?? null }
+            : {}),
+          stage_change: stageChange ?? null,
+          created_at: comment.createdAt,
+        });
+        if (error) {
+          console.error("Supabase comment insert failed:", error.message);
+          // Roll back optimistic comment so UI matches the database.
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === projectId
+                ? {
+                    ...p,
+                    comments: (p.comments ?? []).filter((c) => c.id !== comment.id),
+                  }
+                : p,
+            ),
+          );
+          return false;
+        }
         if (stageChange) {
           const row: Record<string, string | null> = { stage: stageChange };
           if (supportsMetricsFields) {
@@ -2597,6 +2617,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         commentId: comment.id,
       });
       void requestAiSummary(updated);
+      return true;
     },
     [
       requestAiSummary,
@@ -3033,7 +3054,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addTodo = useCallback(
-    (
+    async (
       projectId: string,
       kind: TodoKind,
       text: string,
@@ -3041,7 +3062,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       ownerUserId?: string,
       startDate?: string,
       endDate?: string,
-    ) => {
+    ): Promise<boolean> => {
       const project = projectsRef.current.find((p) => p.id === projectId);
       const todo: ProjectTodo = {
         id: newId(),
@@ -3072,23 +3093,27 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }),
       });
       if (supabase) {
-        void supabase
-          .from("project_todos")
-          .insert({
-            id: todo.id,
-            project_id: projectId,
-            kind: todo.kind,
-            text: todo.text,
-            done: false,
-            due_date: dueDate ?? null,
-            start_date: startDate ?? null,
-            end_date: endDate ?? null,
-            ...(supportsOwnershipFields
-              ? { owner_user_id: todo.ownerUserId ?? null }
-              : {}),
-            created_at: todo.createdAt,
-          })
-          .then(logDbError("todo insert"));
+        const { error } = await supabase.from("project_todos").insert({
+          id: todo.id,
+          project_id: projectId,
+          kind: todo.kind,
+          text: todo.text,
+          done: false,
+          due_date: dueDate ?? null,
+          start_date: startDate ?? null,
+          end_date: endDate ?? null,
+          ...(supportsOwnershipFields
+            ? { owner_user_id: todo.ownerUserId ?? null }
+            : {}),
+          created_at: todo.createdAt,
+        });
+        if (error) {
+          console.error("Supabase todo insert failed:", error.message);
+          mutateTodos(projectId, (todos) =>
+            todos.filter((t) => t.id !== todo.id),
+          );
+          return false;
+        }
       }
       if (
         ownerUserId &&
@@ -3112,6 +3137,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         todoId: todo.id,
         excludeUserIds: ownerUserId ? [ownerUserId] : [],
       });
+      return true;
     },
     [
       mutateTodos,
@@ -3322,13 +3348,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [updateTodo]);
 
   // One-shot cleanup of legacy follow-up / set-next-step action mirrors.
+  // Do NOT re-run on every projects change — that races with new AI/user writes.
+  const retiredFollowUpsRef = useRef(false);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || retiredFollowUpsRef.current) return;
+    retiredFollowUpsRef.current = true;
     const t = window.setTimeout(() => {
       retireClientFollowUpTodos();
     }, 300);
     return () => window.clearTimeout(t);
-  }, [ready, projects, retireClientFollowUpTodos]);
+  }, [ready, retireClientFollowUpTodos]);
 
   const deleteTodo = useCallback(
     (projectId: string, todoId: string) => {

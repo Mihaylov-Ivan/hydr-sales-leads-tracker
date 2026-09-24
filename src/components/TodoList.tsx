@@ -263,6 +263,7 @@ function TodoItem({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(todo.text);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const nameLocked = isClientFollowUpTodo(todo, client);
 
   function commit() {
@@ -359,19 +360,41 @@ function TodoItem({
           </select>
         )}
 
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label="Delete item"
-            title="Delete"
-            className="mt-0.5 rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
-          >
-            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
-              <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
-            </svg>
-          </button>
-        )}
+        {!readOnly &&
+          (confirmDelete ? (
+            <span className="mt-0.5 flex shrink-0 items-center gap-1 text-[11px]">
+              <span className="text-red-500">Delete?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onDelete();
+                  setConfirmDelete(false);
+                }}
+                className="font-semibold text-red-500 hover:underline"
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                className="text-muted hover:text-ink"
+              >
+                No
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Delete item"
+              title="Delete"
+              className="mt-0.5 rounded p-1 text-muted/60 opacity-0 transition hover:text-red-500 group-hover/item:opacity-100"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
+                <path d="M6.5 1a1 1 0 0 0-1 1H3a.75.75 0 0 0 0 1.5h10A.75.75 0 0 0 13 2h-2.5a1 1 0 0 0-1-1h-3ZM4 5h8l-.6 8.4A1.75 1.75 0 0 1 9.66 15H6.34a1.75 1.75 0 0 1-1.74-1.6L4 5Z" />
+              </svg>
+            </button>
+          ))}
       </div>
 
       {!readOnly && (
