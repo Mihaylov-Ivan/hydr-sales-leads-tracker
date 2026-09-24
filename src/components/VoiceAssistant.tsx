@@ -108,14 +108,14 @@ const CRM_TOOLS = [
     type: "function",
     name: "search_projects",
     description:
-      "Search CRM projects by project name, client, country, or city. Use this before acting on a project unless an exact project_id was already resolved earlier in this conversation.",
+      "Search CRM projects by project name, client, country, or city. Always use this when the user names a project — especially unusual or uncommon names that may be misheard or misspelled — before writing. Returns exact, partial, and similar (fuzzy) matches.",
     parameters: {
       type: "object",
       properties: {
         query: {
           type: "string",
           description:
-            "Natural project/client search text, for example 'DW', 'Volkswagen', or 'BA Glass Sofia'.",
+            "Natural project/client search text as heard or typed, for example 'Metlen', 'DW', 'Volkswagen', or 'BA Glass Sofia'. Pass the name even if unsure of spelling.",
         },
       },
       required: ["query"],
@@ -791,6 +791,55 @@ function normalizeSearch(value: string): string {
     .trim();
 }
 
+/** Small Levenshtein distance for fuzzy project-name matching (mishearings / odd spellings). */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const prev = new Array<number>(cols);
+  const cur = new Array<number>(cols);
+  for (let j = 0; j < cols; j++) prev[j] = j;
+  for (let i = 1; i < rows; i++) {
+    cur[0] = i;
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j < cols; j++) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j < cols; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+/** Score how closely two short tokens match (handles Metlin ≈ Metlen). */
+function fuzzyTokenScore(queryToken: string, candidateToken: string): number {
+  const q = queryToken;
+  const c = candidateToken;
+  if (!q || !c) return 0;
+  if (q === c) return 100;
+  if (q.length < 3 || c.length < 3) return 0;
+  if (c.includes(q) || q.includes(c)) {
+    const ratio = Math.min(q.length, c.length) / Math.max(q.length, c.length);
+    return Math.round(50 + ratio * 30);
+  }
+  const dist = editDistance(q, c);
+  const maxLen = Math.max(q.length, c.length);
+  const similarity = 1 - dist / maxLen;
+  // Allow 1 typo on short names, 2 on longer unusual names.
+  const allowed =
+    maxLen <= 4 ? 1 : maxLen <= 8 ? 2 : Math.min(3, Math.floor(maxLen / 4));
+  if (dist > allowed && similarity < 0.72) return 0;
+  return Math.round(similarity * 58);
+}
+
+function matchKind(score: number): "exact" | "partial" | "similar" {
+  if (score >= 100) return "exact";
+  if (score >= 45) return "partial";
+  return "similar";
+}
+
 function matchScore(query: string, project: Project): number {
   const q = normalizeSearch(query);
   if (!q) return 0;
@@ -813,6 +862,17 @@ function matchScore(query: string, project: Project): number {
   const matchedTokens = tokens.filter((token) => haystack.includes(token));
   score += matchedTokens.length * 12;
   if (tokens.length > 1 && matchedTokens.length === tokens.length) score += 20;
+
+  // Fuzzy pass: catch unusual names that were misheard or misspelled.
+  const nameTokens = name.split(/\s+/).filter(Boolean);
+  const clientTokens = client.split(/\s+/).filter(Boolean);
+  let bestFuzzy = 0;
+  for (const qt of tokens) {
+    for (const ct of [...nameTokens, ...clientTokens]) {
+      bestFuzzy = Math.max(bestFuzzy, fuzzyTokenScore(qt, ct));
+    }
+  }
+  if (bestFuzzy > 0) score += bestFuzzy;
 
   return score;
 }
@@ -1339,18 +1399,38 @@ export default function VoiceAssistant() {
             stage_label: STAGE_LABELS[project.stage],
             track: trackOfProject(project),
             score,
+            match_kind: matchKind(score),
           }));
+
+        const exactCount = matches.filter((m) => m.match_kind === "exact").length;
+        const partialCount = matches.filter(
+          (m) => m.match_kind === "partial",
+        ).length;
+        const similarOnly =
+          matches.length > 0 && exactCount === 0 && partialCount === 0;
+
+        let instruction: string;
+        if (matches.length === 0) {
+          instruction =
+            "No CRM project matched, even approximately. Do not invent a project. Ask the user which existing project on the platform they mean (by the name/client shown in the CRM), or whether they want you to create a new project. Only create a new project after they clearly ask to create one.";
+        } else if (similarOnly) {
+          instruction =
+            "Only similarly named projects were found (possible mishearing or unusual spelling). Read the closest name/client aloud, ask the user to confirm which one they mean, and wait. If none is right, ask whether to pick another existing project or create a new one.";
+        } else if (matches.length === 1 && matches[0].match_kind === "exact") {
+          instruction = "One exact CRM match was found.";
+        } else if (matches.length === 1) {
+          instruction =
+            "One likely CRM match was found, but confirm the project name/client with the user before writing if the spoken name was unusual or only a partial/similar match.";
+        } else {
+          instruction =
+            "Multiple CRM matches were found. Ask the user which project they mean before writing. If none match, ask whether to create a new project.";
+        }
 
         return JSON.stringify({
           ok: true,
           count: matches.length,
           projects: matches,
-          instruction:
-            matches.length === 1
-              ? "One clear CRM match was found."
-              : matches.length === 0
-                ? "No CRM project matched. Ask the user for another project/client name."
-                : "Multiple CRM matches were found. If more than one is plausible, ask the user which one they mean before writing.",
+          instruction,
         });
       }
 
@@ -3868,6 +3948,11 @@ CRM safety and action rules:
 - The available tools mirror the signed-in user's CRM permissions. Never try to work around a permission error and never reveal fields that a tool withholds. In particular, financial data is only available when that user has the same Finance/EU-RnD access as the UI.
 - Before any project write, search for the project unless that exact project_id was already resolved unambiguously in this conversation.
 - Never guess a project, prospect, contact, task, Gantt row, finance row, warehouse lot, or assignee. Search/read first when its exact id is not already known. If several matches are plausible, ask one short clarification.
+- Project name resolution (especially unusual / uncommon names that speech may mishear, e.g. "Metlen"):
+  - Always call search_projects with the name as heard or typed, even when spelling feels uncertain.
+  - If results are only similar/approximate matches, say the closest CRM project name(s) and ask “Do you mean …?” before any write. Wait for confirmation.
+  - If multiple exact or partial matches are plausible, ask which one.
+  - If nothing matches, do not invent a project. Ask the user to clarify which existing project on the platform they mean, or whether they want you to create a new one. Only create after they clearly ask to create it.
 - If the user names an assignee, search the team roster unless that exact user id was already resolved in this conversation. Never invent an assignee.
 - For relative dates, calculate the exact YYYY-MM-DD using the user's local date above. If the wording genuinely has two plausible dates, say the exact date you intend and ask the user to confirm.
 - Voice and typed replies are one continuous conversation. During multi-step data entry, remember every field already supplied, ask only for genuinely required missing information, and continue when the user answers by either voice or text.
