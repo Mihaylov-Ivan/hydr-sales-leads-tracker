@@ -242,6 +242,47 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const db = createServiceClient();
+
+    if (body.status === "processed") {
+      const { data: current, error: currentError } = await db
+        .from("fireflies_meeting_inbox")
+        .select("clarification_questions,clarification_answers")
+        .eq("fireflies_transcript_id", meetingId)
+        .maybeSingle();
+
+      if (currentError) {
+        console.error("fireflies inbox completion check failed:", currentError);
+        return NextResponse.json(
+          { error: "Could not verify meeting clarification state." },
+          { status: 500 },
+        );
+      }
+      if (!current) {
+        return NextResponse.json({ error: "Meeting not found." }, { status: 404 });
+      }
+
+      const nextQuestions = Array.isArray(patch.clarification_questions)
+        ? patch.clarification_questions
+        : Array.isArray(current.clarification_questions)
+          ? current.clarification_questions
+          : [];
+      const nextAnswers = Array.isArray(patch.clarification_answers)
+        ? patch.clarification_answers
+        : Array.isArray(current.clarification_answers)
+          ? current.clarification_answers
+          : [];
+
+      if (nextQuestions.length > nextAnswers.length) {
+        return NextResponse.json(
+          {
+            error:
+              "This meeting still has unanswered clarification questions and cannot be marked processed.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const { data, error } = await db
       .from("fireflies_meeting_inbox")
       .update(patch)
