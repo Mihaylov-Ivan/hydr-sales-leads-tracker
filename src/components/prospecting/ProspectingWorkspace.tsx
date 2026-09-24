@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useProjects } from "@/lib/store";
 import { formatShortDate, useProspecting } from "@/lib/prospecting-store";
@@ -22,6 +22,7 @@ import {
 import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
+import { readUiPref, writeUiPref } from "@/lib/ui-prefs";
 import {
   AddCompanyDialog,
   AddContactDialog,
@@ -123,6 +124,43 @@ export default function ProspectingWorkspace() {
     null,
   );
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [prefsReady, setPrefsReady] = useState(false);
+
+  useEffect(() => {
+    const saved = readUiPref<{
+      view?: ProspectView;
+      filterMarket?: ProspectMarketTag | "";
+      filterSource?: ProspectSource | "";
+      filterOwner?: string;
+    }>("hydrogenera-prospecting-prefs-v1", {});
+    if (saved.view && saved.view in PROSPECT_VIEW_LABELS) {
+      setView(saved.view);
+    }
+    if (saved.filterMarket === "" || (saved.filterMarket && PROSPECT_MARKETS.includes(saved.filterMarket))) {
+      setFilterMarket(saved.filterMarket ?? "");
+    }
+    if (
+      saved.filterSource === "" ||
+      (saved.filterSource &&
+        (PROSPECT_SOURCES as readonly string[]).includes(saved.filterSource))
+    ) {
+      setFilterSource(saved.filterSource ?? "");
+    }
+    if (typeof saved.filterOwner === "string") {
+      setFilterOwner(saved.filterOwner);
+    }
+    setPrefsReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    writeUiPref("hydrogenera-prospecting-prefs-v1", {
+      view,
+      filterMarket,
+      filterSource,
+      filterOwner,
+    });
+  }, [prefsReady, view, filterMarket, filterSource, filterOwner]);
 
   function openDialog(next: DialogState) {
     if (!canWrite || !next) return;

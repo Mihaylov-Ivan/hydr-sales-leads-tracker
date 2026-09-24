@@ -25,6 +25,12 @@ import NewProjectDialog from "@/components/NewProjectDialog";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import { useAuth } from "@/lib/auth-context";
 import { assignableTeamMembers } from "@/lib/permissions";
+import {
+  decodeIdFilter,
+  encodeIdFilter,
+  readUiPref,
+  writeUiPref,
+} from "@/lib/ui-prefs";
 
 const UNASSIGNED_LEAD = "__unassigned__";
 
@@ -47,7 +53,18 @@ const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
 
 const COLUMN_MIN_PX = 270;
 
+const BOARD_PREFS_KEY = "hydrogenera-sales-board-prefs-v1";
+/** Legacy key — migrated into BOARD_PREFS_KEY once. */
 const CANCELLED_STORAGE_KEY = "hydrogenera-show-cancelled-v1";
+
+type SalesBoardPrefs = {
+  countryFilter?: string;
+  leadFilterIds?: string[] | "all";
+  marketFilter?: MarketTag[] | "all";
+  sizeFilter?: SizeBucket;
+  showCancelled?: boolean;
+  keyDatesOpen?: boolean;
+};
 
 const selectCls =
   "rounded-lg border border-line bg-panel px-3 py-2 text-sm text-ink shadow-sm outline-none focus:border-teal-accent";
@@ -355,36 +372,54 @@ export default function Dashboard() {
   const [showNew, setShowNew] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
-  const [cancelledPrefReady, setCancelledPrefReady] = useState(false);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
   const [keyDatesOpen, setKeyDatesOpen] = useState(false);
   const [keyDateProjectIds, setKeyDateProjectIds] = useState<Set<string> | null>(
     null,
   );
+  const [prefsReady, setPrefsReady] = useState(false);
   const prevKeyDateFilterIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
+      const saved = readUiPref<SalesBoardPrefs>(BOARD_PREFS_KEY, {});
+      if (typeof saved.countryFilter === "string") {
+        setCountryFilter(saved.countryFilter);
+      }
+      if (saved.leadFilterIds !== undefined) {
+        setLeadFilterIds(decodeIdFilter(saved.leadFilterIds));
+      }
+      if (saved.marketFilter === "all") {
+        setMarketFilter(new Set(MARKETS));
+      } else if (Array.isArray(saved.marketFilter)) {
+        const next = new Set(
+          saved.marketFilter.filter((m): m is MarketTag =>
+            (MARKETS as readonly string[]).includes(m),
+          ),
+        );
+        setMarketFilter(next.size > 0 ? next : new Set(MARKETS));
+      }
+      if (
+        saved.sizeFilter === "any" ||
+        saved.sizeFilter === "small" ||
+        saved.sizeFilter === "medium" ||
+        saved.sizeFilter === "large"
+      ) {
+        setSizeFilter(saved.sizeFilter);
+      }
+      if (typeof saved.showCancelled === "boolean") {
+        setShowCancelled(saved.showCancelled);
+      } else if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
         setShowCancelled(true);
+      }
+      if (typeof saved.keyDatesOpen === "boolean") {
+        setKeyDatesOpen(saved.keyDatesOpen);
       }
     } catch {
       // ignore
     }
-    setCancelledPrefReady(true);
+    setPrefsReady(true);
   }, []);
-
-  useEffect(() => {
-    if (!cancelledPrefReady) return;
-    try {
-      window.localStorage.setItem(
-        CANCELLED_STORAGE_KEY,
-        showCancelled ? "1" : "0",
-      );
-    } catch {
-      // ignore
-    }
-  }, [showCancelled, cancelledPrefReady]);
 
   const countries = useMemo(
     () => [...new Set(projects.map((p) => p.country))].sort(),
@@ -415,6 +450,29 @@ export default function Dashboard() {
   const allLeadsSelected =
     leadFilterOptions.length > 0 &&
     leadFilterOptions.every((o) => selectedLeadIds.has(o.id));
+
+  useEffect(() => {
+    if (!prefsReady) return;
+    const allMarketsSelected =
+      MARKETS.length > 0 && MARKETS.every((m) => marketFilter.has(m));
+    writeUiPref(BOARD_PREFS_KEY, {
+      countryFilter,
+      leadFilterIds: encodeIdFilter(leadFilterIds, allLeadsSelected),
+      marketFilter: allMarketsSelected ? "all" : ([...marketFilter] as MarketTag[]),
+      sizeFilter,
+      showCancelled,
+      keyDatesOpen,
+    } satisfies SalesBoardPrefs);
+  }, [
+    prefsReady,
+    countryFilter,
+    leadFilterIds,
+    allLeadsSelected,
+    marketFilter,
+    sizeFilter,
+    showCancelled,
+    keyDatesOpen,
+  ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

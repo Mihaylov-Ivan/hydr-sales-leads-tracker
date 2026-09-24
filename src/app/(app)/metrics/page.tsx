@@ -30,6 +30,9 @@ import MetricInfoTip from "@/components/metrics/MetricInfoTip";
 import StageCoverageTable from "@/components/metrics/StageCoverageTable";
 import DrillDownPanel from "@/components/metrics/DrillDownPanel";
 import { METRIC_EXPLANATIONS } from "@/lib/metrics/explanations";
+import { readUiPref, writeUiPref } from "@/lib/ui-prefs";
+
+const METRICS_FILTERS_KEY = "hydrogenera-metrics-filters-v1";
 
 const selectCls =
   "rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-ink outline-none focus:border-teal-accent";
@@ -87,6 +90,7 @@ export default function MetricsPage() {
   });
   const [target, setTarget] = useState<TargetSettings>(defaultTargetSettings);
   const [useDemoData, setUseDemoData] = useState(false);
+  const [filtersReady, setFiltersReady] = useState(false);
   const [drill, setDrill] = useState<{
     kind: DrillDownKind;
     title: string;
@@ -97,7 +101,19 @@ export default function MetricsPage() {
 
   useEffect(() => {
     setTarget(loadTargetSettings());
+    const saved = readUiPref<Partial<MetricsFilters>>(METRICS_FILTERS_KEY, {});
+    setFilters((prev) => ({
+      ...prev,
+      ...saved,
+      targetOutcome: saved.targetOutcome ?? prev.targetOutcome,
+    }));
+    setFiltersReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!filtersReady) return;
+    writeUiPref(METRICS_FILTERS_KEY, filters);
+  }, [filters, filtersReady]);
 
   const owners = teamMembers.length > 0 ? teamMembers : TEAM_MEMBERS;
 

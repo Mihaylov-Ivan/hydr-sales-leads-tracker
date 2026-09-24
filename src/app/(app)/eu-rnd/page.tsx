@@ -13,6 +13,7 @@ import {
 import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import { useAuth } from "@/lib/auth-context";
+import { readUiPref, writeUiPref } from "@/lib/ui-prefs";
 
 const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
   "eu-application-prep": "border-t-teal-accent",
@@ -23,6 +24,8 @@ const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
 };
 
 const COLUMN_MIN_PX = 270;
+const EU_RND_PREFS_KEY = "hydrogenera-eu-rnd-prefs-v1";
+/** Legacy key — migrated into EU_RND_PREFS_KEY once. */
 const CANCELLED_STORAGE_KEY = "hydrogenera-eu-rnd-show-cancelled-v1";
 
 type BoardTab = "eu" | "rnd";
@@ -105,26 +108,30 @@ export default function EuRndPage() {
   const [search, setSearch] = useState("");
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [prefsReady, setPrefsReady] = useState(false);
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(CANCELLED_STORAGE_KEY);
-      if (raw === "1") setShowCancelled(true);
+      const saved = readUiPref<{ tab?: BoardTab; showCancelled?: boolean }>(
+        EU_RND_PREFS_KEY,
+        {},
+      );
+      if (saved.tab === "eu" || saved.tab === "rnd") setTab(saved.tab);
+      if (typeof saved.showCancelled === "boolean") {
+        setShowCancelled(saved.showCancelled);
+      } else if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
+        setShowCancelled(true);
+      }
     } catch {
       /* ignore */
     }
+    setPrefsReady(true);
   }, []);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        CANCELLED_STORAGE_KEY,
-        showCancelled ? "1" : "0",
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [showCancelled]);
+    if (!prefsReady) return;
+    writeUiPref(EU_RND_PREFS_KEY, { tab, showCancelled });
+  }, [prefsReady, tab, showCancelled]);
 
   const track: ProjectTrack = tab;
   const boardStages = boardStagesForTrack(track);
