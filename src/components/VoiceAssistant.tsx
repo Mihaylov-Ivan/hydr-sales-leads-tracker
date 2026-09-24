@@ -1006,6 +1006,7 @@ export default function VoiceAssistant() {
   const toolResultsRef = useRef<Map<string, string>>(new Map());
   const pendingTextRef = useRef<string[]>([]);
   const meetingInboxKickRef = useRef(false);
+  const meetingInboxEntryCheckRef = useRef(false);
   const wantsMicRef = useRef(false);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
   const logsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1934,11 +1935,9 @@ export default function VoiceAssistant() {
               Math.max(0, requested),
             );
             const start = chunkIndex * chunkSize;
-            const {
-              transcript_text: _transcriptText,
-              sentences: _sentences,
-              ...meetingMetadata
-            } = meeting;
+            const meetingMetadata = { ...meeting };
+            delete meetingMetadata.transcript_text;
+            delete meetingMetadata.sentences;
 
             return JSON.stringify({
               ok: true,
@@ -4281,6 +4280,45 @@ CRM safety and action rules:
     },
     [appendLog, startSession, status, typedInput],
   );
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      !authReady ||
+      meetingInboxEntryCheckRef.current ||
+      (authEnabled && !user?.isAdmin)
+    ) {
+      return;
+    }
+
+    meetingInboxEntryCheckRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          "/api/integrations/fireflies?status=actionable&limit=1",
+          { credentials: "include" },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { actionable_count?: number }
+          | null;
+        if (
+          !cancelled &&
+          response.ok &&
+          (payload?.actionable_count ?? 0) > 0
+        ) {
+          setPanelOpen(true);
+        }
+      } catch {
+        // A missing/offline integration should not interfere with CRM startup.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authEnabled, authReady, enabled, user?.isAdmin]);
 
   useEffect(() => {
     if (!panelOpen) {
