@@ -4285,6 +4285,7 @@ CRM safety and action rules:
     if (
       !enabled ||
       !authReady ||
+      !ready ||
       meetingInboxEntryCheckRef.current ||
       (authEnabled && !user?.isAdmin)
     ) {
@@ -4318,7 +4319,7 @@ CRM safety and action rules:
     return () => {
       cancelled = true;
     };
-  }, [authEnabled, authReady, enabled, user?.isAdmin]);
+  }, [authEnabled, authReady, enabled, ready, user?.isAdmin]);
 
   useEffect(() => {
     if (!panelOpen) {
