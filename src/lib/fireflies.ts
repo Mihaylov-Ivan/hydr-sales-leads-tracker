@@ -15,15 +15,15 @@ interface FirefliesSentence {
   speaker_id?: number | string | null;
   text?: string | null;
   raw_text?: string | null;
-  start_time?: number | null;
-  end_time?: number | null;
+  start_time?: number | string | null;
+  end_time?: number | string | null;
 }
 
 interface FirefliesTranscript {
   id: string;
   title?: string | null;
   date?: number | string | null;
-  host_email?: string | null;
+  dateString?: string | null;
   organizer_email?: string | null;
   participants?: string[] | null;
   meeting_attendees?: Array<Record<string, unknown>> | null;
@@ -155,7 +155,7 @@ async function getTranscript(id: string): Promise<FirefliesTranscript> {
         id
         title
         date
-        host_email
+        dateString
         organizer_email
         participants
         transcript_url
@@ -252,8 +252,9 @@ export async function syncFirefliesMeetings(): Promise<FirefliesSyncResult> {
     const row = {
       fireflies_transcript_id: transcript.id,
       title: transcript.title?.trim() || "Untitled meeting",
-      meeting_date: meetingDateIso(transcript.date),
-      host_email: transcript.host_email?.trim() || null,
+      meeting_date:
+        meetingDateIso(transcript.dateString) ?? meetingDateIso(transcript.date),
+      host_email: null,
       organizer_email: transcript.organizer_email?.trim() || null,
       participants: transcript.participants ?? [],
       attendees: transcript.meeting_attendees ?? [],

@@ -75,7 +75,7 @@ FIREFLIES_IMPORT_LOOKBACK_DAYS=30
 FIREFLIES_IMPORT_BATCH_SIZE=10
 ```
 
-`npm run dev` now starts both Next.js and the local Fireflies poller. The default poll interval is five minutes. The poller calls only `http://127.0.0.1:3000` locally and Fireflies' outbound API; Fireflies never needs an inbound URL to the Hydr machine.
+`npm run dev` now starts both Next.js and the local Fireflies poller. The default poll interval is five minutes. The poller calls only `http://127.0.0.1:3000` locally and Fireflies' outbound API; Fireflies never needs an inbound URL to the Hydr machine. Fireflies currently documents API limits of 50 requests/day on Free, 500/day on Pro, and 60/min on Business/Enterprise; five-minute polling is therefore intended for Pro or higher. On Free, use a much longer interval (for example `FIREFLIES_POLL_INTERVAL_MS=3600000`).
 
 Optional commands:
 
