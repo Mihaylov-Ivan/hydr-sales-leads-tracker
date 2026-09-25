@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   AUTH_COOKIE,
@@ -276,7 +276,7 @@ export async function POST(request: NextRequest) {
   );
   const sourceHash = sha256(sourceContent);
   const sourceExcerpt = sourceContent.replace(/\s+/g, " ").slice(0, 1000);
-  const batchId = crypto.randomUUID();
+  const batchId = randomUUID();
   const created: unknown[] = [];
   const duplicates: unknown[] = [];
   const rejected: Array<{ project_id: string; error: string }> = [];
