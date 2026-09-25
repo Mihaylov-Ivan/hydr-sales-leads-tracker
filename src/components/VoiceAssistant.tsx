@@ -2047,6 +2047,499 @@ export default function VoiceAssistant() {
         }
       }
 
+      if (name === "queue_email_update_suggestions") {
+        const sourceContent = stringValue(args.source_content);
+        const sourceLabel = stringValue(args.source_label) ?? "Pasted email";
+        const suggestions = Array.isArray(args.suggestions)
+          ? args.suggestions.filter(
+              (item) => item && typeof item === "object" && !Array.isArray(item),
+            )
+          : [];
+
+        if (!sourceContent) {
+          return JSON.stringify({
+            ok: false,
+            error: "The pasted email content is required.",
+          });
+        }
+        if (suggestions.length === 0) {
+          return JSON.stringify({
+            ok: true,
+            created: [],
+            duplicates: [],
+            instruction:
+              "No meaningful net-new CRM change was found, so nothing was queued.",
+          });
+        }
+
+        try {
+          const response = await fetch("/api/ai/suggestions", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source_label: sourceLabel,
+              source_content: sourceContent,
+              suggestions,
+            }),
+          });
+          const payload = (await response.json().catch(() => null)) as
+            | Record<string, unknown>
+            | null;
+          if (!response.ok) {
+            return JSON.stringify({
+              ok: false,
+              error:
+                typeof payload?.error === "string"
+                  ? payload.error
+                  : "Could not save the proposed CRM updates.",
+            });
+          }
+          return JSON.stringify({ ok: true, ...(payload ?? {}) });
+        } catch (error) {
+          return JSON.stringify({
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Could not save the proposed CRM updates.",
+          });
+        }
+      }
+
+      if (name === "manage_ai_suggestion_queue") {
+        const action = stringValue(args.action);
+        const suggestionId = stringValue(args.suggestion_id);
+        const projectIdFilter = stringValue(args.project_id);
+        const limit = Math.min(
+          100,
+          Math.max(
+            1,
+            typeof args.limit === "number" && Number.isFinite(args.limit)
+              ? Math.round(args.limit)
+              : 30,
+          ),
+        );
+
+        const queueFetch = async (url: string, init?: RequestInit) => {
+          const response = await fetch(url, {
+            credentials: "include",
+            ...init,
+          });
+          const payload = (await response.json().catch(() => null)) as
+            | Record<string, unknown>
+            | null;
+          return { response, payload };
+        };
+
+        if (action === "list") {
+          const params = new URLSearchParams({
+            status: "actionable",
+            limit: String(limit),
+          });
+          if (projectIdFilter) params.set("project_id", projectIdFilter);
+          const { response, payload } = await queueFetch(
+            `/api/ai/suggestions?${params.toString()}`,
+          );
+          if (!response.ok) {
+            return JSON.stringify({
+              ok: false,
+              error:
+                typeof payload?.error === "string"
+                  ? payload.error
+                  : "Could not load the AI suggestion queue.",
+            });
+          }
+          return JSON.stringify({ ok: true, ...(payload ?? {}) });
+        }
+
+        if (!suggestionId) {
+          return JSON.stringify({
+            ok: false,
+            error: "suggestion_id is required for this action.",
+          });
+        }
+
+        if (action === "get") {
+          const { response, payload } = await queueFetch(
+            `/api/ai/suggestions?id=${encodeURIComponent(suggestionId)}`,
+          );
+          if (!response.ok) {
+            return JSON.stringify({
+              ok: false,
+              error:
+                typeof payload?.error === "string"
+                  ? payload.error
+                  : "Could not load the AI suggestion.",
+            });
+          }
+          return JSON.stringify({ ok: true, ...(payload ?? {}) });
+        }
+
+        if (action === "reject") {
+          const { response, payload } = await queueFetch(
+            "/api/ai/suggestions",
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: suggestionId,
+                status: "rejected",
+                review_note: stringValue(args.review_note) ?? null,
+              }),
+            },
+          );
+          if (!response.ok) {
+            return JSON.stringify({
+              ok: false,
+              error:
+                typeof payload?.error === "string"
+                  ? payload.error
+                  : "Could not reject the AI suggestion.",
+            });
+          }
+          return JSON.stringify({ ok: true, ...(payload ?? {}) });
+        }
+
+        if (action === "apply") {
+          if (s.authEnabled && !s.canWrite) {
+            return JSON.stringify({
+              ok: false,
+              error: "This account is read-only and cannot apply CRM suggestions.",
+            });
+          }
+
+          const loaded = await queueFetch(
+            `/api/ai/suggestions?id=${encodeURIComponent(suggestionId)}`,
+          );
+          if (!loaded.response.ok) {
+            return JSON.stringify({
+              ok: false,
+              error:
+                typeof loaded.payload?.error === "string"
+                  ? loaded.payload.error
+                  : "Could not load the AI suggestion.",
+            });
+          }
+
+          const suggestion = asRecord(loaded.payload?.suggestion);
+          const projectId = stringValue(suggestion.project_id);
+          const operation = stringValue(suggestion.operation);
+          const status = stringValue(suggestion.status);
+          const proposal = asRecord(suggestion.payload);
+
+          if (!projectId || !operation) {
+            return JSON.stringify({
+              ok: false,
+              error: "The stored AI suggestion is invalid.",
+            });
+          }
+          if (status === "applied") {
+            return JSON.stringify({
+              ok: true,
+              already_applied: true,
+              suggestion_id: suggestionId,
+            });
+          }
+          if (status === "rejected") {
+            return JSON.stringify({
+              ok: false,
+              error: "This suggestion was rejected. Re-queue it before applying.",
+            });
+          }
+          if (operation === "clarification") {
+            return JSON.stringify({
+              ok: false,
+              error:
+                stringValue(proposal.question) ??
+                "This item needs clarification before a CRM change can be proposed.",
+            });
+          }
+
+          const project = findProject(projectId);
+          if (!project) {
+            return JSON.stringify({
+              ok: false,
+              error: "The suggestion's project is not available to this user.",
+            });
+          }
+
+          let applied = false;
+          let appliedLabel = "";
+
+          if (operation === "add_project_comment") {
+            const text = stringValue(proposal.text);
+            if (!text) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed project update has no text.",
+              });
+            }
+            applied = await s.addComment(project.id, text);
+            appliedLabel = "project update";
+          } else if (operation === "update_project_fields") {
+            const fields = asRecord(proposal.fields);
+            const patch: Parameters<typeof s.updateProject>[1] = {};
+
+            if (typeof fields.name === "string" && fields.name.trim()) {
+              patch.name = fields.name.trim();
+            }
+            if (typeof fields.client === "string" && fields.client.trim()) {
+              patch.client = fields.client.trim();
+            }
+            if (typeof fields.country === "string" && fields.country.trim()) {
+              patch.country = fields.country.trim();
+            }
+            if (typeof fields.city === "string") {
+              patch.city = fields.city.trim();
+            }
+            if (typeof fields.series === "string" && fields.series.trim()) {
+              patch.series = fields.series.trim();
+            }
+            if (typeof fields.market === "string" && fields.market.trim()) {
+              patch.market = fields.market.trim();
+            }
+            if (
+              typeof fields.size_kw === "number" &&
+              Number.isFinite(fields.size_kw) &&
+              fields.size_kw >= 0
+            ) {
+              patch.sizeKw = fields.size_kw;
+            }
+            if (typeof fields.description === "string") {
+              patch.baseDescription = fields.description.trim();
+            }
+            if (typeof fields.lead_user_id === "string") {
+              const lead = fields.lead_user_id.trim();
+              if (
+                lead &&
+                !assignableTeamMembers(s.teamMembers).some(
+                  (member) => member.id === lead,
+                )
+              ) {
+                return JSON.stringify({
+                  ok: false,
+                  error: "The proposed project lead is not assignable.",
+                });
+              }
+              if (lead) patch.leadUserId = lead;
+            }
+
+            if (Object.keys(patch).length === 0) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed project-field update is empty.",
+              });
+            }
+            s.updateProject(project.id, patch);
+            applied = true;
+            appliedLabel = "project fields";
+          } else if (operation === "create_project_task") {
+            const text = stringValue(proposal.text);
+            const due = validOptionalDate(proposal.due_date);
+            const start = validOptionalDate(proposal.start_date);
+            const endDate = validOptionalDate(proposal.end_date);
+            const owner = stringValue(proposal.owner_user_id);
+
+            if (!text) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed task has no text.",
+              });
+            }
+            for (const [key, raw, parsed] of [
+              ["due_date", proposal.due_date, due],
+              ["start_date", proposal.start_date, start],
+              ["end_date", proposal.end_date, endDate],
+            ] as const) {
+              if (
+                typeof raw === "string" &&
+                raw.trim() &&
+                parsed === undefined
+              ) {
+                return JSON.stringify({
+                  ok: false,
+                  error: `${key} must be a valid YYYY-MM-DD date.`,
+                });
+              }
+            }
+            if (
+              owner &&
+              !assignableTeamMembers(s.teamMembers).some(
+                (member) => member.id === owner,
+              )
+            ) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed task assignee is not assignable.",
+              });
+            }
+            applied = await s.addTodo(
+              project.id,
+              "our-action",
+              text,
+              due ?? undefined,
+              owner,
+              start ?? undefined,
+              endDate ?? undefined,
+            );
+            appliedLabel = "project task";
+          } else if (operation === "add_project_contact") {
+            const input: Parameters<typeof s.addContact>[1] = {};
+            if (typeof proposal.name === "string" && proposal.name.trim()) {
+              input.name = proposal.name.trim();
+            }
+            if (typeof proposal.email === "string" && proposal.email.trim()) {
+              input.email = proposal.email.trim();
+            }
+            if (typeof proposal.phone === "string" && proposal.phone.trim()) {
+              input.phone = proposal.phone.trim();
+            }
+            if (
+              typeof proposal.position === "string" &&
+              proposal.position.trim()
+            ) {
+              input.position = proposal.position.trim();
+            }
+            if (Object.keys(input).length === 0) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed contact is empty.",
+              });
+            }
+            s.addContact(project.id, input);
+            applied = true;
+            appliedLabel = "project contact";
+          } else if (operation === "update_project_contact") {
+            const contactId = stringValue(proposal.contact_id);
+            const contact = contactId
+              ? project.contacts.find((candidate) => candidate.id === contactId)
+              : undefined;
+            if (!contact) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed contact update has no valid contact_id.",
+              });
+            }
+            const patch: Parameters<typeof s.updateContact>[2] = {};
+            if (typeof proposal.name === "string") patch.name = proposal.name.trim();
+            if (typeof proposal.email === "string") patch.email = proposal.email.trim();
+            if (typeof proposal.phone === "string") patch.phone = proposal.phone.trim();
+            if (typeof proposal.position === "string") {
+              patch.position = proposal.position.trim();
+            }
+            if (Object.keys(patch).length === 0) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed contact update is empty.",
+              });
+            }
+            s.updateContact(project.id, contact.id, patch);
+            applied = true;
+            appliedLabel = "project contact";
+          } else if (operation === "change_project_stage") {
+            const stage = stringValue(proposal.stage) as Stage | undefined;
+            if (
+              !stage ||
+              !stagesForTrack(trackOfProject(project)).includes(stage)
+            ) {
+              return JSON.stringify({
+                ok: false,
+                error: "The proposed stage is not valid for this project.",
+              });
+            }
+            s.updateProject(project.id, { stage });
+            applied = true;
+            appliedLabel = "project stage";
+          } else {
+            return JSON.stringify({
+              ok: false,
+              error: "Unsupported AI suggestion operation.",
+            });
+          }
+
+          if (!applied) {
+            return JSON.stringify({
+              ok: false,
+              error: "The CRM change could not be saved.",
+            });
+          }
+
+          const marked = await queueFetch("/api/ai/suggestions", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: suggestionId,
+              status: "applied",
+              review_note: stringValue(args.review_note) ?? null,
+            }),
+          });
+
+          if (operation !== "add_project_comment") {
+            void s.regenerateSummary(project.id);
+          }
+
+          appendLog(
+            "action",
+            `Applied proposed ${appliedLabel} on ${project.name}.`,
+          );
+
+          return JSON.stringify({
+            ok: true,
+            applied: appliedLabel,
+            project_id: project.id,
+            project_name: project.name,
+            suggestion_id: suggestionId,
+            queue_marked_applied: marked.response.ok,
+            queue_warning: marked.response.ok
+              ? null
+              : "CRM changed, but the queue item could not be marked applied.",
+          });
+        }
+
+        return JSON.stringify({
+          ok: false,
+          error: "Unsupported AI suggestion-queue action.",
+        });
+      }
+
+      if (name === "refresh_project_summaries") {
+        if (s.authEnabled && !s.canWrite) {
+          return JSON.stringify({
+            ok: false,
+            error: "This account is read-only and cannot refresh stored summaries.",
+          });
+        }
+
+        const requestedIds = Array.isArray(args.project_ids)
+          ? args.project_ids.filter((value): value is string => typeof value === "string")
+          : [];
+        const visibleIds = new Set(visibleProjects.map((project) => project.id));
+        const selectedIds =
+          requestedIds.length > 0
+            ? requestedIds.filter((id) => visibleIds.has(id))
+            : visibleProjects.map((project) => project.id);
+
+        if (requestedIds.length > 0 && selectedIds.length !== requestedIds.length) {
+          return JSON.stringify({
+            ok: false,
+            error:
+              "At least one requested project is not available to this user. Resolve the project again before refreshing.",
+          });
+        }
+
+        const result = await s.refreshProjectSummaries(selectedIds);
+        appendLog(
+          "action",
+          `Refreshed ${result.updated} project summaries${result.failed ? `; ${result.failed} failed` : ""}.`,
+        );
+        return JSON.stringify({
+          ok: result.failed === 0,
+          ...result,
+          project_count: selectedIds.length,
+        });
+      }
+
       if (name === "manage_meeting_inbox") {
         const action = stringValue(args.action);
         const readPayload = async (response: Response) =>
