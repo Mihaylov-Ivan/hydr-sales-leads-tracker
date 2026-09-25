@@ -1158,11 +1158,13 @@ export default function VoiceAssistant() {
     ready: authReady,
     canWrite,
     isViewer,
+    can,
   } = useAuth();
 
   const enabled =
     FEATURE_AI_CHAT_AND_VOICE &&
-    process.env.NEXT_PUBLIC_AI_VOICE === "true";
+    process.env.NEXT_PUBLIC_AI_VOICE === "true" &&
+    (!authEnabled || can("ai_updates"));
   const hasAreaAccess = !authEnabled || Boolean(user && !isViewer);
 
   const [panelOpen, setPanelOpen] = useState(false);

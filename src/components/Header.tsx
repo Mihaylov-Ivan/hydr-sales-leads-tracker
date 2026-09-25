@@ -207,7 +207,9 @@ export default function Header() {
             </>
           )}
 
-          {FEATURE_AI_CHAT_AND_VOICE ? <VoiceAssistant /> : null}
+          {FEATURE_AI_CHAT_AND_VOICE && can("ai_updates") ? (
+            <VoiceAssistant />
+          ) : null}
 
           <NotificationBell />
 

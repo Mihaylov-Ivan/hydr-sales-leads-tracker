@@ -7,6 +7,7 @@ export type PermissionType =
   | "technical_sales"
   | "eu_funding_rnd"
   | "sales_manager"
+  | "ai_updates"
   | "viewer";
 
 export const PERMISSION_TYPES: PermissionType[] = [
@@ -17,6 +18,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "technical_sales",
   "eu_funding_rnd",
   "sales_manager",
+  "ai_updates",
   "viewer",
 ];
 
@@ -28,6 +30,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   technical_sales: "Technical sales",
   eu_funding_rnd: "EU Funding and R&D",
   sales_manager: "Sales Manager",
+  ai_updates: "AI Updates",
   viewer: "Viewer",
 };
 
@@ -40,6 +43,7 @@ const AREA_PERMISSIONS: PermissionType[] = [
   "technical_sales",
   "eu_funding_rnd",
   "sales_manager",
+  "ai_updates",
 ];
 
 export interface SessionUser {
@@ -110,11 +114,15 @@ export function canAccessRoute(
 export function accessForPath(pathname: string): RouteAccess {
   if (
     pathname === "/todos" ||
-    pathname.startsWith("/todos/") ||
+    pathname.startsWith("/todos/")
+  ) {
+    return { kind: "nonViewer" };
+  }
+  if (
     pathname === "/ai-updates" ||
     pathname.startsWith("/ai-updates/")
   ) {
-    return { kind: "nonViewer" };
+    return { kind: "permission", permission: "ai_updates" };
   }
   if (pathname === "/change-password" || pathname.startsWith("/change-password/")) {
     return { kind: "any" };
@@ -180,6 +188,7 @@ export function defaultHomePath(
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
+  if (user.permissions.includes("ai_updates")) return "/ai-updates";
   // Viewer-only (or no area perms): avoid /todos for viewers
   if (isViewerUser(user)) return "/change-password";
   return "/todos";
@@ -204,7 +213,11 @@ export const NAV_ITEMS: NavItem[] = [
     access: { kind: "permission", permission: "eu_funding_rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
-  { href: "/ai-updates", label: "AI Updates", access: { kind: "nonViewer" } },
+  {
+    href: "/ai-updates",
+    label: "AI Updates",
+    access: { kind: "permission", permission: "ai_updates" },
+  },
   { href: "/expenses", label: "Expenses", access: { kind: "permission", permission: "finance" } },
   { href: "/warehouse", label: "Warehouse", access: { kind: "permission", permission: "warehouse" } },
   { href: "/production", label: "Production", access: { kind: "permission", permission: "production" } },

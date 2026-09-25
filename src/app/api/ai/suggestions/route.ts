@@ -6,7 +6,7 @@ import {
   parseSessionToken,
   sessionUserFromPayload,
 } from "@/lib/auth";
-import { isViewerUser, type SessionUser } from "@/lib/permissions";
+import { isViewerUser, hasPermission, type SessionUser } from "@/lib/permissions";
 import {
   createServiceClient,
   hasServiceRoleConfig,
@@ -74,6 +74,14 @@ async function requireUser(request: NextRequest): Promise<
     return {
       error: NextResponse.json(
         { error: "Viewer accounts cannot use AI CRM suggestions." },
+        { status: 403 },
+      ),
+    };
+  }
+  if (!hasPermission(user, "ai_updates")) {
+    return {
+      error: NextResponse.json(
+        { error: "AI Updates permission is required." },
         { status: 403 },
       ),
     };

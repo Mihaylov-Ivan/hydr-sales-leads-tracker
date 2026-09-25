@@ -3,6 +3,7 @@ import {
   AUTH_COOKIE,
   isAuthEnabled,
   parseSessionToken,
+  sessionUserFromPayload,
 } from "@/lib/auth";
 import {
   createDefaultStore,
@@ -15,6 +16,7 @@ import {
   hasServiceRoleConfig,
 } from "@/lib/supabase-server";
 import { FEATURE_AI_CHAT_AND_VOICE } from "@/lib/feature-flags";
+import { hasPermission } from "@/lib/permissions";
 
 interface ChatRow {
   id: string;
@@ -50,6 +52,15 @@ async function requireUserId(request: NextRequest) {
   if (!payload) {
     return {
       error: NextResponse.json({ error: "Not signed in." }, { status: 401 }),
+    };
+  }
+  const user = sessionUserFromPayload(payload);
+  if (!hasPermission(user, "ai_updates")) {
+    return {
+      error: NextResponse.json(
+        { error: "AI Updates permission is required." },
+        { status: 403 },
+      ),
     };
   }
   return { userId: payload.userId };
