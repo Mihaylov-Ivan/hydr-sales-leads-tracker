@@ -10,7 +10,8 @@
     "cert:generate": "node scripts/generate-dev-cert.mjs",
     "start:https": "node scripts/https-proxy.mjs",
     "fireflies:poll": "node scripts/poll-fireflies.mjs",
-    "fireflies:poll:once": "node scripts/poll-fireflies.mjs --once"
+    "fireflies:poll:once": "node scripts/poll-fireflies.mjs --once",
+    "summaries:refresh": "node scripts/refresh-project-summaries.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
