@@ -46,7 +46,7 @@ Hydr AI can regenerate one project summary or all accessible project summaries. 
 
 Apply:
 
-`supabase/migration-057-ai-integration.sql`
+`supabase/migration-058-ai-integration.sql`
 
 Then ensure `.env.local` contains:
 
