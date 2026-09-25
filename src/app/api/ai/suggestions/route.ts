@@ -565,31 +565,144 @@ export async function PATCH(request: NextRequest) {
   }
 
   const id = typeof body.id === "string" ? body.id.trim() : "";
-  const status =
-    typeof body.status === "string" ? body.status.trim() : "";
+  if (!id) {
+    return NextResponse.json(
+      { error: "A valid suggestion id is required." },
+      { status: 400 },
+    );
+  }
+
+  const requestedStatus =
+    typeof body.status === "string" ? body.status.trim() : undefined;
+  if (requestedStatus !== undefined && !STATUSES.has(requestedStatus)) {
+    return NextResponse.json(
+      { error: "Invalid suggestion status." },
+      { status: 400 },
+    );
+  }
+
+  const db = createServiceClient();
+  const { data: existing, error: loadError } = await db
+    .from("ai_suggested_updates")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", checked.auth.userId)
+    .maybeSingle();
+
+  if (loadError) {
+    console.error("AI suggestion load for edit failed:", loadError);
+    return NextResponse.json(
+      { error: "Could not load the suggestion." },
+      { status: 500 },
+    );
+  }
+  if (!existing) {
+    return NextResponse.json(
+      { error: "Suggestion not found." },
+      { status: 404 },
+    );
+  }
+
+  const editsRequested =
+    body.project_id !== undefined ||
+    body.payload !== undefined ||
+    body.proposed_value !== undefined ||
+    body.title !== undefined ||
+    body.rationale !== undefined;
+
+  if (
+    editsRequested &&
+    existing.status !== "pending" &&
+    existing.status !== "needs-clarification"
+  ) {
+    return NextResponse.json(
+      { error: "Only pending suggestions can be edited." },
+      { status: 409 },
+    );
+  }
+
+  const patch: Record<string, unknown> = {};
+
+  if (body.project_id !== undefined) {
+    const projectId =
+      typeof body.project_id === "string" ? body.project_id.trim() : "";
+    if (!projectId) {
+      return NextResponse.json(
+        { error: "A valid project is required." },
+        { status: 400 },
+      );
+    }
+    const { data: project, error: projectError } = await db
+      .from("projects")
+      .select("id, project_track")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (projectError || !project) {
+      return NextResponse.json(
+        { error: "The selected project does not exist." },
+        { status: 400 },
+      );
+    }
+    if (!canAccessProject(checked.auth, project)) {
+      return NextResponse.json(
+        { error: "The selected project is not available to this user." },
+        { status: 403 },
+      );
+    }
+    patch.project_id = projectId;
+  }
+
+  if (body.payload !== undefined) {
+    patch.payload = asObject(body.payload);
+  }
+  if (body.proposed_value !== undefined) {
+    patch.proposed_value = body.proposed_value;
+  }
+  if (body.title !== undefined) {
+    patch.title =
+      typeof body.title === "string"
+        ? body.title.trim().slice(0, 500)
+        : existing.title;
+  }
+  if (body.rationale !== undefined) {
+    patch.rationale =
+      body.rationale === null
+        ? null
+        : typeof body.rationale === "string"
+          ? body.rationale.trim().slice(0, 2000)
+          : existing.rationale;
+  }
+
+  if (editsRequested) {
+    const nextPayload =
+      patch.payload !== undefined ? asObject(patch.payload) : asObject(existing.payload);
+    patch.dedupe_key = sha256(
+      stableJson({
+        operation: existing.operation,
+        payload: nextPayload,
+      }),
+    );
+  }
+
   const reviewNote =
     body.review_note === null
       ? null
       : typeof body.review_note === "string"
         ? body.review_note.trim().slice(0, 2000)
         : undefined;
+  if (reviewNote !== undefined) patch.review_note = reviewNote;
 
-  if (!id || !STATUSES.has(status)) {
-    return NextResponse.json(
-      { error: "A valid suggestion id and status are required." },
-      { status: 400 },
-    );
+  if (requestedStatus !== undefined) {
+    patch.status = requestedStatus;
+    patch.reviewed_at = new Date().toISOString();
+    if (requestedStatus === "applied") {
+      patch.applied_at = new Date().toISOString();
+    } else {
+      patch.applied_at = null;
+    }
   }
 
-  const patch: Record<string, unknown> = {
-    status,
-    reviewed_at: new Date().toISOString(),
-  };
-  if (reviewNote !== undefined) patch.review_note = reviewNote;
-  if (status === "applied") patch.applied_at = new Date().toISOString();
-  if (status !== "applied") patch.applied_at = null;
-
-  const db = createServiceClient();
   const { data, error } = await db
     .from("ai_suggested_updates")
     .update(patch)
@@ -599,10 +712,18 @@ export async function PATCH(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    console.error("AI suggestion status update failed:", error);
+    console.error("AI suggestion update failed:", error);
+    const duplicate =
+      /ai_suggested_updates_user_id_project_id_dedupe_key_key/i.test(
+        error.message,
+      );
     return NextResponse.json(
-      { error: "Could not update the suggestion." },
-      { status: 500 },
+      {
+        error: duplicate
+          ? "An equivalent pending suggestion already exists for that project."
+          : "Could not update the suggestion.",
+      },
+      { status: duplicate ? 409 : 500 },
     );
   }
   if (!data) {
