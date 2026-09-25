@@ -734,6 +734,118 @@ const EXTENDED_CRM_TOOLS = [
   },
   {
     type: "function",
+    name: "queue_email_update_suggestions",
+    description:
+      "Store proposal-only CRM changes extracted from a user-pasted client email AFTER comparing that email with the current CRM. This tool never applies CRM changes. Queue only meaningful net-new deltas; omit duplicates. Use clarification operations for material ambiguity or conflicts.",
+    parameters: {
+      type: "object",
+      properties: {
+        source_label: {
+          type: "string",
+          description:
+            "Short provenance label, for example sender + subject/date when the user pasted those details.",
+        },
+        source_content: {
+          type: "string",
+          description:
+            "The pasted email content supplied by the user. It is hashed and only a short excerpt is retained by the server.",
+        },
+        suggestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              project_id: { type: "string" },
+              operation: {
+                type: "string",
+                enum: [
+                  "add_project_comment",
+                  "update_project_fields",
+                  "create_project_task",
+                  "add_project_contact",
+                  "update_project_contact",
+                  "change_project_stage",
+                  "clarification"
+                ],
+              },
+              title: {
+                type: "string",
+                description: "Short human-readable description of the proposed change.",
+              },
+              rationale: {
+                type: "string",
+                description:
+                  "Why this is net-new or supersedes current CRM information. Mention a conflict when applicable.",
+              },
+              confidence: {
+                type: "string",
+                enum: ["high", "medium", "low"],
+              },
+              payload: {
+                type: "object",
+                description:
+                  "Operation data. add_project_comment: {text}. update_project_fields: {fields:{name?,client?,country?,city?,series?,market?,size_kw?,description?,lead_user_id?}}. create_project_task: {text,due_date?,start_date?,end_date?,owner_user_id?}. add_project_contact: {name?,email?,phone?,position?}. update_project_contact: {contact_id,name?,email?,phone?,position?}. change_project_stage: {stage}. clarification: {question}.",
+              },
+              existing_value: {
+                description: "Relevant current CRM value or state, when useful.",
+              },
+              proposed_value: {
+                description: "Proposed replacement/new value, when useful.",
+              },
+            },
+            required: [
+              "project_id",
+              "operation",
+              "title",
+              "rationale",
+              "confidence",
+              "payload"
+            ],
+          },
+        },
+      },
+      required: ["source_content", "suggestions"],
+    },
+  },
+  {
+    type: "function",
+    name: "manage_ai_suggestion_queue",
+    description:
+      "List, inspect, approve/apply, or reject proposal-only CRM suggestions created from pasted emails. Never apply a suggestion until the user explicitly approves it in this conversation.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["list", "get", "apply", "reject"],
+        },
+        suggestion_id: { type: "string" },
+        project_id: { type: "string" },
+        review_note: { type: "string" },
+        limit: { type: "integer" },
+      },
+      required: ["action"],
+    },
+  },
+  {
+    type: "function",
+    name: "refresh_project_summaries",
+    description:
+      "Regenerate and persist CRM-only current-state summaries for selected projects or all accessible projects. Use this when the user asks to update/regenerate project summaries. The summary must be based only on CRM data.",
+    parameters: {
+      type: "object",
+      properties: {
+        project_ids: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional exact project ids. Omit to refresh every accessible non-warehouse project.",
+        },
+      },
+    },
+  },
+  {
+    type: "function",
     name: "manage_meeting_inbox",
     description:
       "Review the admin-only Fireflies meeting inbox. Meetings arrive automatically from the local outbound poller and must be reconciled against current CRM state before they are marked processed. Read all transcript chunks, deduplicate repeated facts, and persist clarification state whenever anything material is ambiguous or conflicts with the CRM.",
@@ -971,6 +1083,7 @@ export default function VoiceAssistant() {
     updateComment,
     deleteComment,
     regenerateSummary,
+    refreshProjectSummaries,
     deleteProject,
     getProjectUserReminder,
     updateProjectUserReminder,
@@ -1105,6 +1218,7 @@ export default function VoiceAssistant() {
     updateComment,
     deleteComment,
     regenerateSummary,
+    refreshProjectSummaries,
     deleteProject,
     getProjectUserReminder,
     updateProjectUserReminder,
@@ -1186,6 +1300,7 @@ export default function VoiceAssistant() {
     updateComment,
     deleteComment,
     regenerateSummary,
+    refreshProjectSummaries,
     deleteProject,
     getProjectUserReminder,
     updateProjectUserReminder,
