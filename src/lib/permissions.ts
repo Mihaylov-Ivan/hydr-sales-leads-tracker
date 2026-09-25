@@ -108,7 +108,12 @@ export function canAccessRoute(
  * Unknown app paths default to admin-only for safety.
  */
 export function accessForPath(pathname: string): RouteAccess {
-  if (pathname === "/todos" || pathname.startsWith("/todos/")) {
+  if (
+    pathname === "/todos" ||
+    pathname.startsWith("/todos/") ||
+    pathname === "/ai-updates" ||
+    pathname.startsWith("/ai-updates/")
+  ) {
     return { kind: "nonViewer" };
   }
   if (pathname === "/change-password" || pathname.startsWith("/change-password/")) {
@@ -199,6 +204,7 @@ export const NAV_ITEMS: NavItem[] = [
     access: { kind: "permission", permission: "eu_funding_rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
+  { href: "/ai-updates", label: "AI Updates", access: { kind: "nonViewer" } },
   { href: "/expenses", label: "Expenses", access: { kind: "permission", permission: "finance" } },
   { href: "/warehouse", label: "Warehouse", access: { kind: "permission", permission: "warehouse" } },
   { href: "/production", label: "Production", access: { kind: "permission", permission: "production" } },
