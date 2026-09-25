@@ -619,7 +619,10 @@ interface ProjectsApi {
   deleteNotification: (notificationId: string) => void;
   updateComment: (projectId: string, commentId: string, text: string) => void;
   deleteComment: (projectId: string, commentId: string) => void;
-  regenerateSummary: (projectId: string) => void;
+  regenerateSummary: (projectId: string) => Promise<boolean>;
+  refreshProjectSummaries: (
+    projectIds?: string[],
+  ) => Promise<{ updated: number; failed: number }>;
   deleteProject: (projectId: string) => void;
   addTodo: (
     projectId: string,
@@ -2327,8 +2330,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const requestAiSummary = useCallback(async (project: Project) => {
-    if (!isProjectSummaryEnabled()) return;
+  const requestAiSummary = useCallback(async (project: Project): Promise<boolean> => {
+    if (!isProjectSummaryEnabled()) return false;
     setSummarizing((s) => ({ ...s, [project.id]: true }));
     try {
       const res = await fetch("/api/summarize", {
@@ -2336,25 +2339,34 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(project),
       });
-      if (res.ok) {
-        const { summary } = (await res.json()) as { summary?: string };
-        if (summary) {
-          setProjects((prev) =>
-            prev.map((p) =>
-              p.id === project.id ? { ...p, aiSummary: summary } : p,
-            ),
-          );
-          if (supabase) {
-            void supabase
-              .from("projects")
-              .update({ ai_summary: summary })
-              .eq("id", project.id)
-              .then(logDbError("summary update"));
-          }
+      if (!res.ok) return false;
+
+      const { summary } = (await res.json()) as { summary?: string };
+      if (!summary) return false;
+
+      if (supabase) {
+        const { error } = await supabase
+          .from("projects")
+          .update({
+            ai_summary: summary,
+            ai_summary_updated_at: new Date().toISOString(),
+          })
+          .eq("id", project.id);
+        if (error) {
+          console.error("Supabase summary update failed:", error.message);
+          return false;
         }
       }
-    } catch {
-      // network/AI failure: the rule-based summary remains as fallback
+
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === project.id ? { ...p, aiSummary: summary } : p,
+        ),
+      );
+      return true;
+    } catch (error) {
+      console.error("AI summary generation failed:", error);
+      return false;
     } finally {
       setSummarizing((s) => ({ ...s, [project.id]: false }));
     }
@@ -3035,9 +3047,47 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const regenerateSummary = useCallback(
-    (projectId: string) => {
+    async (projectId: string): Promise<boolean> => {
       const project = projectsRef.current.find((p) => p.id === projectId);
-      if (project) void requestAiSummary(project);
+      if (!project) return false;
+      return requestAiSummary(project);
+    },
+    [requestAiSummary],
+  );
+
+  const refreshProjectSummaries = useCallback(
+    async (
+      projectIds?: string[],
+    ): Promise<{ updated: number; failed: number }> => {
+      const wanted =
+        projectIds && projectIds.length > 0 ? new Set(projectIds) : null;
+      const selected = projectsRef.current.filter(
+        (project) =>
+          !project.isWarehouseHolding && (!wanted || wanted.has(project.id)),
+      );
+
+      let updated = 0;
+      let failed = 0;
+      const concurrency = 3;
+      let cursor = 0;
+
+      async function worker() {
+        while (true) {
+          const index = cursor++;
+          if (index >= selected.length) return;
+          const ok = await requestAiSummary(selected[index]!);
+          if (ok) updated += 1;
+          else failed += 1;
+        }
+      }
+
+      await Promise.all(
+        Array.from(
+          { length: Math.min(concurrency, selected.length) },
+          () => worker(),
+        ),
+      );
+      return { updated, failed };
     },
     [requestAiSummary],
   );
@@ -8138,6 +8188,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         updateComment,
         deleteComment,
         regenerateSummary,
+        refreshProjectSummaries,
         deleteProject,
         addTodo,
         toggleTodo,
@@ -8224,6 +8275,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     "updateComment",
     "deleteComment",
     "regenerateSummary",
+    "refreshProjectSummaries",
     "deleteProject",
     "addTodo",
     "toggleTodo",
