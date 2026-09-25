@@ -32,12 +32,12 @@ async function authorized(request: NextRequest): Promise<boolean> {
   return Boolean(payload?.isAdmin);
 }
 
-function byProject<T extends { project_id?: string | null }>(
-  rows: T[],
-): Map<string, T[]> {
-  const map = new Map<string, T[]>();
+function byProject(
+  rows: Record<string, unknown>[],
+): Map<string, Record<string, unknown>[]> {
+  const map = new Map<string, Record<string, unknown>[]>();
   for (const row of rows) {
-    const id = row.project_id;
+    const id = typeof row.project_id === "string" ? row.project_id : "";
     if (!id) continue;
     const list = map.get(id) ?? [];
     list.push(row);
