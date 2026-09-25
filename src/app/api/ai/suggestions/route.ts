@@ -124,6 +124,67 @@ function stableJson(value: unknown): string {
   return JSON.stringify(stable(value));
 }
 
+function normalizeSemanticText(value: unknown): string {
+  return typeof value === "string"
+    ? value.toLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, " ").trim().replace(/\\s+/g, " ")
+    : "";
+}
+
+function semanticMergeKey(
+  operation: string,
+  payload: Record<string, unknown>,
+  title: string,
+  explicit?: string,
+): string {
+  const provided = normalizeSemanticText(explicit);
+  if (provided) return operation + ":explicit:" + provided;
+
+  if (operation === "create_project_task") {
+    return operation + ":text:" + normalizeSemanticText(payload.text);
+  }
+  if (operation === "add_project_contact") {
+    return (
+      operation +
+      ":contact:" +
+      (normalizeSemanticText(payload.email) || normalizeSemanticText(payload.name))
+    );
+  }
+  if (operation === "update_project_contact") {
+    return operation + ":contact:" + normalizeSemanticText(payload.contact_id);
+  }
+  if (operation === "change_project_stage") {
+    return operation + ":single";
+  }
+  if (operation === "update_project_fields") {
+    const fields = asObject(payload.fields);
+    return operation + ":fields:" + Object.keys(fields).sort().join(",");
+  }
+  if (operation === "clarification") {
+    return (
+      operation +
+      ":question:" +
+      (normalizeSemanticText(payload.question) || normalizeSemanticText(title))
+    );
+  }
+  return operation + ":title:" + normalizeSemanticText(title);
+}
+
+function mergedSourceLabel(existing: unknown, next: string): string {
+  const current = typeof existing === "string" ? existing.trim() : "";
+  if (!current) return next;
+  if (!next || current === next) return current;
+  const parts = current.split(" · ").map((x) => x.trim()).filter(Boolean);
+  if (!parts.includes(next)) parts.push(next);
+  return parts.join(" · ").slice(0, 300);
+}
+
+function mergedSourceExcerpt(existing: unknown, next: string): string {
+  const current = typeof existing === "string" ? existing.trim() : "";
+  if (!current) return next;
+  if (!next || current.includes(next)) return current.slice(0, 1000);
+  return (current + "\n\n" + next).slice(0, 1000);
+}
+
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -233,6 +294,10 @@ export async function POST(request: NextRequest) {
           ? suggestion.confidence
           : "medium",
       payload: asObject(suggestion.payload),
+      mergeKey:
+        typeof suggestion.merge_key === "string"
+          ? suggestion.merge_key.trim().slice(0, 300)
+          : "",
       existingValue:
         suggestion.existing_value === undefined
           ? null
@@ -308,6 +373,85 @@ export async function POST(request: NextRequest) {
       suggestion.operation === "clarification"
         ? "needs-clarification"
         : "pending";
+
+    // Reconcile against still-actionable AI proposals before inserting a new row.
+    // This keeps the review queue synchronized when later sources refine the same
+    // task/contact/field/stage/update before a human has approved it.
+    const semanticKey = semanticMergeKey(
+      suggestion.operation,
+      suggestion.payload,
+      suggestion.title,
+      suggestion.mergeKey,
+    );
+    const { data: actionableRows, error: actionableError } = await db
+      .from("ai_suggested_updates")
+      .select("*")
+      .eq("user_id", checked.auth.userId)
+      .eq("project_id", suggestion.projectId)
+      .eq("operation", suggestion.operation)
+      .in("status", ["pending", "needs-clarification"])
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (actionableError) {
+      console.error("AI suggestion reconciliation lookup failed:", actionableError);
+      rejected.push({
+        project_id: suggestion.projectId,
+        error: "Could not reconcile pending AI suggestions.",
+      });
+      continue;
+    }
+
+    const mergeTarget = (actionableRows ?? []).find((row) => {
+      const rowPayload = asObject(row.payload);
+      return (
+        semanticMergeKey(
+          String(row.operation ?? ""),
+          rowPayload,
+          String(row.title ?? ""),
+        ) === semanticKey
+      );
+    });
+
+    if (mergeTarget) {
+      const { data: merged, error: mergeError } = await db
+        .from("ai_suggested_updates")
+        .update({
+          batch_id: batchId,
+          source_label: mergedSourceLabel(mergeTarget.source_label, sourceLabel),
+          source_hash: sourceHash,
+          source_excerpt: mergedSourceExcerpt(
+            mergeTarget.source_excerpt,
+            sourceExcerpt,
+          ),
+          title: suggestion.title,
+          rationale: suggestion.rationale,
+          confidence: suggestion.confidence,
+          payload: suggestion.payload,
+          existing_value:
+            mergeTarget.existing_value ?? suggestion.existingValue,
+          proposed_value: suggestion.proposedValue,
+          status,
+          review_note: null,
+          reviewed_at: null,
+          applied_at: null,
+        })
+        .eq("id", mergeTarget.id)
+        .eq("user_id", checked.auth.userId)
+        .select("*")
+        .single();
+
+      if (mergeError) {
+        console.error("AI suggestion reconciliation update failed:", mergeError);
+        rejected.push({
+          project_id: suggestion.projectId,
+          error: "Could not merge a pending AI suggestion.",
+        });
+        continue;
+      }
+      created.push(merged);
+      continue;
+    }
 
     const { data: existing, error: existingError } = await db
       .from("ai_suggested_updates")
