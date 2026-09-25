@@ -23,6 +23,7 @@ import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
 import { useAuth } from "@/lib/auth-context";
 import { readUiPref, writeUiPref } from "@/lib/ui-prefs";
+import FilterMultiSelect from "@/components/FilterMultiSelect";
 import {
   AddCompanyDialog,
   AddContactDialog,
@@ -39,6 +40,23 @@ type DialogState =
   | { type: "mark-contacted"; company: ProspectCompany; contact: ProspectContact }
   | { type: "mark-engaged"; company: ProspectCompany; contact: ProspectContact }
   | null;
+
+function toggleId(prev: Set<string>, id: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+/** Empty or full selection = no filter (show all). */
+function passesMultiFilter(
+  selected: Set<string>,
+  value: string,
+  optionCount: number,
+): boolean {
+  if (selected.size === 0 || selected.size === optionCount) return true;
+  return selected.has(value);
+}
 
 function ProgressBar({
   value,
@@ -63,36 +81,6 @@ function ProgressBar({
   );
 }
 
-function KpiChip({
-  label,
-  value,
-  sub,
-  warn,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  warn?: boolean;
-}) {
-  return (
-    <div
-      className={`min-w-[7.5rem] flex-1 rounded-xl border px-3 py-2.5 ${
-        warn
-          ? "border-amber-accent/40 bg-amber-accent/10"
-          : "border-line bg-panel"
-      }`}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </div>
-      <div className={`mt-0.5 text-lg font-bold ${warn ? "text-amber-accent" : "text-deep"}`}>
-        {value}
-      </div>
-      {sub && <div className="text-[11px] text-muted">{sub}</div>}
-    </div>
-  );
-}
-
 function ownerName(
   id: string,
   team: { id: string; name: string }[],
@@ -112,14 +100,21 @@ export default function ProspectingWorkspace() {
     deleteCompany,
   } = useProspecting();
   const { teamMembers, currentUserId, projects } = useProjects();
-  const { canWrite } = useAuth();
+  const { canWrite, can } = useAuth();
+  const canSeeInsights = can("sales_manager");
   const assignableMembers = assignableTeamMembers(teamMembers);
 
   const [view, setView] = useState<ProspectView>("prepare");
   const [search, setSearch] = useState("");
-  const [filterMarket, setFilterMarket] = useState<ProspectMarketTag | "">("");
-  const [filterSource, setFilterSource] = useState<ProspectSource | "">("");
-  const [filterOwner, setFilterOwner] = useState("");
+  const [filterMarkets, setFilterMarkets] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [filterSources, setFilterSources] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [filterOwners, setFilterOwners] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     null,
   );
@@ -128,39 +123,87 @@ export default function ProspectingWorkspace() {
 
   useEffect(() => {
     const saved = readUiPref<{
-      view?: ProspectView;
+      view?: string;
       filterMarket?: ProspectMarketTag | "";
       filterSource?: ProspectSource | "";
       filterOwner?: string;
+      filterMarkets?: string[];
+      filterSources?: string[];
+      filterOwners?: string[];
     }>("hydrogenera-prospecting-prefs-v1", {});
-    if (saved.view && saved.view in PROSPECT_VIEW_LABELS) {
-      setView(saved.view);
-    }
-    if (saved.filterMarket === "" || (saved.filterMarket && PROSPECT_MARKETS.includes(saved.filterMarket))) {
-      setFilterMarket(saved.filterMarket ?? "");
-    }
     if (
-      saved.filterSource === "" ||
-      (saved.filterSource &&
-        (PROSPECT_SOURCES as readonly string[]).includes(saved.filterSource))
+      saved.view &&
+      saved.view in PROSPECT_VIEW_LABELS &&
+      (saved.view !== "insights" || canSeeInsights)
     ) {
-      setFilterSource(saved.filterSource ?? "");
+      setView(saved.view as ProspectView);
+    } else if (saved.view === "my-work" || saved.view === "insights") {
+      setView("prepare");
     }
-    if (typeof saved.filterOwner === "string") {
-      setFilterOwner(saved.filterOwner);
+    if (Array.isArray(saved.filterMarkets)) {
+      setFilterMarkets(
+        new Set(
+          saved.filterMarkets.filter((m): m is ProspectMarketTag =>
+            (PROSPECT_MARKETS as readonly string[]).includes(m),
+          ),
+        ),
+      );
+    } else if (
+      saved.filterMarket &&
+      PROSPECT_MARKETS.includes(saved.filterMarket)
+    ) {
+      setFilterMarkets(new Set([saved.filterMarket]));
+    }
+    if (Array.isArray(saved.filterSources)) {
+      setFilterSources(
+        new Set(
+          saved.filterSources.filter((s) =>
+            (PROSPECT_SOURCES as readonly string[]).includes(s),
+          ),
+        ),
+      );
+    } else if (
+      saved.filterSource &&
+      (PROSPECT_SOURCES as readonly string[]).includes(saved.filterSource)
+    ) {
+      setFilterSources(new Set([saved.filterSource]));
+    }
+    const ownerIds = new Set(assignableMembers.map((m) => m.id));
+    if (Array.isArray(saved.filterOwners)) {
+      setFilterOwners(
+        new Set(saved.filterOwners.filter((id) => ownerIds.has(id))),
+      );
+    } else if (
+      typeof saved.filterOwner === "string" &&
+      saved.filterOwner &&
+      ownerIds.has(saved.filterOwner)
+    ) {
+      setFilterOwners(new Set([saved.filterOwner]));
     }
     setPrefsReady(true);
+    // Load prefs once on mount; assignableMembers / canSeeInsights used for migration only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!prefsReady) return;
     writeUiPref("hydrogenera-prospecting-prefs-v1", {
       view,
-      filterMarket,
-      filterSource,
-      filterOwner,
+      filterMarkets: [...filterMarkets],
+      filterSources: [...filterSources],
+      filterOwners: [...filterOwners],
     });
-  }, [prefsReady, view, filterMarket, filterSource, filterOwner]);
+  }, [
+    prefsReady,
+    view,
+    filterMarkets,
+    filterSources,
+    filterOwners,
+  ]);
+
+  useEffect(() => {
+    if (view === "insights" && !canSeeInsights) setView("prepare");
+  }, [view, canSeeInsights]);
 
   function openDialog(next: DialogState) {
     if (!canWrite || !next) return;
@@ -202,10 +245,6 @@ export default function ProspectingWorkspace() {
   }
 
   const today = todayDateOnly();
-  const me =
-    currentUserId && teamMembers.some((m) => m.id === currentUserId)
-      ? currentUserId
-      : "";
 
   const companyById = useMemo(() => {
     const map = new Map<string, ProspectCompany>();
@@ -234,7 +273,6 @@ export default function ProspectingWorkspace() {
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     const matched = rows.filter(({ contact, company }) => {
-      if (view === "my-work" && me && contact.ownerId !== me) return false;
       if (view === "prepare") {
         if (contact.status !== "target-identified") {
           return false;
@@ -257,11 +295,33 @@ export default function ProspectingWorkspace() {
           return false;
         }
       }
-      if (filterMarket && !marketIncludesTag(company.market, filterMarket)) {
+      if (
+        filterMarkets.size > 0 &&
+        filterMarkets.size < PROSPECT_MARKETS.length
+      ) {
+        const anyMarket = [...filterMarkets].some((m) =>
+          marketIncludesTag(company.market, m as ProspectMarketTag),
+        );
+        if (!anyMarket) return false;
+      }
+      if (
+        !passesMultiFilter(
+          filterSources,
+          company.source,
+          PROSPECT_SOURCES.length,
+        )
+      ) {
         return false;
       }
-      if (filterSource && company.source !== filterSource) return false;
-      if (filterOwner && contact.ownerId !== filterOwner) return false;
+      if (
+        !passesMultiFilter(
+          filterOwners,
+          contact.ownerId,
+          assignableMembers.length,
+        )
+      ) {
+        return false;
+      }
 
       if (!q) return true;
       const hay = [
@@ -309,11 +369,11 @@ export default function ProspectingWorkspace() {
   }, [
     rows,
     view,
-    me,
-    filterMarket,
-    filterSource,
-    filterOwner,
+    filterMarkets,
+    filterSources,
+    filterOwners,
     search,
+    assignableMembers.length,
   ]);
 
   const selected = useMemo(() => {
@@ -403,9 +463,6 @@ export default function ProspectingWorkspace() {
   }, [contacts, companyById, targets.marketAllocation]);
 
   const viewCounts = useMemo(() => {
-    const mine = me
-      ? rows.filter((r) => r.contact.ownerId === me).length
-      : rows.length;
     const engagedCompanyIds = new Set<string>();
     const allCompanyIds = new Set<string>();
     for (const r of rows) {
@@ -419,7 +476,6 @@ export default function ProspectingWorkspace() {
       }
     }
     return {
-      "my-work": mine,
       prepare: rows.filter(
         (r) => r.contact.status === "target-identified",
       ).length,
@@ -432,7 +488,7 @@ export default function ProspectingWorkspace() {
       all: allCompanyIds.size,
       insights: 0,
     } satisfies Record<ProspectView, number>;
-  }, [rows, me]);
+  }, [rows]);
 
   if (!ready) {
     return (
@@ -448,10 +504,6 @@ export default function ProspectingWorkspace() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-deep">Prospecting</h1>
-          <p className="mt-0.5 text-sm text-muted">
-            Add targets to the prepare list, mark them Contacted, then engage
-            replies — before Sales Projects.
-          </p>
         </div>
         <div className="shrink-0">
           {canWrite ? (
@@ -500,25 +552,15 @@ export default function ProspectingWorkspace() {
             tone="olive"
           />
         </div>
-        <KpiChip label="To contact" value={String(kpis.toContact)} />
-        <KpiChip
-          label="Follow-ups due"
-          value={String(kpis.followUpsDue)}
-          warn={kpis.overdueFollowUps > 0}
-          sub={
-            kpis.overdueFollowUps > 0
-              ? `${kpis.overdueFollowUps} overdue`
-              : undefined
-          }
-        />
-        <KpiChip label="Engaged" value={String(kpis.engaged)} />
       </div>
 
       <StrategySection />
 
       {/* Views */}
       <div className="flex flex-wrap items-center gap-1 border-b border-line pb-0">
-        {(Object.keys(PROSPECT_VIEW_LABELS) as ProspectView[]).map((v) => (
+        {(Object.keys(PROSPECT_VIEW_LABELS) as ProspectView[])
+          .filter((v) => v !== "insights" || canSeeInsights)
+          .map((v) => (
           <button
             key={v}
             type="button"
@@ -625,46 +667,51 @@ export default function ProspectingWorkspace() {
               placeholder="Search company, contact, country…"
               className="min-w-[14rem] flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
             />
-            <select
-              value={filterMarket}
-              onChange={(e) =>
-                setFilterMarket(e.target.value as ProspectMarketTag | "")
+            <FilterMultiSelect
+              title="Markets"
+              options={PROSPECT_MARKETS.map((m) => ({
+                id: m,
+                label: PROSPECT_MARKET_LABELS[m],
+              }))}
+              selectedIds={filterMarkets}
+              onToggle={(id) => setFilterMarkets((prev) => toggleId(prev, id))}
+              onSelectAll={() => setFilterMarkets(new Set(PROSPECT_MARKETS))}
+              onClear={() => setFilterMarkets(new Set())}
+              allLabel="All markets"
+              noneLabel="All markets"
+              manyLabel={(n) => `${n} markets`}
+            />
+            <FilterMultiSelect
+              title="Sources"
+              options={PROSPECT_SOURCES.map((s) => ({
+                id: s,
+                label: PROSPECT_SOURCE_LABELS[s],
+              }))}
+              selectedIds={filterSources}
+              onToggle={(id) => setFilterSources((prev) => toggleId(prev, id))}
+              onSelectAll={() => setFilterSources(new Set(PROSPECT_SOURCES))}
+              onClear={() => setFilterSources(new Set())}
+              allLabel="All sources"
+              noneLabel="All sources"
+              manyLabel={(n) => `${n} sources`}
+            />
+            <FilterMultiSelect
+              title="Owners"
+              options={assignableMembers.map((m) => ({
+                id: m.id,
+                label:
+                  m.id === currentUserId ? `${m.name} (you)` : m.name,
+              }))}
+              selectedIds={filterOwners}
+              onToggle={(id) => setFilterOwners((prev) => toggleId(prev, id))}
+              onSelectAll={() =>
+                setFilterOwners(new Set(assignableMembers.map((m) => m.id)))
               }
-              className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
-            >
-              <option value="">All markets</option>
-              {PROSPECT_MARKETS.map((m) => (
-                <option key={m} value={m}>
-                  {PROSPECT_MARKET_LABELS[m]}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterSource}
-              onChange={(e) =>
-                setFilterSource(e.target.value as ProspectSource | "")
-              }
-              className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
-            >
-              <option value="">All sources</option>
-              {PROSPECT_SOURCES.map((s) => (
-                <option key={s} value={s}>
-                  {PROSPECT_SOURCE_LABELS[s]}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterOwner}
-              onChange={(e) => setFilterOwner(e.target.value)}
-              className="rounded-lg border border-line bg-panel px-2.5 py-2 text-sm"
-            >
-              <option value="">All owners</option>
-              {assignableMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              onClear={() => setFilterOwners(new Set())}
+              allLabel="All owners"
+              noneLabel="All owners"
+              manyLabel={(n) => `${n} owners`}
+            />
           </div>
 
           <div className="flex min-h-[28rem] gap-4">
@@ -838,7 +885,7 @@ export default function ProspectingWorkspace() {
                                 {contact.status === "target-identified" && (
                                   <button
                                     type="button"
-                                    title="Mark contacted"
+                                    title="Contact"
                                     onClick={() =>
                                       openDialog({
                                         type: "mark-contacted",
@@ -848,14 +895,14 @@ export default function ProspectingWorkspace() {
                                     }
                                     className="rounded-md bg-teal-accent px-2 py-1 text-[10px] font-bold uppercase text-white"
                                   >
-                                    Contacted
+                                    Contact
                                   </button>
                                 )}
                                 {(contact.status === "contacted" ||
                                   contact.status === "follow-up-due") && (
                                   <button
                                     type="button"
-                                    title="Mark engaged"
+                                    title="Engage"
                                     onClick={() =>
                                       openDialog({
                                         type: "mark-engaged",
@@ -865,7 +912,7 @@ export default function ProspectingWorkspace() {
                                     }
                                     className="rounded-md bg-olive px-2 py-1 text-[10px] font-bold uppercase text-olive-ink"
                                   >
-                                    Engaged
+                                    Engage
                                   </button>
                                 )}
                                 <button
@@ -1154,7 +1201,7 @@ export default function ProspectingWorkspace() {
                       }
                       className="rounded-lg bg-teal-accent px-2.5 py-1.5 text-[10px] font-bold uppercase text-white"
                     >
-                      Contacted
+                      Contact
                     </button>
                   )}
                   {(selected.contact.status === "contacted" ||
@@ -1170,7 +1217,7 @@ export default function ProspectingWorkspace() {
                       }
                       className="rounded-lg bg-olive px-2.5 py-1.5 text-[10px] font-bold uppercase text-olive-ink"
                     >
-                      Engaged
+                      Engage
                     </button>
                   )}
                   <button

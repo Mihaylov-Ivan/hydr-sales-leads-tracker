@@ -70,7 +70,7 @@ export const SYSTEM_SKLAD_PROJECT_SEEDS: {
     client: "Internal workshop",
     country: "Bulgaria",
     city: "Sofia",
-    series: "Custom",
+    series: "Z Series",
     sizeKw: 30,
     market: "Clean H2",
     baseDescription:

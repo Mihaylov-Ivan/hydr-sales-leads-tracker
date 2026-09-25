@@ -152,7 +152,7 @@ const RAW_SEED: Project[] = [
     client: "Marmara Çelik",
     country: "Turkey",
     city: "Istanbul",
-    series: "Custom",
+    series: "Z Series",
     market: "Clean H2",
     sizeKw: 500,
     stage: "commissioned",

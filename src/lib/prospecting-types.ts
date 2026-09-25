@@ -99,6 +99,8 @@ export function normalizeProspectMarket(
 function mapLegacySystemPart(value: string): SeriesTag | null {
   if (isSeriesTag(value)) return value;
   switch (value) {
+    case "Custom":
+      return "Z Series";
     case "E-Series":
     case "E-Series ":
     case "E series":
@@ -680,7 +682,6 @@ export interface ProspectingState {
 }
 
 export type ProspectView =
-  | "my-work"
   | "prepare"
   | "contacted"
   | "engaged"
@@ -688,7 +689,6 @@ export type ProspectView =
   | "insights";
 
 export const PROSPECT_VIEW_LABELS: Record<ProspectView, string> = {
-  "my-work": "My Work",
   prepare: "Prepare",
   contacted: "Contacted",
   engaged: "Engaged",
@@ -895,7 +895,7 @@ export const WEEKDAY_FOCUS_COPY: Record<
   },
   contact: {
     title: "Outreach day",
-    hint: "Mark prepare-list prospects as Contacted and clear due follow-ups.",
+    hint: "Contact prepare-list prospects and clear due follow-ups.",
     prepareTarget: 0,
     contactTarget: 10,
   },

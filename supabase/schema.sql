@@ -21,7 +21,7 @@ create table if not exists public.projects (
   country text not null,
   city text not null default '',
   series text not null default 'Z Series',
-  -- System categories: single tag or "Tag + Tag" (Z Series, E Series, Custom, w/ Stargate, MH)
+  -- System categories: single tag or "Tag + Tag" (Z Series, E Series, w/ Stargate, MH)
   -- Markets: single tag or "Tag + Tag" (Cement, Power Plants, Clean H2, Burner Optimisation, Tenders)
   market text not null default 'Clean H2',
   size_kw integer not null
@@ -526,7 +526,7 @@ values
    now() - interval '21 days'),
   ('44444444-4444-4444-8444-444444444444',
    'Istanbul Steel Annealing Line', 'Marmara Çelik', 'Turkey', 'Istanbul',
-   'Custom', 'Clean H2', 500, 'commissioned',
+   'Z Series', 'Clean H2', 500, 'commissioned',
    'On-site hydrogen generation replacing trucked-in cylinders for the bright annealing line, with metal hydride buffer storage.',
    now() - interval '300 days'),
   ('55555555-5555-4555-8555-555555555555',

@@ -161,7 +161,6 @@ export function normalizeStageForTrack(
 export type SeriesTag =
   | "Z Series"
   | "E Series"
-  | "Custom"
   | "w/ Stargate"
   | "MH";
 
@@ -169,7 +168,6 @@ export type SeriesTag =
 export const SERIES: SeriesTag[] = [
   "Z Series",
   "E Series",
-  "Custom",
   "w/ Stargate",
   "MH",
 ];
@@ -186,6 +184,14 @@ export function isSeriesTag(value: string): value is SeriesTag {
   return SERIES_TAG_SET.has(value);
 }
 
+/** Legacy "Custom" system → Z Series. */
+function mapSeriesPart(part: string): SeriesTag | null {
+  const trimmed = part.trim();
+  if (trimmed === "Custom") return "Z Series";
+  if (isSeriesTag(trimmed)) return trimmed;
+  return null;
+}
+
 /** Split a stored series string into known tags (unknown fragments dropped). */
 export function parseSeriesTags(series: string | null | undefined): SeriesTag[] {
   if (!series || !series.trim()) return ["Z Series"];
@@ -196,13 +202,15 @@ export function parseSeriesTags(series: string | null | undefined): SeriesTag[] 
   const tags: SeriesTag[] = [];
   const seen = new Set<SeriesTag>();
   for (const part of parts) {
-    if (!isSeriesTag(part) || seen.has(part)) continue;
-    seen.add(part);
-    tags.push(part);
+    const tag = mapSeriesPart(part);
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
   }
   // Legacy exact match if somehow stored without " + "
-  if (tags.length === 0 && isSeriesTag(series.trim())) {
-    return [series.trim() as SeriesTag];
+  if (tags.length === 0) {
+    const whole = mapSeriesPart(series.trim());
+    if (whole) return [whole];
   }
   return tags.length > 0 ? tags : ["Z Series"];
 }

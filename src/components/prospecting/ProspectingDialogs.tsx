@@ -904,7 +904,7 @@ export function MarkContactedDialog({
   }
 
   return (
-    <ModalShell title="Mark contacted" onClose={onClose}>
+    <ModalShell title="Contact" onClose={onClose}>
       <p className="mb-3 text-sm text-muted">
         Log outreach to{" "}
         <span className="font-semibold text-deep">{contact.name}</span>
@@ -981,7 +981,7 @@ export function MarkContactedDialog({
             disabled={channels.size === 0}
             className="rounded-lg bg-teal-accent px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Mark contacted
+            Contact
           </button>
         </div>
       </form>
@@ -1049,7 +1049,7 @@ export function MarkEngagedDialog({
   }
 
   return (
-    <ModalShell title="Mark engaged" onClose={onClose}>
+    <ModalShell title="Engage" onClose={onClose}>
       <p className="mb-3 text-sm text-muted">
         Record the response from{" "}
         <span className="font-semibold text-deep">{contact.name}</span> at{" "}
@@ -1118,7 +1118,7 @@ export function MarkEngagedDialog({
             type="submit"
             className="rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink"
           >
-            {createsColdLead ? "Save & create cold lead" : "Save engaged"}
+            {createsColdLead ? "Save & create cold lead" : "Engage"}
           </button>
         </div>
       </form>

@@ -6350,7 +6350,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       client: "Internal",
       country: "—",
       city: "—",
-      series: "Custom",
+      series: "Z Series",
       market: "Clean H2",
       sizeKw: 1,
       stage: "cold-lead",

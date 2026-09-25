@@ -79,9 +79,6 @@ function guessSeries(title, product) {
   const t = `${title || ""} ${product || ""}`;
   if (/\bE[\s-]?Series\b/i.test(t) || /\bGSH\d+/i.test(t)) return "E Series";
   if (/\bZ[\s-]?Series\b/i.test(t) || /\bZ series\b/i.test(t)) return "Z Series";
-  if (/\bcustom\b/i.test(t) || /\bPEM\b/i.test(t) || /\bAEM\b/i.test(t)) {
-    return "Custom";
-  }
   return "Z Series";
 }
 
@@ -297,7 +294,7 @@ const legend = [
   },
   {
     section: "Allowed series",
-    detail: "Z Series | E Series | Custom",
+    detail: "Z Series | E Series | w/ Stargate | MH",
   },
   {
     section: "Allowed market",

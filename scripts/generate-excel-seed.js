@@ -16,7 +16,6 @@ const MARKETS = new Set([
 const SERIES = new Set([
   "Z Series",
   "E Series",
-  "Custom",
   "w/ Stargate",
   "MH",
 ]);
