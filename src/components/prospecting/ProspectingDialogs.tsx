@@ -839,7 +839,7 @@ export function MarkContactedDialog({
   onClose: () => void;
 }) {
   const { markContacted } = useProspecting();
-  const { currentUserId, teamMembers, addPersonalTodo } = useProjects();
+  const { currentUserId, teamMembers } = useProjects();
   const userId =
     currentUserId && teamMembers.some((m) => m.id === currentUserId)
       ? currentUserId
@@ -886,20 +886,6 @@ export function MarkContactedDialog({
       followUpAt,
     });
 
-    addPersonalTodo({
-      title: `Follow up: ${contact.name} @ ${company.name}`,
-      description: [
-        `Channel: ${selected.map((c) => OUTREACH_CHANNEL_LABELS[c]).join(", ")}`,
-        text || undefined,
-        `Prospecting contact follow-up for ${company.name}.`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      dueDate: followUpAt,
-      ownerUserId: userId,
-      status: "todo",
-    });
-
     onClose();
   }
 
@@ -910,7 +896,7 @@ export function MarkContactedDialog({
         <span className="font-semibold text-deep">{contact.name}</span>
         {contact.title ? ` · ${contact.title}` : ""} at{" "}
         <span className="font-semibold text-deep">{company.name}</span>. Moves
-        them to Contacted and creates your follow-up reminder.
+        them to Contacted and schedules the follow-up in Outstanding.
       </p>
       <form onSubmit={submit} className="grid gap-3">
         <div>

@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
+import { useProspecting } from "@/lib/prospecting-store";
+import {
+  ProspectCompany,
+  ProspectContact,
+} from "@/lib/prospecting-types";
 import { assignableTeamMembers } from "@/lib/permissions";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
 import {
@@ -587,11 +592,114 @@ function ContactItem({
   );
 }
 
+function ProspectFollowUpItem({
+  company,
+  contact,
+  dueDate,
+  onDone,
+  onReschedule,
+  showCompanyLink,
+  onNavigate,
+}: {
+  company: ProspectCompany;
+  contact: ProspectContact;
+  dueDate: string;
+  onDone: () => void;
+  onReschedule: (date: string) => void;
+  showCompanyLink?: boolean;
+  onNavigate?: () => void;
+}) {
+  const delta = daysBetween(todayDate(), dueDate);
+  const status =
+    delta < 0
+      ? `${Math.abs(delta)}d overdue`
+      : delta === 0
+        ? "Due today"
+        : null;
+  const who =
+    contact.name.trim() ||
+    contact.email.trim() ||
+    contact.title.trim() ||
+    "contact";
+
+  return (
+    <li className="rounded-lg border border-teal-accent/35 bg-teal-soft/40 p-2.5">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-teal-accent">
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
+            <path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 13 14H3a1.5 1.5 0 0 1-1.5-1.5v-9Zm1.5-.5a.5.5 0 0 0-.5.5v.25l5.25 3.15a.5.5 0 0 0 .5 0L13.5 3.75V3.5a.5.5 0 0 0-.5-.5H3Zm10.5 2.1-4.9 2.94a1.5 1.5 0 0 1-1.5 0L2.2 5.1v7.4a.5.5 0 0 0 .5.5h10a.5.5 0 0 0 .5-.5V5.1Z" />
+          </svg>
+        </span>
+        <div className="min-w-0 flex-1">
+          {showCompanyLink && (
+            <Link
+              href="/prospecting"
+              onClick={onNavigate}
+              className="mb-1 block truncate text-[11px] font-semibold text-teal-accent hover:underline"
+            >
+              {company.name}
+            </Link>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-teal-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+              Prospecting
+            </span>
+            {status && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-accent">
+                {status}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-ink">
+            Follow up with {who}
+            {contact.title ? ` · ${contact.title}` : ""}
+          </p>
+          {contact.followUpReason.trim() && (
+            <p className="mt-0.5 text-[10px] text-muted">
+              {contact.followUpReason.trim()}
+            </p>
+          )}
+          <label className="mt-1.5 flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Follow-up date
+            </span>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                onReschedule(e.target.value);
+              }}
+              className="w-full max-w-[11rem] rounded border border-line bg-panel px-2 py-1 text-[11px] text-ink outline-none focus:border-teal-accent"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={onDone}
+            className="mt-1.5 block text-[11px] font-semibold text-teal-accent hover:underline"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 type SidebarEntry =
   | { type: "contact"; sortDate: string }
   | { type: "todo"; todo: ProjectTodo; sortDate: string };
 
-type FlatEntry = SidebarEntry & { project: Project };
+type ProspectFollowUpFlat = {
+  type: "prospect-follow-up";
+  sortDate: string;
+  company: ProspectCompany;
+  contact: ProspectContact;
+};
+
+type FlatEntry =
+  | (SidebarEntry & { project: Project })
+  | ProspectFollowUpFlat;
 type TodoFlatEntry = Extract<FlatEntry, { type: "todo" }>;
 
 type Group = {
@@ -599,6 +707,21 @@ type Group = {
   entries: SidebarEntry[];
   earliestDue: string;
 };
+
+type DisplaySection =
+  | {
+      kind: "project";
+      project: Project;
+      entries: SidebarEntry[];
+      earliestDue: string;
+    }
+  | {
+      kind: "prospect";
+      company: ProspectCompany;
+      contact: ProspectContact;
+      sortDate: string;
+      earliestDue: string;
+    };
 
 function compareSidebarEntries(a: SidebarEntry, b: SidebarEntry): number {
   if (a.sortDate !== b.sortDate) {
@@ -610,6 +733,37 @@ function compareSidebarEntries(a: SidebarEntry, b: SidebarEntry): number {
     return compareTodosByDeadline(a.todo, b.todo);
   }
   return 0;
+}
+
+function compareFlatEntries(a: FlatEntry, b: FlatEntry): number {
+  if (a.sortDate !== b.sortDate) {
+    return a.sortDate < b.sortDate ? -1 : 1;
+  }
+  if (a.type === "prospect-follow-up" && b.type !== "prospect-follow-up") {
+    return -1;
+  }
+  if (b.type === "prospect-follow-up" && a.type !== "prospect-follow-up") {
+    return 1;
+  }
+  if (a.type === "contact" && b.type !== "contact") return -1;
+  if (b.type === "contact" && a.type !== "contact") return 1;
+  if (a.type === "todo" && b.type === "todo") {
+    return compareTodosByDeadline(a.todo, b.todo);
+  }
+  if (a.type === "prospect-follow-up" && b.type === "prospect-follow-up") {
+    return a.company.name.localeCompare(b.company.name);
+  }
+  return 0;
+}
+
+/** Skip prospecting follow-ups once the company is a Sales cold lead. */
+function isProspectLinkedColdLead(
+  company: ProspectCompany,
+  projects: Project[],
+): boolean {
+  if (!company.promotedProjectId) return false;
+  const linked = projects.find((p) => p.id === company.promotedProjectId);
+  return Boolean(linked && linked.stage === "cold-lead");
 }
 
 function FullscreenIcon() {
@@ -639,6 +793,13 @@ export default function OutstandingSidebar() {
     getProjectUserReminder,
     projectUserReminders,
   } = useProjects();
+  const {
+    ready: prospectingReady,
+    companies: prospectCompanies,
+    contacts: prospectContacts,
+    scheduleFollowUp,
+    completeFollowUp,
+  } = useProspecting();
   const [fullscreen, setFullscreen] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("by-project");
   const [scope, setScope] = useState<ScopeMode>("project");
@@ -840,6 +1001,92 @@ export default function OutstandingSidebar() {
     projectUserReminders,
   ]);
 
+  const prospectFollowUps = useMemo((): ProspectFollowUpFlat[] => {
+    if (!prospectingReady) return [];
+    const companyById = new Map(
+      prospectCompanies.map((c) => [c.id, c] as const),
+    );
+    const list: ProspectFollowUpFlat[] = [];
+
+    for (const contact of prospectContacts) {
+      const due = contact.nextFollowUpAt?.slice(0, 10);
+      if (!due) continue;
+      if (due > todayDate()) continue;
+      if (
+        contact.status === "disqualified" ||
+        contact.status === "not-interested"
+      ) {
+        continue;
+      }
+      if (
+        !allOwnersSelected &&
+        (!contact.ownerId || !selectedOwnerIds.has(contact.ownerId))
+      ) {
+        continue;
+      }
+      const company = companyById.get(contact.companyId);
+      if (!company) continue;
+      if (
+        company.status === "disqualified" ||
+        company.status === "not-interested"
+      ) {
+        continue;
+      }
+      if (isProspectLinkedColdLead(company, projects)) continue;
+
+      list.push({
+        type: "prospect-follow-up",
+        sortDate: due,
+        company,
+        contact,
+      });
+    }
+
+    list.sort((a, b) => {
+      if (a.sortDate !== b.sortDate) {
+        return a.sortDate < b.sortDate ? -1 : 1;
+      }
+      return a.company.name.localeCompare(b.company.name);
+    });
+    return list;
+  }, [
+    prospectingReady,
+    prospectCompanies,
+    prospectContacts,
+    projects,
+    selectedOwnerIds,
+    allOwnersSelected,
+  ]);
+
+  const displaySections = useMemo((): DisplaySection[] => {
+    const sections: DisplaySection[] = [
+      ...groups.map((g) => ({
+        kind: "project" as const,
+        project: g.project,
+        entries: g.entries,
+        earliestDue: g.earliestDue,
+      })),
+      ...prospectFollowUps.map((p) => ({
+        kind: "prospect" as const,
+        company: p.company,
+        contact: p.contact,
+        sortDate: p.sortDate,
+        earliestDue: p.sortDate,
+      })),
+    ];
+    sections.sort((a, b) => {
+      if (a.earliestDue !== b.earliestDue) {
+        return a.earliestDue < b.earliestDue ? -1 : 1;
+      }
+      const an =
+        a.kind === "project" ? a.project.name : a.company.name;
+      const bn =
+        b.kind === "project" ? b.project.name : b.company.name;
+      return an.localeCompare(bn);
+    });
+    return sections;
+  }, [groups, prospectFollowUps]);
+
   const flatByBucket = useMemo(() => {
     const flat: FlatEntry[] = [];
     for (const { project, entries } of groups) {
@@ -847,10 +1094,21 @@ export default function OutstandingSidebar() {
         flat.push({ ...entry, project });
       }
     }
+    for (const entry of prospectFollowUps) {
+      flat.push(entry);
+    }
     flat.sort((a, b) => {
-      const byDate = compareSidebarEntries(a, b);
+      const byDate = compareFlatEntries(a, b);
       if (byDate !== 0) return byDate;
-      return a.project.name.localeCompare(b.project.name);
+      const an =
+        a.type === "prospect-follow-up"
+          ? a.company.name
+          : a.project.name;
+      const bn =
+        b.type === "prospect-follow-up"
+          ? b.company.name
+          : b.project.name;
+      return an.localeCompare(bn);
     });
 
     const buckets: Record<UrgencyBucket, FlatEntry[]> = {
@@ -863,7 +1121,7 @@ export default function OutstandingSidebar() {
       buckets[urgencyBucket(entry.sortDate)].push(entry);
     }
     return buckets;
-  }, [groups]);
+  }, [groups, prospectFollowUps]);
 
   const openPersonal = useMemo(
     () =>
@@ -915,8 +1173,9 @@ export default function OutstandingSidebar() {
     let n =
       projectWorkWindow.active.length + projectWorkWindow.upcoming.length;
     for (const g of groups) n += g.entries.length;
+    n += prospectFollowUps.length;
     return n;
-  }, [groups, projectWorkWindow]);
+  }, [groups, projectWorkWindow, prospectFollowUps.length]);
   const totalOpen =
     scope === "personal" ? openPersonal.length : projectTotalOpen;
 
@@ -1060,6 +1319,26 @@ export default function OutstandingSidebar() {
     entry: FlatEntry,
     layout: "rail" | "fullscreen",
   ) {
+    if (entry.type === "prospect-follow-up") {
+      return (
+        <ProspectFollowUpItem
+          key={`prospect-${entry.contact.id}`}
+          company={entry.company}
+          contact={entry.contact}
+          dueDate={entry.sortDate}
+          onDone={() => completeFollowUp(entry.contact.id)}
+          onReschedule={(date) =>
+            scheduleFollowUp(
+              entry.contact.id,
+              date,
+              entry.contact.followUpReason || undefined,
+            )
+          }
+          showCompanyLink
+          onNavigate={exitFullscreen}
+        />
+      );
+    }
     if (entry.type === "contact") {
       return (
         <ContactItem
@@ -1174,45 +1453,84 @@ export default function OutstandingSidebar() {
                 : "flex flex-col gap-4"
             }
           >
-            {groups.map(({ project, entries }) => (
-            <section
-              key={project.id}
-              className={
-                layout === "fullscreen"
-                  ? "rounded-xl border border-line/80 bg-surface/40 p-3"
-                  : undefined
-              }
-            >
-              <Link
-                href={`/projects/${project.id}`}
-                onClick={exitFullscreen}
-                className="mb-2 block truncate text-sm font-semibold text-deep transition hover:text-teal-accent hover:underline"
-              >
-                {project.name}
-              </Link>
-              <ul className="flex flex-col gap-2">
-                {entries.map((entry) =>
-                  entry.type === "contact" ? (
-                    <ContactItem
-                      key="contact"
-                      project={project}
-                      dueDate={entry.sortDate}
-                      onContacted={() => markClientContacted(project.id)}
+            {displaySections.map((section) =>
+              section.kind === "prospect" ? (
+                <section
+                  key={`prospect-${section.contact.id}`}
+                  className={
+                    layout === "fullscreen"
+                      ? "rounded-xl border border-line/80 bg-surface/40 p-3"
+                      : undefined
+                  }
+                >
+                  <Link
+                    href="/prospecting"
+                    onClick={exitFullscreen}
+                    className="mb-2 block truncate text-sm font-semibold text-deep transition hover:text-teal-accent hover:underline"
+                  >
+                    {section.company.name}
+                    <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+                      Prospecting
+                    </span>
+                  </Link>
+                  <ul className="flex flex-col gap-2">
+                    <ProspectFollowUpItem
+                      company={section.company}
+                      contact={section.contact}
+                      dueDate={section.sortDate}
+                      onDone={() => completeFollowUp(section.contact.id)}
+                      onReschedule={(date) =>
+                        scheduleFollowUp(
+                          section.contact.id,
+                          date,
+                          section.contact.followUpReason || undefined,
+                        )
+                      }
                     />
-                  ) : (
-                    <OutstandingItem
-                      key={entry.todo.id}
-                      projectId={project.id}
-                      todo={entry.todo}
-                      ownerName={ownerName(entry.todo.ownerUserId)}
-                      expanded={richChrome}
-                      deadlineEditable={layout === "fullscreen"}
-                    />
-                  ),
-                )}
-              </ul>
-            </section>
-          ))}
+                  </ul>
+                </section>
+              ) : (
+                <section
+                  key={section.project.id}
+                  className={
+                    layout === "fullscreen"
+                      ? "rounded-xl border border-line/80 bg-surface/40 p-3"
+                      : undefined
+                  }
+                >
+                  <Link
+                    href={`/projects/${section.project.id}`}
+                    onClick={exitFullscreen}
+                    className="mb-2 block truncate text-sm font-semibold text-deep transition hover:text-teal-accent hover:underline"
+                  >
+                    {section.project.name}
+                  </Link>
+                  <ul className="flex flex-col gap-2">
+                    {section.entries.map((entry) =>
+                      entry.type === "contact" ? (
+                        <ContactItem
+                          key="contact"
+                          project={section.project}
+                          dueDate={entry.sortDate}
+                          onContacted={() =>
+                            markClientContacted(section.project.id)
+                          }
+                        />
+                      ) : (
+                        <OutstandingItem
+                          key={entry.todo.id}
+                          projectId={section.project.id}
+                          todo={entry.todo}
+                          ownerName={ownerName(entry.todo.ownerUserId)}
+                          expanded={richChrome}
+                          deadlineEditable={layout === "fullscreen"}
+                        />
+                      ),
+                    )}
+                  </ul>
+                </section>
+              ),
+            )}
           </div>
         </>
       );

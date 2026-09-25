@@ -527,6 +527,8 @@ export interface ProspectingApi {
     date: string,
     reason?: string,
   ) => void;
+  /** Clear a scheduled follow-up (Outstanding “Done”). */
+  completeFollowUp: (contactId: string) => void;
   markEngaged: (contactId: string) => void;
   /** Contacted → Engaged: log response and move to engaged (or not-interested). */
   logEngagement: (input: LogOutreachInput) => string;
@@ -1388,6 +1390,59 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [persistCompany, persistContact],
   );
 
+  const completeFollowUp = useCallback(
+    (contactId: string) => {
+      const now = new Date().toISOString();
+      setState((prev) => {
+        const contact = prev.contacts.find((c) => c.id === contactId);
+        if (!contact) return prev;
+
+        const contacts = prev.contacts.map((c) => {
+          if (c.id !== contactId) return c;
+          const next: ProspectContact = {
+            ...c,
+            nextFollowUpAt: null,
+            followUpReason: "",
+            status:
+              c.status === "follow-up-due" ? "contacted" : c.status,
+            updatedAt: now,
+          };
+          persistContact(next, "upsert");
+          return next;
+        });
+
+        const companies = prev.companies.map((co) => {
+          if (co.id !== contact.companyId) return co;
+          const stillDue = contacts.some(
+            (c) =>
+              c.companyId === co.id &&
+              c.id !== contactId &&
+              c.nextFollowUpAt,
+          );
+          if (stillDue && co.nextActionAt && co.nextActionAt !== contact.nextFollowUpAt) {
+            return co;
+          }
+          const nextCompanyFollowUp = contacts
+            .filter((c) => c.companyId === co.id && c.nextFollowUpAt)
+            .map((c) => c.nextFollowUpAt!)
+            .sort()[0] ?? null;
+          const next: ProspectCompany = {
+            ...co,
+            nextActionAt: nextCompanyFollowUp,
+            nextAction: nextCompanyFollowUp ? co.nextAction : "",
+            lastActivityAt: now,
+            updatedAt: now,
+          };
+          persistCompany(next, "upsert");
+          return next;
+        });
+
+        return { ...prev, contacts, companies };
+      });
+    },
+    [persistCompany, persistContact],
+  );
+
   const markEngaged = useCallback(
     (contactId: string) => {
       const now = new Date().toISOString();
@@ -1886,6 +1941,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           logOutreach,
           markContacted,
           scheduleFollowUp,
+          completeFollowUp,
           markEngaged,
           logEngagement,
           markQualified,
@@ -1909,6 +1965,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           "logOutreach",
           "markContacted",
           "scheduleFollowUp",
+          "completeFollowUp",
           "markEngaged",
           "logEngagement",
           "markQualified",
@@ -1934,6 +1991,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       logOutreach,
       markContacted,
       scheduleFollowUp,
+      completeFollowUp,
       markEngaged,
       logEngagement,
       markQualified,
