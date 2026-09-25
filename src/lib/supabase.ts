@@ -59,6 +59,7 @@ export interface ProjectRow {
   stage: Stage;
   base_description: string;
   ai_summary: string | null;
+  ai_summary_updated_at?: string | null;
   last_client_contact_at: string | null;
   email_reminder_days: number | null;
   email_reminder_enabled: boolean | null;
