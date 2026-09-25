@@ -6,7 +6,7 @@ import path from "node:path";
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
   const text = fs.readFileSync(filePath, "utf8");
-  for (const rawLine of text.split(/\\r?\\n/)) {
+  for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
@@ -27,7 +27,7 @@ loadEnvFile(path.join(process.cwd(), ".env.local"));
 
 const baseUrl = (
   process.env.CRM_BASE_URL || "http://127.0.0.1:3000"
-).replace(/\\/$/, "");
+).replace(/\/$/, "");
 const secret = (process.env.AI_SUMMARY_CRON_SECRET || "").trim();
 
 if (!secret) {
