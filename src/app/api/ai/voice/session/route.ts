@@ -6,6 +6,7 @@ import {
   sessionUserFromPayload,
 } from "@/lib/auth";
 import { isViewerUser } from "@/lib/permissions";
+import { FEATURE_AI_CHAT_AND_VOICE } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,10 @@ async function safetyIdentifier(userId: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_AI_VOICE !== "true") {
+  if (
+    !FEATURE_AI_CHAT_AND_VOICE ||
+    process.env.NEXT_PUBLIC_AI_VOICE !== "true"
+  ) {
     return NextResponse.json(
       { error: "AI voice assistant is disabled" },
       { status: 503 },

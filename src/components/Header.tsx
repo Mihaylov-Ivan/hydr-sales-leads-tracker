@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/auth-context";
 import { visibleNavItems } from "@/lib/permissions";
 import NotificationBell from "@/components/NotificationBell";
 import VoiceAssistant from "@/components/VoiceAssistant";
+import { FEATURE_AI_CHAT_AND_VOICE } from "@/lib/feature-flags";
 import { downloadFinancialCsv } from "@/lib/financial-csv";
 import { buildDefaultSkladMaps } from "@/lib/warehouse-sklad-map";
 
@@ -206,7 +207,7 @@ export default function Header() {
             </>
           )}
 
-          <VoiceAssistant />
+          {FEATURE_AI_CHAT_AND_VOICE ? <VoiceAssistant /> : null}
 
           <NotificationBell />
 

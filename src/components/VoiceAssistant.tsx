@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
+import { FEATURE_AI_CHAT_AND_VOICE } from "@/lib/feature-flags";
 import {
   createEmptyChat,
   createDefaultStore,
@@ -1046,7 +1047,9 @@ export default function VoiceAssistant() {
     isViewer,
   } = useAuth();
 
-  const enabled = process.env.NEXT_PUBLIC_AI_VOICE === "true";
+  const enabled =
+    FEATURE_AI_CHAT_AND_VOICE &&
+    process.env.NEXT_PUBLIC_AI_VOICE === "true";
   const hasAreaAccess = !authEnabled || Boolean(user && !isViewer);
 
   const [panelOpen, setPanelOpen] = useState(false);

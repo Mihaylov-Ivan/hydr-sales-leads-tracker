@@ -14,6 +14,7 @@ import {
   createServiceClient,
   hasServiceRoleConfig,
 } from "@/lib/supabase-server";
+import { FEATURE_AI_CHAT_AND_VOICE } from "@/lib/feature-flags";
 
 interface ChatRow {
   id: string;
@@ -79,6 +80,13 @@ function rowsToStore(rows: ChatRow[]): HydrAiChatStore {
 }
 
 export async function GET(request: NextRequest) {
+  if (!FEATURE_AI_CHAT_AND_VOICE) {
+    return NextResponse.json(
+      { error: "AI chat is disabled" },
+      { status: 503 },
+    );
+  }
+
   const auth = await requireUserId(request);
   if (auth.error) return auth.error;
 
@@ -110,6 +118,13 @@ export async function GET(request: NextRequest) {
 
 /** Replace the signed-in user's chat store with the provided snapshot. */
 export async function PUT(request: NextRequest) {
+  if (!FEATURE_AI_CHAT_AND_VOICE) {
+    return NextResponse.json(
+      { error: "AI chat is disabled" },
+      { status: 503 },
+    );
+  }
+
   const auth = await requireUserId(request);
   if (auth.error) return auth.error;
 

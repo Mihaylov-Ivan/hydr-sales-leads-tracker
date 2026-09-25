@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
 
+// Keep in sync with src/lib/feature-flags.ts → FEATURE_FIREFLIES
+const FEATURE_FIREFLIES = false;
+
 const children = new Set();
 let shuttingDown = false;
 
@@ -15,7 +18,9 @@ function start(args) {
 }
 
 const next = start(["node_modules/next/dist/bin/next", "dev"]);
-const poller = start(["scripts/poll-fireflies.mjs"]);
+const poller = FEATURE_FIREFLIES
+  ? start(["scripts/poll-fireflies.mjs"])
+  : null;
 
 function shutdown(code = 0) {
   if (shuttingDown) return;
@@ -33,8 +38,12 @@ next.on("exit", (code) => {
   if (!shuttingDown) shutdown(code ?? 0);
 });
 
-poller.on("exit", (code) => {
-  if (!shuttingDown && code && code !== 0) {
-    console.error("[fireflies] Poller exited; Next.js will continue running.");
-  }
-});
+if (poller) {
+  poller.on("exit", (code) => {
+    if (!shuttingDown && code && code !== 0) {
+      console.error("[fireflies] Poller exited; Next.js will continue running.");
+    }
+  });
+} else {
+  console.log("[fireflies] Poller not started (feature flag disabled).");
+}

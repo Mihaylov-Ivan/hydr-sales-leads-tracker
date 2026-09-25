@@ -23,6 +23,9 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(path.resolve(process.cwd(), ".env.local"));
 
+// Keep in sync with src/lib/feature-flags.ts → FEATURE_FIREFLIES
+const FEATURE_FIREFLIES = false;
+
 const once = process.argv.includes("--once");
 const intervalMs = Math.max(
   60_000,
@@ -33,6 +36,11 @@ const baseUrl = (
 ).replace(/\/$/, "");
 const secret = process.env.FIREFLIES_POLL_SECRET?.trim();
 const apiKey = process.env.FIREFLIES_API_KEY?.trim();
+
+if (!FEATURE_FIREFLIES) {
+  console.log("[fireflies] Integration disabled (feature flag).");
+  process.exit(0);
+}
 
 if (!secret || !apiKey) {
   console.log(

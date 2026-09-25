@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase-server";
+import { FEATURE_FIREFLIES } from "@/lib/feature-flags";
 
 const FIREFLIES_GRAPHQL_URL = "https://api.fireflies.ai/graphql";
 const PAGE_SIZE = 50;
@@ -200,6 +201,10 @@ async function getTranscript(id: string): Promise<FirefliesTranscript> {
 }
 
 export async function syncFirefliesMeetings(): Promise<FirefliesSyncResult> {
+  if (!FEATURE_FIREFLIES) {
+    throw new Error("Fireflies integration is disabled");
+  }
+
   const lookbackDays = intEnv("FIREFLIES_IMPORT_LOOKBACK_DAYS", 30, 1, 3650);
   const importLimit = intEnv("FIREFLIES_IMPORT_BATCH_SIZE", 10, 1, 50);
   const fromDate = new Date(

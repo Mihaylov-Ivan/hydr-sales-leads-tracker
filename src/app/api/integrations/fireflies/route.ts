@@ -9,8 +9,16 @@ import {
   createServiceClient,
   hasServiceRoleConfig,
 } from "@/lib/supabase-server";
+import { FEATURE_FIREFLIES } from "@/lib/feature-flags";
 
 export const runtime = "nodejs";
+
+function firefliesDisabled() {
+  return NextResponse.json(
+    { error: "Fireflies integration is disabled" },
+    { status: 503 },
+  );
+}
 
 type AdminIdentity = { userId: string | null; isAdmin: true };
 
@@ -66,6 +74,8 @@ function clampLimit(value: string | null): number {
 }
 
 export async function GET(request: NextRequest) {
+  if (!FEATURE_FIREFLIES) return firefliesDisabled();
+
   const auth = await requireAdmin(request);
   if (auth.error) return auth.error;
 
@@ -147,6 +157,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!FEATURE_FIREFLIES) return firefliesDisabled();
+
   let admin: AdminIdentity | undefined;
   if (!validPollSecret(request)) {
     const auth = await requireAdmin(request);
@@ -170,6 +182,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (!FEATURE_FIREFLIES) return firefliesDisabled();
+
   const auth = await requireAdmin(request);
   if (auth.error) return auth.error;
 
