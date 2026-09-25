@@ -512,11 +512,6 @@ export default function ProspectingWorkspace() {
           }
         />
         <KpiChip label="Engaged" value={String(kpis.engaged)} />
-        <KpiChip label="Qualified" value={String(kpis.qualified)} />
-        <KpiChip
-          label="Promoted (mo)"
-          value={String(kpis.promotedThisMonth)}
-        />
       </div>
 
       <StrategySection />

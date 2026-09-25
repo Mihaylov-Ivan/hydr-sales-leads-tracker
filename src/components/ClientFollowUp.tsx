@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import {
   Project,
+  addDays,
+  daysBetween,
   userEmailReminderDeltaDays,
   isUserEmailReminderDue,
   lastContactDateForUserReminder,
@@ -55,6 +57,29 @@ export default function ClientFollowUp({ project }: { project: Project }) {
         : `Next follow-up in ${delta} days`;
   }
 
+  const setLastContact = (value: string) => {
+    if (!value) return;
+    updateProjectUserReminder(project.id, {
+      lastClientContactAt: value,
+    });
+  };
+
+  const setRemindInDays = (days: number) => {
+    if (!Number.isFinite(days) || days < 1) return;
+    updateProjectUserReminder(project.id, {
+      emailReminderDays: Math.floor(days),
+    });
+  };
+
+  /** Keep days and next follow-up date aligned from last contact. */
+  const setNextFollowUp = (value: string) => {
+    if (!value) return;
+    const days = Math.max(1, daysBetween(last, value));
+    updateProjectUserReminder(project.id, {
+      emailReminderDays: days,
+    });
+  };
+
   return (
     <section
       className={`rounded-xl border p-4 shadow-sm transition ${
@@ -105,9 +130,8 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             </p>
             <p className="mt-0.5 text-xs text-muted">
               {due ? `${statusText} · ` : ""}
-              Your last contact {formatDay(last)}
+              Last contact {formatDay(last)}
               {enabled && !due ? ` · due ${formatDay(next)}` : ""}
-              {" · each user has their own reminder settings on this project"}
             </p>
           </div>
         </div>
@@ -116,7 +140,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
           type="button"
           disabled={!currentUserId}
           onClick={() => markClientContacted(project.id)}
-          title="Set your last contact to today and restart your reminder"
+          title="Set last contact to today and restart your reminder"
           className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40 ${
             due
               ? "bg-olive text-olive-ink"
@@ -127,27 +151,35 @@ export default function ClientFollowUp({ project }: { project: Project }) {
         </button>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Your last contact
+            Last contact date
           </span>
           <input
             type="date"
             disabled={!currentUserId}
             value={last}
-            onChange={(e) => {
-              if (!e.target.value) return;
-              updateProjectUserReminder(project.id, {
-                lastClientContactAt: e.target.value,
-              });
-            }}
+            onChange={(e) => setLastContact(e.target.value)}
             className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50"
           />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            Remind every (days)
+            Next follow-up date
+          </span>
+          <input
+            type="date"
+            disabled={!enabled || !currentUserId}
+            min={addDays(last, 1)}
+            value={next}
+            onChange={(e) => setNextFollowUp(e.target.value)}
+            className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Remind in (days)
           </span>
           <input
             type="number"
@@ -155,13 +187,7 @@ export default function ClientFollowUp({ project }: { project: Project }) {
             step={1}
             disabled={!enabled || !currentUserId}
             value={reminder.emailReminderDays}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (!Number.isFinite(n) || n < 1) return;
-              updateProjectUserReminder(project.id, {
-                emailReminderDays: Math.floor(n),
-              });
-            }}
+            onChange={(e) => setRemindInDays(Number(e.target.value))}
             className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent disabled:cursor-not-allowed disabled:opacity-50"
           />
         </label>
