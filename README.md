@@ -22,6 +22,14 @@ OPENAI_API_KEY=sk-...
 
 Without an API key the UI still shows rule-based summaries when the feature flag is on. Optional: `OPENAI_MODEL` (default `gpt-5.4-mini`) and `OPENAI_BASE_URL` (default OpenAI; any OpenAI-compatible endpoint works, e.g. a local Ollama server). The key stays server-side — the browser only calls the app's own `/api/summarize` route.
 
+## AI email proposals + daily project summaries
+
+The `AI-integration` workflow adds proposal-only processing for client emails pasted into Hydr AI. Email content is reconciled against the current CRM before any suggestion is queued; repeated facts are ignored and conflicts are held for clarification. Nothing from a pasted email is applied until the user explicitly approves the queued suggestion.
+
+Project summaries can be regenerated individually or in bulk and are persisted to `projects.ai_summary`. A daily local refresh can be installed with Windows Task Scheduler.
+
+See [`docs/AI-INTEGRATION.md`](docs/AI-INTEGRATION.md) for migration, environment, testing, and scheduler setup.
+
 ## Hydr AI voice assistant
 
 The voice assistant uses the OpenAI Realtime API over WebRTC. The standard OpenAI API key remains server-side; the browser sends its WebRTC SDP offer to the app's `/api/ai/voice/session` route.
