@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidatePattern('^([01]\\d|2[0-3]):[0-5]\\d$')]
+  [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')]
   [string]$Time,
 
   [string]$TaskName = "Hydr CRM Daily Project Summaries"
@@ -9,19 +9,16 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$Npm = (Get-Command npm.cmd -ErrorAction Stop).Source
+$Runner = (Resolve-Path (Join-Path $PSScriptRoot "run-summary-refresh.ps1")).Path
 
 $Parts = $Time.Split(":")
 $Hour = [int]$Parts[0]
 $Minute = [int]$Parts[1]
 $At = (Get-Date).Date.AddHours($Hour).AddMinutes($Minute)
 
-$QuotedRepo = '"' + $RepoRoot.Replace('"', '""') + '"'
-$Command = "cd /d $QuotedRepo && `"$Npm`" run summaries:refresh"
-
 $Action = New-ScheduledTaskAction `
-  -Execute "$env:ComSpec" `
-  -Argument "/d /s /c `"$Command`""
+  -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Runner`""
 
 $Trigger = New-ScheduledTaskTrigger -Daily -At $At
 
