@@ -45,6 +45,7 @@ const SIZE_BUCKETS: { id: SizeBucket; label: string; match: (kw: number) => bool
 
 const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
   "cold-lead": "border-t-teal-accent",
+  "warm-lead": "border-t-deep",
   "hot-lead": "border-t-amber-accent",
   "under-development": "border-t-olive",
   commissioned: "border-t-green-accent",
@@ -522,6 +523,7 @@ export default function Dashboard() {
   const byStage = useMemo(() => {
     const map: Record<(typeof STAGES)[number], typeof filtered> = {
       "cold-lead": [],
+      "warm-lead": [],
       "hot-lead": [],
       "under-development": [],
       commissioned: [],

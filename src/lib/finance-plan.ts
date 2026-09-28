@@ -24,6 +24,7 @@ export function isContracted(stage: Stage): boolean {
 export function isPipeline(stage: Stage): boolean {
   return (
     stage === "cold-lead" ||
+    stage === "warm-lead" ||
     stage === "hot-lead" ||
     stage === "eu-application-prep" ||
     stage === "eu-application-submitted"

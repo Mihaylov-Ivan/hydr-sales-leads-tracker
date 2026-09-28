@@ -21,6 +21,7 @@ const SERIES = new Set([
 ]);
 const STAGES = new Set([
   "cold-lead",
+  "warm-lead",
   "hot-lead",
   "under-development",
   "commissioned",

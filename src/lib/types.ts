@@ -14,6 +14,7 @@ export const PROJECT_TRACK_LABELS: Record<ProjectTrack, string> = {
 
 export type Stage =
   | "cold-lead"
+  | "warm-lead"
   | "hot-lead"
   | "under-development"
   | "commissioned"
@@ -29,6 +30,7 @@ export type Stage =
  */
 export const BOARD_STAGES = [
   "cold-lead",
+  "warm-lead",
   "hot-lead",
   "under-development",
   "commissioned",
@@ -58,6 +60,7 @@ export const RND_STAGES = [...RND_CREATE_STAGES, "cancelled"] as const;
 
 export const STAGE_LABELS: Record<Stage, string> = {
   "cold-lead": "Cold Lead",
+  "warm-lead": "Warm Lead",
   "hot-lead": "Hot Lead",
   "under-development": "Under Development",
   commissioned: "Commissioned",
@@ -1141,6 +1144,7 @@ export const DEFAULT_STAGE_PROBABILITIES: Record<
   number
 > = {
   "cold-lead": 10,
+  "warm-lead": 25,
   "hot-lead": 40,
   "under-development": 100,
   commissioned: 100,
@@ -1626,6 +1630,7 @@ export interface Project {
    * under-development was reached even if underDevelopmentAt was never set.
    */
   coldLeadEnteredAt: string;
+  warmLeadEnteredAt?: string;
   hotLeadEnteredAt?: string;
   underDevelopmentAt?: string;
   commissionedAt?: string;
@@ -1646,6 +1651,7 @@ export interface Project {
 /** Company-level pipeline metrics thresholds (DB singleton + local fallback). */
 export interface CompanyMetricsSettings {
   staleColdDays: number;
+  staleWarmDays: number;
   staleHotDays: number;
   staleUnderDevelopmentDays: number;
   maturityUnderDevelopmentMonths: number;
@@ -1659,6 +1665,7 @@ export interface CompanyMetricsSettings {
 export function defaultMetricsSettings(): CompanyMetricsSettings {
   return {
     staleColdDays: 180,
+    staleWarmDays: 150,
     staleHotDays: 120,
     staleUnderDevelopmentDays: 90,
     maturityUnderDevelopmentMonths: 12,
@@ -1666,6 +1673,22 @@ export function defaultMetricsSettings(): CompanyMetricsSettings {
     healthyConversionProbability: 0.35,
     staleRecoveryProbability: 0.1,
   };
+}
+
+/**
+ * Per-user Outstanding prefs for Gantt missing / started notifications
+ * (technical_sales). Stored in project_gantt_outstanding.
+ */
+export interface ProjectGanttOutstanding {
+  projectId: string;
+  userId: string;
+  /** When set and still in the future, hide the missing-Gantt reminder. */
+  missingSnoozedUntil?: string;
+  /**
+   * Earliest schedule start date that was approved for the "project started"
+   * reminder. Reappears if the schedule start changes.
+   */
+  startApprovedScheduleStart?: string;
 }
 
 /** Common follow-up windows */

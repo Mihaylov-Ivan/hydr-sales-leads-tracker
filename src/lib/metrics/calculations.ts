@@ -327,6 +327,7 @@ function stageEntryAt(
   stage: PipelineStage,
 ): string | undefined {
   if (stage === "cold-lead") return p.coldLeadEnteredAt || p.createdAt;
+  if (stage === "warm-lead") return p.warmLeadEnteredAt;
   if (stage === "hot-lead") return p.hotLeadEnteredAt;
   return p.underDevelopmentAt;
 }
@@ -336,7 +337,21 @@ function stageExitAt(
   stage: PipelineStage,
 ): string | undefined {
   if (stage === "cold-lead") {
-    return p.hotLeadEnteredAt || p.underDevelopmentAt || p.commissionedAt || p.cancelledAt;
+    return (
+      p.warmLeadEnteredAt ||
+      p.hotLeadEnteredAt ||
+      p.underDevelopmentAt ||
+      p.commissionedAt ||
+      p.cancelledAt
+    );
+  }
+  if (stage === "warm-lead") {
+    return (
+      p.hotLeadEnteredAt ||
+      p.underDevelopmentAt ||
+      p.commissionedAt ||
+      p.cancelledAt
+    );
   }
   if (stage === "hot-lead") {
     return p.underDevelopmentAt || p.commissionedAt || p.cancelledAt;

@@ -10,6 +10,7 @@ export function isProjectSummaryEnabled(): boolean {
 
 const STAGE_PHRASES: Record<string, string> = {
   "cold-lead": "a cold lead currently in contact",
+  "warm-lead": "a warm lead being nurtured",
   "hot-lead": "a hot lead with an offer sent",
   "under-development": "under active development",
   commissioned: "commissioned and operational",

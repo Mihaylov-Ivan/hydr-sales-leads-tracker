@@ -12,7 +12,11 @@
 import type { Market, MarketTag, Series, SeriesTag, Stage } from "@/lib/types";
 
 /** Pipeline stages used for coverage / required / bottleneck (excludes terminal). */
-export type PipelineStage = "cold-lead" | "hot-lead" | "under-development";
+export type PipelineStage =
+  | "cold-lead"
+  | "warm-lead"
+  | "hot-lead"
+  | "under-development";
 
 export type TargetOutcome = "under-development" | "commissioned";
 
@@ -63,6 +67,7 @@ export interface MetricsProject {
   stageHistory: StageHistoryEntry[];
   createdAt: string; // ISO date
   coldLeadEnteredAt: string;
+  warmLeadEnteredAt?: string;
   hotLeadEnteredAt?: string;
   underDevelopmentAt?: string;
   commissionedAt?: string;
@@ -226,9 +231,11 @@ export type DrillDownKind =
   | "stale-pipeline"
   | "conversion-range"
   | "required-cold"
+  | "required-warm"
   | "required-hot"
   | "required-ud"
   | "coverage-cold"
+  | "coverage-warm"
   | "coverage-hot"
   | "coverage-ud"
   | "supported-pace"

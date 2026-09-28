@@ -94,6 +94,7 @@ interface RealtimeEvent {
 
 const SALES_STAGE_VALUES: Stage[] = [
   "cold-lead",
+  "warm-lead",
   "hot-lead",
   "under-development",
   "commissioned",
@@ -303,6 +304,7 @@ const EXTENDED_CRM_TOOLS = [
         email_reminder_days: { type: "integer" },
         email_reminder_enabled: { type: "boolean" },
         cold_lead_entered_at: { type: "string" },
+        warm_lead_entered_at: { type: ["string", "null"] },
         hot_lead_entered_at: { type: ["string", "null"] },
         under_development_at: { type: ["string", "null"] },
         commissioned_at: { type: ["string", "null"] },
@@ -1626,6 +1628,7 @@ export default function VoiceAssistant() {
             email_reminder_enabled: project.emailReminderEnabled,
             pipeline_activity: {
               cold_lead_entered_at: project.coldLeadEnteredAt,
+              warm_lead_entered_at: project.warmLeadEnteredAt ?? null,
               hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
               under_development_at: project.underDevelopmentAt ?? null,
               commissioned_at: project.commissionedAt ?? null,
@@ -3112,6 +3115,7 @@ export default function VoiceAssistant() {
 
         const dateMappings = [
           ["cold_lead_entered_at", "coldLeadEnteredAt"],
+          ["warm_lead_entered_at", "warmLeadEnteredAt"],
           ["hot_lead_entered_at", "hotLeadEnteredAt"],
           ["under_development_at", "underDevelopmentAt"],
           ["commissioned_at", "commissionedAt"],

@@ -525,6 +525,21 @@ export default function ProjectPage() {
             </label>
             <label className="block">
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+                Warm lead entered
+              </span>
+              <input
+                type="date"
+                value={project.warmLeadEnteredAt ?? ""}
+                onChange={(e) =>
+                  updateProject(project.id, {
+                    warmLeadEnteredAt: e.target.value,
+                  })
+                }
+                className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-teal-accent"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
                 Hot lead entered
               </span>
               <input

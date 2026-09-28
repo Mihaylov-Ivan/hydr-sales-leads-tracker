@@ -36,6 +36,7 @@ const RAW_SEED: Project[] = [
     emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: true,
     coldLeadEnteredAt: dateAgo(120),
+    warmLeadEnteredAt: dateAgo(100),
     hotLeadEnteredAt: dateAgo(90),
     underDevelopmentAt: dateAgo(35),
     lastMeaningfulActivityAt: dateAgo(4),

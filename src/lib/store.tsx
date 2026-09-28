@@ -72,11 +72,13 @@ import {
   parseMarketTags,
   todayDate,
   addDays,
+  addCalendarMonths,
   phaseEndDate,
   ScheduleShiftUnit,
   isClientFollowUpTodo,
   isSetNextStepTodo,
   ProjectUserReminder,
+  ProjectGanttOutstanding,
 } from "./types";
 import {
   AppNotification,
@@ -85,6 +87,7 @@ import {
 } from "./notifications";
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
+import { scheduleEarliestStart } from "./gantt-outstanding";
 import {
   buildChangeEvent,
   changeDiffPayload,
@@ -214,6 +217,7 @@ const TEAM_STORAGE_KEY = "hydrogenera-team-members-v1";
 const TEAM_MIGRATED_KEY = "hydrogenera-team-members-migrated-v1";
 const PERSONAL_TODOS_STORAGE_KEY = "hydrogenera-personal-todos-v1";
 const PROJECT_USER_REMINDERS_KEY = "hydrogenera-project-user-reminders-v1";
+const GANTT_OUTSTANDING_KEY = "hydrogenera-gantt-outstanding-v1";
 
 function loadLocalProjectSchedules(): Record<string, ProjectSchedule> {
   return {};
@@ -267,6 +271,10 @@ function loadLocalMetricsSettings(): CompanyMetricsSettings {
         typeof parsed.staleColdDays === "number" && parsed.staleColdDays > 0
           ? parsed.staleColdDays
           : base.staleColdDays,
+      staleWarmDays:
+        typeof parsed.staleWarmDays === "number" && parsed.staleWarmDays > 0
+          ? parsed.staleWarmDays
+          : base.staleWarmDays,
       staleHotDays:
         typeof parsed.staleHotDays === "number" && parsed.staleHotDays > 0
           ? parsed.staleHotDays
@@ -346,6 +354,7 @@ export type ProjectPatch = Partial<
     | "leadUserId"
     | "coLeadUserId"
     | "coldLeadEnteredAt"
+    | "warmLeadEnteredAt"
     | "hotLeadEnteredAt"
     | "underDevelopmentAt"
     | "commissionedAt"
@@ -613,6 +622,14 @@ interface ProjectsApi {
   ) => void;
   /** Persist defaults for the current user if they have no prefs row yet */
   ensureProjectUserReminder: (projectId: string) => void;
+  /** Per-user Gantt Outstanding prefs (missing snooze / start approved) */
+  projectGanttOutstanding: ProjectGanttOutstanding[];
+  getProjectGanttOutstanding: (
+    projectId: string,
+    userId?: string | null,
+  ) => ProjectGanttOutstanding;
+  approveGanttStartNotification: (projectId: string) => void;
+  snoozeGanttMissingNotification: (projectId: string) => void;
   /** In-app notifications for the signed-in user */
   notifications: AppNotification[];
   unreadNotificationCount: number;
@@ -1188,6 +1205,60 @@ async function loadRemoteProjectUserReminders(): Promise<ProjectUserReminder[]> 
   }));
 }
 
+function loadLocalGanttOutstanding(): ProjectGanttOutstanding[] {
+  try {
+    const raw = window.localStorage.getItem(GANTT_OUTSTANDING_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ProjectGanttOutstanding[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (r) =>
+          r &&
+          typeof r.projectId === "string" &&
+          typeof r.userId === "string",
+      )
+      .map((r) => ({
+        projectId: r.projectId,
+        userId: r.userId,
+        ...(r.missingSnoozedUntil
+          ? { missingSnoozedUntil: r.missingSnoozedUntil.slice(0, 10) }
+          : {}),
+        ...(r.startApprovedScheduleStart
+          ? {
+              startApprovedScheduleStart:
+                r.startApprovedScheduleStart.slice(0, 10),
+            }
+          : {}),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function loadRemoteGanttOutstanding(): Promise<ProjectGanttOutstanding[]> {
+  const res = await supabase!.from("project_gantt_outstanding").select("*");
+  if (res.error) throw new Error(res.error.message);
+  return ((res.data ?? []) as Array<{
+    project_id: string;
+    user_id: string;
+    missing_snoozed_until: string | null;
+    start_approved_schedule_start: string | null;
+  }>).map((row) => ({
+    projectId: row.project_id,
+    userId: row.user_id,
+    ...(row.missing_snoozed_until
+      ? { missingSnoozedUntil: row.missing_snoozed_until.slice(0, 10) }
+      : {}),
+    ...(row.start_approved_schedule_start
+      ? {
+          startApprovedScheduleStart:
+            row.start_approved_schedule_start.slice(0, 10),
+        }
+      : {}),
+  }));
+}
+
 function notificationFromRow(row: {
   id: string;
   recipient_user_id: string;
@@ -1375,6 +1446,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [projectUserReminders, setProjectUserReminders] = useState<
     ProjectUserReminder[]
   >([]);
+  const [projectGanttOutstanding, setProjectGanttOutstanding] = useState<
+    ProjectGanttOutstanding[]
+  >([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(TEAM_MEMBERS);
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(null);
@@ -1409,6 +1483,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   personalTodosRef.current = personalTodos;
   const projectUserRemindersRef = useRef<ProjectUserReminder[]>([]);
   projectUserRemindersRef.current = projectUserReminders;
+  const projectGanttOutstandingRef = useRef<ProjectGanttOutstanding[]>([]);
+  projectGanttOutstandingRef.current = projectGanttOutstanding;
   const suppressAssignmentNotifyRef = useRef(false);
   const teamMembersRef = useRef<TeamMember[]>(teamMembers);
   teamMembersRef.current = teamMembers;
@@ -1516,6 +1592,14 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         );
         setProjectUserReminders(remoteReminders);
 
+        const remoteGanttOutstanding = await loadRemoteGanttOutstanding().catch(
+          (e) => {
+            console.error("Failed to load gantt outstanding prefs:", e);
+            return loadLocalGanttOutstanding();
+          },
+        );
+        setProjectGanttOutstanding(remoteGanttOutstanding);
+
         // Notifications load after we know the signed-in user (see effect below)
 
         const remoteWh = await loadRemoteWarehouseState(
@@ -1551,6 +1635,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         setFinanceImport(null);
         await applyOwnedPersonalTodos(members[0]?.id ?? null);
         setProjectUserReminders(loadLocalProjectUserReminders());
+        setProjectGanttOutstanding(loadLocalGanttOutstanding());
         setReady(true);
       }
     }
@@ -1685,6 +1770,15 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       );
     }
   }, [projectUserReminders, ready]);
+
+  useEffect(() => {
+    if (ready && !supabase) {
+      window.localStorage.setItem(
+        GANTT_OUTSTANDING_KEY,
+        JSON.stringify(projectGanttOutstanding),
+      );
+    }
+  }, [projectGanttOutstanding, ready]);
 
   useEffect(() => {
     if (ready && !supabase) {
@@ -2470,6 +2564,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ...(supportsMetricsFields
             ? {
               cold_lead_entered_at: project.coldLeadEnteredAt,
+              warm_lead_entered_at: project.warmLeadEnteredAt ?? null,
               hot_lead_entered_at: project.hotLeadEnteredAt ?? null,
               under_development_at: project.underDevelopmentAt ?? null,
               commissioned_at: project.commissionedAt ?? null,
@@ -2619,6 +2714,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (stageChange) {
           const row: Record<string, string | null> = { stage: stageChange };
           if (supportsMetricsFields) {
+            if (stagePatch.warmLeadEnteredAt)
+              row.warm_lead_entered_at = stagePatch.warmLeadEnteredAt;
             if (stagePatch.hotLeadEnteredAt)
               row.hot_lead_entered_at = stagePatch.hotLeadEnteredAt;
             if (stagePatch.underDevelopmentAt)
@@ -2675,6 +2772,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       }
       const updated: Project = { ...current, ...mergedPatch };
       // Empty strings clear optional text/date fields
+      if (mergedPatch.warmLeadEnteredAt === "") delete updated.warmLeadEnteredAt;
       if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
       if (mergedPatch.underDevelopmentAt === "")
         delete updated.underDevelopmentAt;
@@ -2735,6 +2833,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           if (mergedPatch.cancellationReason !== undefined)
             row.cancellation_reason =
               mergedPatch.cancellationReason.trim() || null;
+          if (mergedPatch.warmLeadEnteredAt !== undefined)
+            row.warm_lead_entered_at = mergedPatch.warmLeadEnteredAt || null;
           if (mergedPatch.hotLeadEnteredAt !== undefined)
             row.hot_lead_entered_at = mergedPatch.hotLeadEnteredAt || null;
           if (mergedPatch.underDevelopmentAt !== undefined)
@@ -2876,6 +2976,87 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       persistProjectUserReminder(getProjectUserReminder(projectId, uid));
     },
     [getProjectUserReminder, persistProjectUserReminder],
+  );
+
+  const getProjectGanttOutstanding = useCallback(
+    (projectId: string, userId?: string | null): ProjectGanttOutstanding => {
+      const uid = userId ?? currentUserIdRef.current;
+      if (!uid) {
+        return { projectId, userId: "" };
+      }
+      const existing = projectGanttOutstandingRef.current.find(
+        (r) => r.projectId === projectId && r.userId === uid,
+      );
+      if (existing) return existing;
+      return { projectId, userId: uid };
+    },
+    [],
+  );
+
+  const persistProjectGanttOutstanding = useCallback(
+    (prefs: ProjectGanttOutstanding) => {
+      setProjectGanttOutstanding((prev) => {
+        const idx = prev.findIndex(
+          (r) =>
+            r.projectId === prefs.projectId && r.userId === prefs.userId,
+        );
+        if (idx >= 0) {
+          const next = prev.slice();
+          next[idx] = prefs;
+          return next;
+        }
+        return [...prev, prefs];
+      });
+      if (supabase) {
+        void supabase
+          .from("project_gantt_outstanding")
+          .upsert(
+            {
+              project_id: prefs.projectId,
+              user_id: prefs.userId,
+              missing_snoozed_until: prefs.missingSnoozedUntil ?? null,
+              start_approved_schedule_start:
+                prefs.startApprovedScheduleStart ?? null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "project_id,user_id" },
+          )
+          .then(logDbError("gantt outstanding upsert"));
+      }
+    },
+    [],
+  );
+
+  const approveGanttStartNotification = useCallback(
+    (projectId: string) => {
+      const uid = currentUserIdRef.current;
+      if (!uid) return;
+      const project = projectsRef.current.find((p) => p.id === projectId);
+      if (!project) return;
+      const start = scheduleEarliestStart(project.schedule);
+      if (!start) return;
+      const current = getProjectGanttOutstanding(projectId, uid);
+      persistProjectGanttOutstanding({
+        ...current,
+        userId: uid,
+        startApprovedScheduleStart: start,
+      });
+    },
+    [getProjectGanttOutstanding, persistProjectGanttOutstanding],
+  );
+
+  const snoozeGanttMissingNotification = useCallback(
+    (projectId: string) => {
+      const uid = currentUserIdRef.current;
+      if (!uid) return;
+      const current = getProjectGanttOutstanding(projectId, uid);
+      persistProjectGanttOutstanding({
+        ...current,
+        userId: uid,
+        missingSnoozedUntil: addCalendarMonths(todayDate(), 1),
+      });
+    },
+    [getProjectGanttOutstanding, persistProjectGanttOutstanding],
   );
 
   const markClientContacted = useCallback(
@@ -8197,6 +8378,10 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         getProjectUserReminder,
         updateProjectUserReminder,
         ensureProjectUserReminder,
+        projectGanttOutstanding,
+        getProjectGanttOutstanding,
+        approveGanttStartNotification,
+        snoozeGanttMissingNotification,
         notifications,
         unreadNotificationCount,
         markNotificationRead,
@@ -8289,6 +8474,8 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     "markClientContacted",
     "updateProjectUserReminder",
     "ensureProjectUserReminder",
+    "approveGanttStartNotification",
+    "snoozeGanttMissingNotification",
     "updateComment",
     "deleteComment",
     "regenerateSummary",

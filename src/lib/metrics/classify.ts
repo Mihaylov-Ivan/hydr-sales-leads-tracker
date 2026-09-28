@@ -16,6 +16,7 @@ import type {
 function isPipelineStage(stage: Stage): stage is PipelineStage {
   return (
     stage === "cold-lead" ||
+    stage === "warm-lead" ||
     stage === "hot-lead" ||
     stage === "under-development"
   );
@@ -41,6 +42,7 @@ export function reachedTarget(
 export function isOpenProject(p: MetricsProject): boolean {
   return (
     p.currentStatus === "cold-lead" ||
+    p.currentStatus === "warm-lead" ||
     p.currentStatus === "hot-lead" ||
     p.currentStatus === "under-development"
   );
@@ -65,8 +67,12 @@ export function computeIsStale(
   asOf: string,
   thresholds: Record<PipelineStage, number> = STALE_THRESHOLD_DAYS,
 ): boolean {
-  // Only Cold / Hot leads can be stale; Under Development is never stale.
-  if (p.currentStatus !== "cold-lead" && p.currentStatus !== "hot-lead") {
+  // Cold / Warm / Hot leads can be stale; Under Development is never stale.
+  if (
+    p.currentStatus !== "cold-lead" &&
+    p.currentStatus !== "warm-lead" &&
+    p.currentStatus !== "hot-lead"
+  ) {
     return false;
   }
   return daysInactive(p, asOf) > staleThresholdDays(p, thresholds);

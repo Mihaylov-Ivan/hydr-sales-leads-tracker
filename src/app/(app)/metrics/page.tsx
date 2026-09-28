@@ -173,9 +173,11 @@ export default function MetricsPage() {
     openDrill(
       stage === "cold-lead"
         ? "coverage-cold"
-        : stage === "hot-lead"
-          ? "coverage-hot"
-          : "coverage-ud",
+        : stage === "warm-lead"
+          ? "coverage-warm"
+          : stage === "hot-lead"
+            ? "coverage-hot"
+            : "coverage-ud",
       `${PIPELINE_STAGE_LABELS[stage]} coverage`,
       list,
       row
@@ -198,6 +200,7 @@ export default function MetricsPage() {
   } = snapshot;
 
   const requiredCold = requiredByStage.find((r) => r.stage === "cold-lead")!;
+  const requiredWarm = requiredByStage.find((r) => r.stage === "warm-lead")!;
   const requiredHot = requiredByStage.find((r) => r.stage === "hot-lead")!;
   const requiredUd = requiredByStage.find(
     (r) => r.stage === "under-development",
@@ -515,6 +518,24 @@ export default function MetricsPage() {
                 "Required Cold Leads",
                 snapshot.classified.filter(
                   (c) => c.isOpen && c.project.currentStatus === "cold-lead",
+                ),
+              )
+            }
+          />
+          <MetricCard
+            title="Required Warm Leads"
+            info={METRIC_EXPLANATIONS.requiredWarm}
+            primary={String(requiredWarm.required)}
+            secondary={`Needed to support ${requiredWarm.annualTarget} ${outcomeLabel(target.outcome).toLowerCase()} per year`}
+            detail={`Based on ${requiredWarm.conversionRate}% conversion and ${formatDurationMonths(requiredWarm.stageDurationYears)} stage duration`}
+            estimateSource={requiredWarm.estimateSource}
+            confidence={requiredWarm.confidence}
+            onClick={() =>
+              openDrill(
+                "required-warm",
+                "Required Warm Leads",
+                snapshot.classified.filter(
+                  (c) => c.isOpen && c.project.currentStatus === "warm-lead",
                 ),
               )
             }

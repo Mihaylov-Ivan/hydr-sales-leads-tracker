@@ -2,6 +2,7 @@ import { Stage, STAGE_LABELS } from "@/lib/types";
 
 const STYLES: Record<Stage, string> = {
   "cold-lead": "bg-teal-soft text-teal-accent border-teal-accent/40",
+  "warm-lead": "bg-deep/10 text-deep border-deep/35",
   "hot-lead": "bg-amber-accent/10 text-amber-accent border-amber-accent/40",
   "under-development": "bg-olive/15 text-olive-ink border-olive/40",
   commissioned: "bg-green-accent/10 text-green-accent border-green-accent/40",

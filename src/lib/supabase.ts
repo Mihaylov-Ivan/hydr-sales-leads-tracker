@@ -68,6 +68,7 @@ export interface ProjectRow {
   created_at: string;
   /** Pipeline metrics columns (migration-014); may be absent before migration */
   cold_lead_entered_at?: string | null;
+  warm_lead_entered_at?: string | null;
   hot_lead_entered_at?: string | null;
   under_development_at?: string | null;
   commissioned_at?: string | null;
@@ -84,6 +85,7 @@ export interface ProjectRow {
 export interface MetricsSettingsRow {
   id: number;
   stale_cold_days: number;
+  stale_warm_days?: number | null;
   stale_hot_days: number;
   stale_under_development_days: number;
   maturity_under_development_months: number;
@@ -438,6 +440,9 @@ export function projectFromRow(
     ...(row.lead_user_id ? { leadUserId: row.lead_user_id } : {}),
     ...(row.co_lead_user_id ? { coLeadUserId: row.co_lead_user_id } : {}),
     coldLeadEnteredAt: dateOnly(row.cold_lead_entered_at, createdDate),
+    ...(optionalDate(row.warm_lead_entered_at)
+      ? { warmLeadEnteredAt: optionalDate(row.warm_lead_entered_at) }
+      : {}),
     ...(optionalDate(row.hot_lead_entered_at)
       ? { hotLeadEnteredAt: optionalDate(row.hot_lead_entered_at) }
       : {}),
@@ -489,6 +494,7 @@ export function projectToRow(p: Project): ProjectRow {
     co_lead_user_id: p.coLeadUserId ?? null,
     created_at: p.createdAt,
     cold_lead_entered_at: p.coldLeadEnteredAt,
+    warm_lead_entered_at: p.warmLeadEnteredAt ?? null,
     hot_lead_entered_at: p.hotLeadEnteredAt ?? null,
     under_development_at: p.underDevelopmentAt ?? null,
     commissioned_at: p.commissionedAt ?? null,
@@ -503,8 +509,13 @@ export function projectToRow(p: Project): ProjectRow {
 export function metricsSettingsFromRow(
   row: MetricsSettingsRow,
 ): CompanyMetricsSettings {
+  const base = defaultMetricsSettings();
   return {
     staleColdDays: row.stale_cold_days,
+    staleWarmDays:
+      typeof row.stale_warm_days === "number" && row.stale_warm_days > 0
+        ? row.stale_warm_days
+        : base.staleWarmDays,
     staleHotDays: row.stale_hot_days,
     staleUnderDevelopmentDays: row.stale_under_development_days,
     maturityUnderDevelopmentMonths: row.maturity_under_development_months,
@@ -520,6 +531,7 @@ export function metricsSettingsToRow(
   return {
     id: 1,
     stale_cold_days: s.staleColdDays,
+    stale_warm_days: s.staleWarmDays,
     stale_hot_days: s.staleHotDays,
     stale_under_development_days: s.staleUnderDevelopmentDays,
     maturity_under_development_months: s.maturityUnderDevelopmentMonths,

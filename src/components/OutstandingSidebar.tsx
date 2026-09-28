@@ -9,7 +9,13 @@ import {
   ProspectContact,
 } from "@/lib/prospecting-types";
 import { assignableTeamMembers } from "@/lib/permissions";
+import { useAuth } from "@/lib/auth-context";
 import FilterMultiSelect from "@/components/FilterMultiSelect";
+import {
+  resolveGanttOutstandingKind,
+  scheduleEarliestStart,
+  type GanttOutstandingKind,
+} from "@/lib/gantt-outstanding";
 import {
   PersonalTodo,
   Project,
@@ -686,6 +692,100 @@ function ProspectFollowUpItem({
   );
 }
 
+function GanttBarsIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden>
+      <rect x="1" y="3" width="6" height="2.5" rx="0.5" />
+      <rect x="4" y="7" width="9" height="2.5" rx="0.5" />
+      <rect x="2" y="11" width="7" height="2.5" rx="0.5" />
+    </svg>
+  );
+}
+
+function GanttNotificationItem({
+  project,
+  kind,
+  sortDate,
+  onApprove,
+  onSnooze,
+  showProjectLink,
+  onProjectNavigate,
+}: {
+  project: Project;
+  kind: GanttOutstandingKind;
+  sortDate: string;
+  onApprove: () => void;
+  onSnooze: () => void;
+  showProjectLink?: boolean;
+  onProjectNavigate?: () => void;
+}) {
+  const isMissing = kind === "missing";
+  const startLabel = scheduleEarliestStart(project.schedule);
+
+  return (
+    <li className="rounded-lg border border-deep/35 bg-gradient-to-br from-deep/10 via-panel to-teal-soft/30 p-2.5 shadow-[inset_3px_0_0_0_var(--deep)]">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-deep">
+          <GanttBarsIcon />
+        </span>
+        <div className="min-w-0 flex-1">
+          {showProjectLink && (
+            <Link
+              href={`/projects/${project.id}`}
+              onClick={onProjectNavigate}
+              className="mb-1 block truncate text-[11px] font-semibold text-deep hover:underline"
+            >
+              {project.name}
+            </Link>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-deep/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-deep">
+              Gantt
+            </span>
+            <span className="rounded bg-teal-accent/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+              {isMissing ? "Missing schedule" : "Project started"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-ink">
+            {isMissing
+              ? "No Gantt chart yet — generate a delivery schedule or snooze for 1 month."
+              : `Schedule shows the project started${
+                  startLabel ? ` on ${formatDue(startLabel)}` : ""
+                }. Approve the dates or shift the Gantt on the project page.`}
+          </p>
+          <DeadlineBadge date={sortDate} />
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Link
+              href={`/projects/${project.id}`}
+              onClick={onProjectNavigate}
+              className="text-[11px] font-semibold text-deep hover:underline"
+            >
+              {isMissing ? "Open to generate" : "Open to shift"}
+            </Link>
+            {isMissing ? (
+              <button
+                type="button"
+                onClick={onSnooze}
+                className="text-[11px] font-semibold text-teal-accent hover:underline"
+              >
+                Snooze 1 month
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onApprove}
+                className="text-[11px] font-semibold text-teal-accent hover:underline"
+              >
+                Approve schedule
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 type SidebarEntry =
   | { type: "contact"; sortDate: string }
   | { type: "todo"; todo: ProjectTodo; sortDate: string };
@@ -697,9 +797,17 @@ type ProspectFollowUpFlat = {
   contact: ProspectContact;
 };
 
+type GanttOutstandingFlat = {
+  type: "gantt";
+  sortDate: string;
+  project: Project;
+  kind: GanttOutstandingKind;
+};
+
 type FlatEntry =
   | (SidebarEntry & { project: Project })
-  | ProspectFollowUpFlat;
+  | ProspectFollowUpFlat
+  | GanttOutstandingFlat;
 type TodoFlatEntry = Extract<FlatEntry, { type: "todo" }>;
 
 type Group = {
@@ -719,6 +827,13 @@ type DisplaySection =
       kind: "prospect";
       company: ProspectCompany;
       contact: ProspectContact;
+      sortDate: string;
+      earliestDue: string;
+    }
+  | {
+      kind: "gantt";
+      project: Project;
+      ganttKind: GanttOutstandingKind;
       sortDate: string;
       earliestDue: string;
     };
@@ -745,6 +860,8 @@ function compareFlatEntries(a: FlatEntry, b: FlatEntry): number {
   if (b.type === "prospect-follow-up" && a.type !== "prospect-follow-up") {
     return 1;
   }
+  if (a.type === "gantt" && b.type !== "gantt") return -1;
+  if (b.type === "gantt" && a.type !== "gantt") return 1;
   if (a.type === "contact" && b.type !== "contact") return -1;
   if (b.type === "contact" && a.type !== "contact") return 1;
   if (a.type === "todo" && b.type === "todo") {
@@ -753,7 +870,23 @@ function compareFlatEntries(a: FlatEntry, b: FlatEntry): number {
   if (a.type === "prospect-follow-up" && b.type === "prospect-follow-up") {
     return a.company.name.localeCompare(b.company.name);
   }
+  if (a.type === "gantt" && b.type === "gantt") {
+    return a.project.name.localeCompare(b.project.name);
+  }
   return 0;
+}
+
+function projectMatchesOwnerFilter(
+  project: Project,
+  selectedIds: Set<string>,
+  allSelected: boolean,
+): boolean {
+  if (allSelected) return true;
+  if (selectedIds.size === 0) return false;
+  return Boolean(
+    (project.leadUserId && selectedIds.has(project.leadUserId)) ||
+      (project.coLeadUserId && selectedIds.has(project.coLeadUserId)),
+  );
 }
 
 /** Skip prospecting follow-ups once the company is a Sales cold lead. */
@@ -792,7 +925,13 @@ export default function OutstandingSidebar() {
     currentUserId,
     getProjectUserReminder,
     projectUserReminders,
+    getProjectGanttOutstanding,
+    projectGanttOutstanding,
+    approveGanttStartNotification,
+    snoozeGanttMissingNotification,
   } = useProjects();
+  const { can, authEnabled } = useAuth();
+  const canSeeGanttOutstanding = !authEnabled || can("technical_sales");
   const {
     ready: prospectingReady,
     companies: prospectCompanies,
@@ -1060,6 +1199,51 @@ export default function OutstandingSidebar() {
     allOwnersSelected,
   ]);
 
+  const ganttOutstanding = useMemo((): GanttOutstandingFlat[] => {
+    if (!canSeeGanttOutstanding || !currentUserId) return [];
+    const list: GanttOutstandingFlat[] = [];
+    const today = todayDate();
+
+    for (const project of projects) {
+      if (isInternalHiddenProject(project)) continue;
+      if (
+        !projectMatchesOwnerFilter(
+          project,
+          selectedOwnerIds,
+          allOwnersSelected,
+        )
+      ) {
+        continue;
+      }
+      const prefs = getProjectGanttOutstanding(project.id, currentUserId);
+      const kind = resolveGanttOutstandingKind(project, prefs, today);
+      if (!kind) continue;
+      const start = scheduleEarliestStart(project.schedule);
+      list.push({
+        type: "gantt",
+        kind,
+        project,
+        sortDate: kind === "started" && start ? start : today,
+      });
+    }
+
+    list.sort((a, b) => {
+      if (a.sortDate !== b.sortDate) {
+        return a.sortDate < b.sortDate ? -1 : 1;
+      }
+      return a.project.name.localeCompare(b.project.name);
+    });
+    return list;
+  }, [
+    canSeeGanttOutstanding,
+    currentUserId,
+    projects,
+    selectedOwnerIds,
+    allOwnersSelected,
+    getProjectGanttOutstanding,
+    projectGanttOutstanding,
+  ]);
+
   const displaySections = useMemo((): DisplaySection[] => {
     const sections: DisplaySection[] = [
       ...groups.map((g) => ({
@@ -1075,19 +1259,30 @@ export default function OutstandingSidebar() {
         sortDate: p.sortDate,
         earliestDue: p.sortDate,
       })),
+      ...ganttOutstanding.map((g) => ({
+        kind: "gantt" as const,
+        project: g.project,
+        ganttKind: g.kind,
+        sortDate: g.sortDate,
+        earliestDue: g.sortDate,
+      })),
     ];
     sections.sort((a, b) => {
       if (a.earliestDue !== b.earliestDue) {
         return a.earliestDue < b.earliestDue ? -1 : 1;
       }
       const an =
-        a.kind === "project" ? a.project.name : a.company.name;
+        a.kind === "project" || a.kind === "gantt"
+          ? a.project.name
+          : a.company.name;
       const bn =
-        b.kind === "project" ? b.project.name : b.company.name;
+        b.kind === "project" || b.kind === "gantt"
+          ? b.project.name
+          : b.company.name;
       return an.localeCompare(bn);
     });
     return sections;
-  }, [groups, prospectFollowUps]);
+  }, [groups, prospectFollowUps, ganttOutstanding]);
 
   const flatByBucket = useMemo(() => {
     const flat: FlatEntry[] = [];
@@ -1097,6 +1292,9 @@ export default function OutstandingSidebar() {
       }
     }
     for (const entry of prospectFollowUps) {
+      flat.push(entry);
+    }
+    for (const entry of ganttOutstanding) {
       flat.push(entry);
     }
     flat.sort((a, b) => {
@@ -1123,7 +1321,7 @@ export default function OutstandingSidebar() {
       buckets[urgencyBucket(entry.sortDate)].push(entry);
     }
     return buckets;
-  }, [groups, prospectFollowUps]);
+  }, [groups, prospectFollowUps, ganttOutstanding]);
 
   const openPersonal = useMemo(
     () =>
@@ -1176,8 +1374,14 @@ export default function OutstandingSidebar() {
       projectWorkWindow.active.length + projectWorkWindow.upcoming.length;
     for (const g of groups) n += g.entries.length;
     n += prospectFollowUps.length;
+    n += ganttOutstanding.length;
     return n;
-  }, [groups, projectWorkWindow, prospectFollowUps.length]);
+  }, [
+    groups,
+    projectWorkWindow,
+    prospectFollowUps.length,
+    ganttOutstanding.length,
+  ]);
   const totalOpen =
     scope === "personal" ? openPersonal.length : projectTotalOpen;
 
@@ -1341,6 +1545,20 @@ export default function OutstandingSidebar() {
         />
       );
     }
+    if (entry.type === "gantt") {
+      return (
+        <GanttNotificationItem
+          key={`gantt-${entry.project.id}-${entry.kind}`}
+          project={entry.project}
+          kind={entry.kind}
+          sortDate={entry.sortDate}
+          onApprove={() => approveGanttStartNotification(entry.project.id)}
+          onSnooze={() => snoozeGanttMissingNotification(entry.project.id)}
+          showProjectLink
+          onProjectNavigate={exitFullscreen}
+        />
+      );
+    }
     if (entry.type === "contact") {
       return (
         <ContactItem
@@ -1487,6 +1705,39 @@ export default function OutstandingSidebar() {
                           date,
                           section.contact.followUpReason || undefined,
                         )
+                      }
+                    />
+                  </ul>
+                </section>
+              ) : section.kind === "gantt" ? (
+                <section
+                  key={`gantt-${section.project.id}-${section.ganttKind}`}
+                  className={
+                    layout === "fullscreen"
+                      ? "rounded-xl border border-deep/25 bg-deep/5 p-3"
+                      : undefined
+                  }
+                >
+                  <Link
+                    href={`/projects/${section.project.id}`}
+                    onClick={exitFullscreen}
+                    className="mb-2 block truncate text-sm font-semibold text-deep transition hover:text-teal-accent hover:underline"
+                  >
+                    {section.project.name}
+                    <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-deep">
+                      Gantt
+                    </span>
+                  </Link>
+                  <ul className="flex flex-col gap-2">
+                    <GanttNotificationItem
+                      project={section.project}
+                      kind={section.ganttKind}
+                      sortDate={section.sortDate}
+                      onApprove={() =>
+                        approveGanttStartNotification(section.project.id)
+                      }
+                      onSnooze={() =>
+                        snoozeGanttMissingNotification(section.project.id)
                       }
                     />
                   </ul>

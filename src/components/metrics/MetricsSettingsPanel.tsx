@@ -46,6 +46,20 @@ export default function MetricsSettingsPanel({
             />
           </label>
           <label className="block">
+            <span className={labelCls}>Warm Lead</span>
+            <input
+              type="number"
+              min={1}
+              className={inputCls}
+              value={settings.staleWarmDays}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isFinite(n) && n > 0)
+                  onChange({ staleWarmDays: Math.round(n) });
+              }}
+            />
+          </label>
+          <label className="block">
             <span className={labelCls}>Hot Lead</span>
             <input
               type="number"

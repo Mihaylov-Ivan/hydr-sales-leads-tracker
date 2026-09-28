@@ -83,6 +83,7 @@ export const FINANCIAL_CSV_HEADERS = [
   "opening_cash_as_of",
   "min_working_capital",
   "prob_cold_lead",
+  "prob_warm_lead",
   "prob_hot_lead",
   "prob_under_development",
   "prob_commissioned",
@@ -181,6 +182,9 @@ export function buildFinancialCsv(
   company.min_working_capital = numStr(financeSettings.minWorkingCapital);
   company.prob_cold_lead = numStr(
     financeSettings.stageProbabilities["cold-lead"],
+  );
+  company.prob_warm_lead = numStr(
+    financeSettings.stageProbabilities["warm-lead"],
   );
   company.prob_hot_lead = numStr(
     financeSettings.stageProbabilities["hot-lead"],
@@ -530,6 +534,9 @@ export function parseFinancialCsv(text: string):
           "cold-lead":
             parseOptionalNumber(cell(row, "prob_cold_lead")) ??
             base.stageProbabilities["cold-lead"],
+          "warm-lead":
+            parseOptionalNumber(cell(row, "prob_warm_lead")) ??
+            base.stageProbabilities["warm-lead"],
           "hot-lead":
             parseOptionalNumber(cell(row, "prob_hot_lead")) ??
             base.stageProbabilities["hot-lead"],

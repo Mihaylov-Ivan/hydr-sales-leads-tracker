@@ -7,7 +7,7 @@ export const METRIC_EXPLANATIONS = {
   resolvedSuccess:
     "Ignore projects still in progress. Of the ones that already ended (won or cancelled), how many won?",
   stalePipeline:
-    "Of open Cold and Hot leads, how many have gone quiet for too long (no real activity past your day limit)? Under Development projects are never marked stale.",
+    "Of open Cold, Warm, and Hot leads, how many have gone quiet for too long (no real activity past your day limit)? Under Development projects are never marked stale.",
   commissioningTarget:
     "Your goal — for example “1 finished project every 3 months” means 4 per year. You set this; it is not calculated from history.",
   supportedPace:
@@ -15,11 +15,13 @@ export const METRIC_EXPLANATIONS = {
   bottleneck:
     "Which stage is the emptiest compared with what you need? That missing piece is what slows everything down.",
   stageCoverage:
-    "For each stage: how many healthy projects you should have (Required), how many you have (Healthy), how many Cold/Hot are quiet (Stale), and whether coverage is enough. Balance is surplus or shortfall.",
+    "For each stage: how many healthy projects you should have (Required), how many you have (Healthy), how many Cold/Warm/Hot are quiet (Stale), and whether coverage is enough. Balance is surplus or shortfall.",
   conversionRange:
     "Confirmed = what already converted. Expected = a middle guess if some open ones convert (using your % settings). Theoretical max = if every open one somehow converted — that max is not a forecast.",
   requiredCold:
     "Roughly how many healthy Cold Leads you should have sitting in the pipeline to keep feeding your annual target, based on typical time in stage and conversion rate.",
+  requiredWarm:
+    "Roughly how many healthy Warm Leads you should have sitting in the pipeline to keep feeding your annual target, based on typical time in stage and conversion rate.",
   requiredHot:
     "Roughly how many healthy Hot Leads you should have sitting in the pipeline to keep feeding your annual target, based on typical time in stage and conversion rate.",
   requiredUd:

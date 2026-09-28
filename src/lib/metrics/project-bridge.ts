@@ -15,6 +15,12 @@ function buildHistoryFromTimestamps(p: Project): StageHistoryEntry[] {
   const entries: { stage: Stage; enteredAt: string }[] = [];
   const cold = toDate(p.coldLeadEnteredAt) || toDate(p.createdAt) || todayDate();
   entries.push({ stage: "cold-lead", enteredAt: cold });
+  if (p.warmLeadEnteredAt) {
+    entries.push({
+      stage: "warm-lead",
+      enteredAt: toDate(p.warmLeadEnteredAt)!,
+    });
+  }
   if (p.hotLeadEnteredAt) {
     entries.push({ stage: "hot-lead", enteredAt: toDate(p.hotLeadEnteredAt)! });
   }
@@ -59,6 +65,7 @@ export function projectToMetricsProject(p: Project): MetricsProject {
     stageHistory: buildHistoryFromTimestamps(p),
     createdAt: created,
     coldLeadEnteredAt: toDate(p.coldLeadEnteredAt) || created,
+    warmLeadEnteredAt: toDate(p.warmLeadEnteredAt),
     hotLeadEnteredAt: toDate(p.hotLeadEnteredAt),
     underDevelopmentAt: toDate(p.underDevelopmentAt),
     commissionedAt: toDate(p.commissionedAt),
@@ -80,13 +87,21 @@ export function stageChangeTimestampPatch(
   if (current.stage === newStage) return {};
   const patch: Partial<Project> = { stage: newStage };
 
-  if (newStage === "hot-lead" && !current.hotLeadEnteredAt) {
-    patch.hotLeadEnteredAt = asOf;
+  if (newStage === "warm-lead" && !current.warmLeadEnteredAt) {
+    patch.warmLeadEnteredAt = asOf;
   }
-  if (newStage === "under-development" && !current.underDevelopmentAt) {
-    patch.underDevelopmentAt = asOf;
+  if (newStage === "hot-lead") {
+    if (!current.warmLeadEnteredAt) patch.warmLeadEnteredAt = asOf;
+    if (!current.hotLeadEnteredAt) patch.hotLeadEnteredAt = asOf;
+  }
+  if (newStage === "under-development") {
+    if (!current.warmLeadEnteredAt) patch.warmLeadEnteredAt = asOf;
+    if (!current.hotLeadEnteredAt) patch.hotLeadEnteredAt = asOf;
+    if (!current.underDevelopmentAt) patch.underDevelopmentAt = asOf;
   }
   if (newStage === "commissioned") {
+    if (!current.warmLeadEnteredAt) patch.warmLeadEnteredAt = asOf;
+    if (!current.hotLeadEnteredAt) patch.hotLeadEnteredAt = asOf;
     if (!current.underDevelopmentAt) patch.underDevelopmentAt = asOf;
     if (!current.commissionedAt) patch.commissionedAt = asOf;
   }
@@ -105,6 +120,7 @@ export function initialMetricsFields(input: {
 }): Pick<
   Project,
   | "coldLeadEnteredAt"
+  | "warmLeadEnteredAt"
   | "hotLeadEnteredAt"
   | "underDevelopmentAt"
   | "commissionedAt"
@@ -117,12 +133,17 @@ export function initialMetricsFields(input: {
     lastMeaningfulActivityAt: input.lastMeaningfulActivityAt || d,
   };
 
-  if (input.stage === "hot-lead") {
+  if (input.stage === "warm-lead") {
+    fields.warmLeadEnteredAt = d;
+  } else if (input.stage === "hot-lead") {
+    fields.warmLeadEnteredAt = d;
     fields.hotLeadEnteredAt = d;
   } else if (input.stage === "under-development") {
+    fields.warmLeadEnteredAt = d;
     fields.hotLeadEnteredAt = d;
     fields.underDevelopmentAt = d;
   } else if (input.stage === "commissioned") {
+    fields.warmLeadEnteredAt = d;
     fields.hotLeadEnteredAt = d;
     fields.underDevelopmentAt = d;
     fields.commissionedAt = d;
@@ -144,7 +165,19 @@ export function ensureProjectMetricsDefaults(p: Project): Project {
     lastMeaningfulActivityAt: activity,
   };
 
-  if (p.stage === "hot-lead" || p.stage === "under-development" || p.stage === "commissioned") {
+  const pastWarm =
+    p.stage === "warm-lead" ||
+    p.stage === "hot-lead" ||
+    p.stage === "under-development" ||
+    p.stage === "commissioned";
+  if (pastWarm && !base.warmLeadEnteredAt) {
+    base.warmLeadEnteredAt = created;
+  }
+  if (
+    p.stage === "hot-lead" ||
+    p.stage === "under-development" ||
+    p.stage === "commissioned"
+  ) {
     if (!base.hotLeadEnteredAt) base.hotLeadEnteredAt = created;
   }
   if (p.stage === "under-development" || p.stage === "commissioned") {

@@ -29,6 +29,7 @@ create table if not exists public.projects (
   stage text not null default 'cold-lead'
     check (stage in (
       'cold-lead',
+      'warm-lead',
       'hot-lead',
       'under-development',
       'commissioned',
@@ -113,6 +114,7 @@ create table if not exists public.project_comments (
   stage_change text
     check (stage_change in (
       'cold-lead',
+      'warm-lead',
       'hot-lead',
       'under-development',
       'commissioned',

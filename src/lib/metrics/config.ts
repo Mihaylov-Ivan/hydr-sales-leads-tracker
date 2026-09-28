@@ -16,6 +16,7 @@ export const MATURITY_MONTHS_COMMISSIONED = 30;
 /** @deprecated Prefer settings.stale*Days from store. */
 export const STALE_THRESHOLD_DAYS: Record<PipelineStage, number> = {
   "cold-lead": 180,
+  "warm-lead": 150,
   "hot-lead": 120,
   "under-development": 90,
 };
@@ -31,6 +32,10 @@ export const FALLBACK_STAGE_CONVERSION: Record<
     "under-development": 0.18,
     commissioned: 0.05,
   },
+  "warm-lead": {
+    "under-development": 0.3,
+    commissioned: 0.1,
+  },
   "hot-lead": {
     "under-development": 0.45,
     commissioned: 0.2,
@@ -43,6 +48,7 @@ export const FALLBACK_STAGE_CONVERSION: Record<
 
 export const FALLBACK_STAGE_DURATION_YEARS: Record<PipelineStage, number> = {
   "cold-lead": 1.0,
+  "warm-lead": 0.9,
   "hot-lead": 0.8,
   "under-development": 1,
 };
@@ -52,12 +58,14 @@ export const HISTORICAL_DURATION_MIN_SAMPLE = 5;
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   "cold-lead",
+  "warm-lead",
   "hot-lead",
   "under-development",
 ];
 
 export const PIPELINE_STAGE_LABELS: Record<PipelineStage, string> = {
   "cold-lead": "Cold Leads",
+  "warm-lead": "Warm Leads",
   "hot-lead": "Hot Leads",
   "under-development": "Under Development",
 };
@@ -78,6 +86,7 @@ export function staleThresholdsFromSettings(
 ): Record<PipelineStage, number> {
   return {
     "cold-lead": settings.staleColdDays,
+    "warm-lead": settings.staleWarmDays,
     "hot-lead": settings.staleHotDays,
     "under-development": settings.staleUnderDevelopmentDays,
   };

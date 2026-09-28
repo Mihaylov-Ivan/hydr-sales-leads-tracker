@@ -245,6 +245,18 @@ function makeProject(
   const historyEntries: { stage: Stage; enteredAt: string }[] = [
     { stage: "cold-lead", enteredAt: createdAt },
   ];
+  const warmLeadEnteredAt = hotLeadEnteredAt
+    ? addDays(
+        createdAt,
+        Math.max(
+          1,
+          Math.floor(daysBetween(createdAt, hotLeadEnteredAt) / 2),
+        ),
+      )
+    : undefined;
+  if (warmLeadEnteredAt) {
+    historyEntries.push({ stage: "warm-lead", enteredAt: warmLeadEnteredAt });
+  }
   if (hotLeadEnteredAt) {
     historyEntries.push({ stage: "hot-lead", enteredAt: hotLeadEnteredAt });
   }
@@ -277,6 +289,7 @@ function makeProject(
     stageHistory: buildHistory(historyEntries),
     createdAt,
     coldLeadEnteredAt: createdAt,
+    warmLeadEnteredAt,
     hotLeadEnteredAt,
     underDevelopmentAt,
     commissionedAt,
