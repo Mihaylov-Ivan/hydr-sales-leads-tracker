@@ -378,26 +378,16 @@ export default function BriefingsPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl border border-line bg-surface px-3 py-2 text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Automatic refresh
+          <div className="rounded-xl border border-line bg-surface px-3 py-2 text-right">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Automatic generation
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-deep">20:00 Sofia</p>
+            {latestGenerated && (
+              <p className="mt-0.5 text-[11px] text-muted">
+                Last: {formatDateTime(latestGenerated)}
               </p>
-              <p className="mt-0.5 text-sm font-semibold text-deep">20:00 Sofia</p>
-              {latestGenerated && (
-                <p className="mt-0.5 text-[11px] text-muted">
-                  Last: {formatDateTime(latestGenerated)}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => void load()}
-              disabled={loading}
-              className="rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold text-deep transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50"
-            >
-              Refresh
-            </button>
+            )}
           </div>
         </div>
       </header>
