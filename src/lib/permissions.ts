@@ -124,6 +124,12 @@ export function accessForPath(pathname: string): RouteAccess {
   ) {
     return { kind: "permission", permission: "ai_updates" };
   }
+  if (
+    pathname === "/briefings" ||
+    pathname.startsWith("/briefings/")
+  ) {
+    return { kind: "permission", permission: "briefings" };
+  }
   if (pathname === "/change-password" || pathname.startsWith("/change-password/")) {
     return { kind: "any" };
   }
@@ -188,6 +194,7 @@ export function defaultHomePath(
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
+  if (user.permissions.includes("briefings")) return "/briefings";
   if (user.permissions.includes("ai_updates")) return "/ai-updates";
   // Viewer-only (or no area perms): avoid /todos for viewers
   if (isViewerUser(user)) return "/change-password";
@@ -213,6 +220,11 @@ export const NAV_ITEMS: NavItem[] = [
     access: { kind: "permission", permission: "eu_funding_rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
+  {
+    href: "/briefings",
+    label: "Briefings",
+    access: { kind: "permission", permission: "briefings" },
+  },
   {
     href: "/ai-updates",
     label: "AI Updates",
