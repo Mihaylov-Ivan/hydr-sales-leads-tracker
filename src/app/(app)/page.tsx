@@ -8,7 +8,7 @@ import {
   MARKETS,
   Stage,
   STAGE_LABELS,
-  BOARD_STAGES,
+  BOARD_OPEN_STAGES,
   STAGES,
   isProjectNextStepMissing,
   isSalesBoardProject,
@@ -64,6 +64,7 @@ type SalesBoardPrefs = {
   marketFilter?: MarketTag[] | "all";
   sizeFilter?: SizeBucket;
   showCancelled?: boolean;
+  showCommissioned?: boolean;
   keyDatesOpen?: boolean;
 };
 
@@ -92,13 +93,29 @@ function CollapsedStageRail({
   onExpand,
   dragHandlers,
 }: {
-  stage: "cancelled";
+  stage: "cancelled" | "commissioned";
   count: number;
   isOver: boolean;
   onExpand: () => void;
   dragHandlers: ColumnDragHandlers;
 }) {
   const label = STAGE_LABELS[stage];
+  const isCancelled = stage === "cancelled";
+  const tone = isCancelled
+    ? {
+        borderTop: "border-t-muted",
+        idle: "border-line bg-muted/5 hover:border-muted hover:bg-muted/10",
+        count: "text-muted",
+        label: "text-muted",
+        chevron: "text-muted/70 group-hover:text-muted",
+      }
+    : {
+        borderTop: "border-t-green-accent",
+        idle: "border-line bg-green-accent/5 hover:border-green-accent/40 hover:bg-green-accent/10",
+        count: "text-green-accent",
+        label: "text-deep",
+        chevron: "text-green-accent/70 group-hover:text-green-accent",
+      };
   return (
     <button
       type="button"
@@ -106,23 +123,25 @@ function CollapsedStageRail({
       aria-controls={`${stage}-column`}
       onClick={onExpand}
       {...dragHandlers}
-      className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 border-t-muted border-line bg-muted/5 py-3 transition hover:border-muted hover:bg-muted/10 ${isOver
+      className={`group flex h-full w-11 shrink-0 flex-col items-center justify-between rounded-xl border border-t-4 py-3 transition ${tone.borderTop} ${tone.idle} ${isOver
           ? "border-teal-accent bg-teal-soft/40 ring-2 ring-teal-accent/30"
           : ""
         }`}
       title={`Show ${label.toLowerCase()} projects`}
     >
-      <span className="rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold text-muted shadow-sm">
+      <span
+        className={`rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${tone.count}`}
+      >
         {count}
       </span>
       <span
-        className="flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
+        className={`flex flex-1 items-center justify-center px-1 text-[11px] font-bold uppercase tracking-[0.18em] ${tone.label}`}
         style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
       >
         {label}
       </span>
       <span
-        className="text-sm text-muted/70 transition group-hover:translate-x-0.5 group-hover:text-muted"
+        className={`text-sm transition group-hover:translate-x-0.5 ${tone.chevron}`}
         aria-hidden
       >
         ›
@@ -373,6 +392,7 @@ export default function Dashboard() {
   const [showNew, setShowNew] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
+  const [showCommissioned, setShowCommissioned] = useState(false);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
   const [keyDatesOpen, setKeyDatesOpen] = useState(false);
   const [keyDateProjectIds, setKeyDateProjectIds] = useState<Set<string> | null>(
@@ -412,6 +432,9 @@ export default function Dashboard() {
         setShowCancelled(saved.showCancelled);
       } else if (window.localStorage.getItem(CANCELLED_STORAGE_KEY) === "1") {
         setShowCancelled(true);
+      }
+      if (typeof saved.showCommissioned === "boolean") {
+        setShowCommissioned(saved.showCommissioned);
       }
       if (typeof saved.keyDatesOpen === "boolean") {
         setKeyDatesOpen(saved.keyDatesOpen);
@@ -464,6 +487,7 @@ export default function Dashboard() {
       marketFilter: allMarketsSelected ? "all" : ([...marketFilter] as MarketTag[]),
       sizeFilter,
       showCancelled,
+      showCommissioned,
       keyDatesOpen,
     } satisfies SalesBoardPrefs);
   }, [
@@ -474,6 +498,7 @@ export default function Dashboard() {
     marketFilter,
     sizeFilter,
     showCancelled,
+    showCommissioned,
     keyDatesOpen,
   ]);
 
@@ -579,6 +604,7 @@ export default function Dashboard() {
     if (!project || project.stage === stage) return;
     updateProject(projectId, { stage });
     if (stage === "cancelled") setShowCancelled(true);
+    if (stage === "commissioned") setShowCommissioned(true);
   }
 
   function columnDragHandlers(stage: Stage) {
@@ -616,6 +642,8 @@ export default function Dashboard() {
 
   const cancelledCount = byStage.cancelled.length;
   const cancelledOver = dragOverStage === "cancelled";
+  const commissionedCount = byStage.commissioned.length;
+  const commissionedOver = dragOverStage === "commissioned";
 
   return (
     <div className="flex h-full min-h-0 max-h-full flex-col gap-3 overflow-hidden sm:gap-4">
@@ -872,7 +900,7 @@ export default function Dashboard() {
 
         {/* Active stage columns — min 270px, scroll horizontally when they won't fit */}
         <div className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain">
-          {BOARD_STAGES.map((stage) => (
+          {BOARD_OPEN_STAGES.map((stage) => (
             <div
               key={stage}
               className="flex h-full min-h-0 min-w-[270px] flex-1 basis-[270px]"
@@ -888,6 +916,51 @@ export default function Dashboard() {
               />
             </div>
           ))}
+
+          <div
+            id="commissioned-column"
+            aria-hidden={!showCommissioned}
+            className={`min-h-0 overflow-hidden transition-[max-width,opacity,flex-basis] duration-300 ease-out ${showCommissioned
+              ? "max-w-[20rem] shrink-0 basis-[270px] opacity-100"
+              : "pointer-events-none max-w-0 flex-none basis-0 opacity-0"
+              }`}
+            style={showCommissioned ? { minWidth: COLUMN_MIN_PX } : undefined}
+          >
+            <div
+              className={`h-full min-h-0 w-full min-w-[270px] transition-transform duration-300 ease-out ${showCommissioned ? "translate-x-0" : "translate-x-3"
+                }`}
+            >
+              <StageColumn
+                stage="commissioned"
+                projects={byStage.commissioned}
+                isOver={commissionedOver}
+                accentClass={COLUMN_ACCENT.commissioned ?? "border-t-green-accent"}
+                allowDrag={canWrite}
+                {...columnDragHandlers("commissioned")}
+                onExpand={() => setExpandedStage("commissioned")}
+                headerExtra={
+                  <button
+                    type="button"
+                    onClick={() => setShowCommissioned(false)}
+                    title="Hide commissioned"
+                    className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition hover:bg-panel hover:text-deep"
+                  >
+                    Hide
+                  </button>
+                }
+              />
+            </div>
+          </div>
+
+          {!showCommissioned && (
+            <CollapsedStageRail
+              stage="commissioned"
+              count={commissionedCount}
+              isOver={commissionedOver}
+              onExpand={() => setShowCommissioned(true)}
+              dragHandlers={columnDragHandlers("commissioned")}
+            />
+          )}
         </div>
       </div>
 

@@ -25,8 +25,8 @@ export type Stage =
   | "rnd-execution";
 
 /**
- * Always-visible kanban columns on the Sales Board.
- * "cancelled" stays collapsed by default.
+ * Sales Board pipeline columns (create + kanban).
+ * "commissioned" and "cancelled" stay collapsed by default on the board UI.
  */
 export const BOARD_STAGES = [
   "cold-lead",
@@ -34,6 +34,14 @@ export const BOARD_STAGES = [
   "hot-lead",
   "under-development",
   "commissioned",
+] as const satisfies readonly Stage[];
+
+/** Board columns shown expanded by default (not collapsed rails). */
+export const BOARD_OPEN_STAGES = [
+  "cold-lead",
+  "warm-lead",
+  "hot-lead",
+  "under-development",
 ] as const satisfies readonly Stage[];
 
 /** Stages selectable when creating a sales project (excludes cancelled). */
