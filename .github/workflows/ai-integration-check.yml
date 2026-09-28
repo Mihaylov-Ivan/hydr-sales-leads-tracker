@@ -1,9 +1,9 @@
-name: AI integration check
+name: Feature branch build check
 
 on:
   push:
     branches:
-      - "AI-integration"
+      - "AI-integration"\n      - "briefings"
   workflow_dispatch:
 
 jobs:
