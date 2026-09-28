@@ -2830,12 +2830,6 @@ export default function VoiceAssistant() {
         }
 
         if (action === "mark_client_contacted") {
-          if (trackOfProject(project) !== "sales") {
-            return JSON.stringify({
-              ok: false,
-              error: "Client contact tracking is only used on Sales projects.",
-            });
-          }
           s.markClientContacted(project.id);
           appendLog("action", `Marked ${project.name} as contacted today.`);
           return JSON.stringify({
@@ -2849,12 +2843,6 @@ export default function VoiceAssistant() {
           action === "get_followup_reminder" ||
           action === "update_followup_reminder"
         ) {
-          if (trackOfProject(project) !== "sales") {
-            return JSON.stringify({
-              ok: false,
-              error: "Client follow-up reminders are only used on Sales projects.",
-            });
-          }
           if (action === "get_followup_reminder") {
             return JSON.stringify({
               ok: true,

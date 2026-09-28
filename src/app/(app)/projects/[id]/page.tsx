@@ -615,10 +615,8 @@ export default function ProjectPage() {
         </section>
       )}
 
-      {/* Per-user client follow-up reminder — sales track only */}
-      {projectTrack === "sales" && canWrite && (
-        <ClientFollowUp project={project} />
-      )}
+      {/* Per-user follow-up reminder — sales, EU funding, and RnD */}
+      {canWrite && <ClientFollowUp project={project} />}
 
       {/* Delivery Gantt + optional income/expenses */}
       {(canViewGantt || canViewFinance) && (
