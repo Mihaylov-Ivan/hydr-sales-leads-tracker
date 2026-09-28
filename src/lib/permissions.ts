@@ -8,6 +8,7 @@ export type PermissionType =
   | "eu_funding_rnd"
   | "sales_manager"
   | "ai_updates"
+  | "briefings"
   | "viewer";
 
 export const PERMISSION_TYPES: PermissionType[] = [
@@ -19,6 +20,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "eu_funding_rnd",
   "sales_manager",
   "ai_updates",
+  "briefings",
   "viewer",
 ];
 
@@ -31,6 +33,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   eu_funding_rnd: "EU Funding and R&D",
   sales_manager: "Sales Manager",
   ai_updates: "AI Updates",
+  briefings: "Briefings",
   viewer: "Viewer",
 };
 
@@ -44,6 +47,7 @@ const AREA_PERMISSIONS: PermissionType[] = [
   "eu_funding_rnd",
   "sales_manager",
   "ai_updates",
+  "briefings",
 ];
 
 export interface SessionUser {
@@ -124,6 +128,12 @@ export function accessForPath(pathname: string): RouteAccess {
   ) {
     return { kind: "permission", permission: "ai_updates" };
   }
+  if (
+    pathname === "/briefings" ||
+    pathname.startsWith("/briefings/")
+  ) {
+    return { kind: "permission", permission: "briefings" };
+  }
   if (pathname === "/change-password" || pathname.startsWith("/change-password/")) {
     return { kind: "any" };
   }
@@ -188,6 +198,7 @@ export function defaultHomePath(
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
+  if (user.permissions.includes("briefings")) return "/briefings";
   if (user.permissions.includes("ai_updates")) return "/ai-updates";
   // Viewer-only (or no area perms): avoid /todos for viewers
   if (isViewerUser(user)) return "/change-password";
@@ -213,6 +224,11 @@ export const NAV_ITEMS: NavItem[] = [
     access: { kind: "permission", permission: "eu_funding_rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
+  {
+    href: "/briefings",
+    label: "Briefings",
+    access: { kind: "permission", permission: "briefings" },
+  },
   {
     href: "/ai-updates",
     label: "AI Updates",
