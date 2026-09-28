@@ -41,6 +41,7 @@ export default function NewProjectDialog({
   const [sizeKw, setSizeKw] = useState("");
   const [stage, setStage] = useState<Stage>(defaultStageForTrack(track));
   const [leadUserId, setLeadUserId] = useState("");
+  const [coLeadUserId, setCoLeadUserId] = useState("");
   const [description, setDescription] = useState("");
 
   const valid = name.trim() && client.trim() && country.trim();
@@ -73,6 +74,7 @@ export default function NewProjectDialog({
       track,
       baseDescription: description.trim(),
       leadUserId: leadUserId || undefined,
+      coLeadUserId: coLeadUserId || undefined,
     });
     onClose();
     router.push(`/projects/${id}`);
@@ -188,12 +190,27 @@ export default function NewProjectDialog({
               placeholder="What is this project about? This is posted as the project's first update."
             />
           </div>
-          <div className="sm:col-span-2">
+          <div>
             <label className={labelCls}>Project lead</label>
             <select
               className={inputCls}
               value={leadUserId}
               onChange={(e) => setLeadUserId(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {assignable.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Co-lead</label>
+            <select
+              className={inputCls}
+              value={coLeadUserId}
+              onChange={(e) => setCoLeadUserId(e.target.value)}
             >
               <option value="">Unassigned</option>
               {assignable.map((member) => (

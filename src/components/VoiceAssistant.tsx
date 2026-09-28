@@ -273,6 +273,7 @@ const EXTENDED_CRM_TOOLS = [
         stage: { type: "string", enum: SALES_STAGE_VALUES },
         description: { type: "string" },
         lead_user_id: { type: "string" },
+        co_lead_user_id: { type: "string" },
         track: { type: "string", enum: ["sales", "eu", "rnd"] },
       },
       required: ["name", "client", "country"],
@@ -297,6 +298,7 @@ const EXTENDED_CRM_TOOLS = [
         stage: { type: "string", enum: SALES_STAGE_VALUES },
         description: { type: "string" },
         lead_user_id: { type: ["string", "null"] },
+        co_lead_user_id: { type: ["string", "null"] },
         last_client_contact_at: { type: "string" },
         email_reminder_days: { type: "integer" },
         email_reminder_enabled: { type: "boolean" },
@@ -1618,6 +1620,7 @@ export default function VoiceAssistant() {
             summary: project.aiSummary || project.baseDescription || "",
             base_description: project.baseDescription,
             lead_user_id: project.leadUserId ?? null,
+            co_lead_user_id: project.coLeadUserId ?? null,
             last_client_contact_at: project.lastClientContactAt,
             email_reminder_days: project.emailReminderDays,
             email_reminder_enabled: project.emailReminderEnabled,
@@ -2979,6 +2982,16 @@ export default function VoiceAssistant() {
             error: "The requested project lead is not assignable. Search the team roster first.",
           });
         }
+        const coLeadUserId = stringValue(args.co_lead_user_id);
+        if (
+          coLeadUserId &&
+          !assignableTeamMembers(s.teamMembers).some((member) => member.id === coLeadUserId)
+        ) {
+          return JSON.stringify({
+            ok: false,
+            error: "The requested project co-lead is not assignable. Search the team roster first.",
+          });
+        }
 
         const defaultStage: Stage =
           track === "eu"
@@ -3006,6 +3019,7 @@ export default function VoiceAssistant() {
           stage: requestedStage,
           baseDescription: stringValue(args.description) ?? "",
           ...(leadUserId ? { leadUserId } : {}),
+          ...(coLeadUserId ? { coLeadUserId } : {}),
           track,
         });
         appendLog("action", `Created project ${projectName}.`);
@@ -3067,6 +3081,21 @@ export default function VoiceAssistant() {
             });
           }
           patch.leadUserId = lead || undefined;
+        }
+        if (args.co_lead_user_id === null) {
+          patch.coLeadUserId = undefined;
+        } else if (typeof args.co_lead_user_id === "string") {
+          const coLead = args.co_lead_user_id.trim();
+          if (
+            coLead &&
+            !assignableTeamMembers(s.teamMembers).some((member) => member.id === coLead)
+          ) {
+            return JSON.stringify({
+              ok: false,
+              error: "The requested project co-lead is not assignable.",
+            });
+          }
+          patch.coLeadUserId = coLead || undefined;
         }
         if (typeof args.last_client_contact_at === "string") {
           if (!isValidDateOnly(args.last_client_contact_at)) {

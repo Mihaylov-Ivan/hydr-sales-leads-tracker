@@ -1014,6 +1014,7 @@ export default function OutstandingSidebar() {
       if (due > todayDate()) continue;
       if (
         contact.status === "disqualified" ||
+        contact.status === "cancelled" ||
         contact.status === "not-interested"
       ) {
         continue;
@@ -1028,6 +1029,7 @@ export default function OutstandingSidebar() {
       if (!company) continue;
       if (
         company.status === "disqualified" ||
+        company.status === "cancelled" ||
         company.status === "not-interested"
       ) {
         continue;

@@ -64,6 +64,7 @@ export interface ProjectRow {
   email_reminder_days: number | null;
   email_reminder_enabled: boolean | null;
   lead_user_id: string | null;
+  co_lead_user_id?: string | null;
   created_at: string;
   /** Pipeline metrics columns (migration-014); may be absent before migration */
   cold_lead_entered_at?: string | null;
@@ -435,6 +436,7 @@ export function projectFromRow(
     emailReminderDays: row.email_reminder_days ?? DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: row.email_reminder_enabled !== false,
     ...(row.lead_user_id ? { leadUserId: row.lead_user_id } : {}),
+    ...(row.co_lead_user_id ? { coLeadUserId: row.co_lead_user_id } : {}),
     coldLeadEnteredAt: dateOnly(row.cold_lead_entered_at, createdDate),
     ...(optionalDate(row.hot_lead_entered_at)
       ? { hotLeadEnteredAt: optionalDate(row.hot_lead_entered_at) }
@@ -484,6 +486,7 @@ export function projectToRow(p: Project): ProjectRow {
     email_reminder_days: p.emailReminderDays,
     email_reminder_enabled: p.emailReminderEnabled,
     lead_user_id: p.leadUserId ?? null,
+    co_lead_user_id: p.coLeadUserId ?? null,
     created_at: p.createdAt,
     cold_lead_entered_at: p.coldLeadEnteredAt,
     hot_lead_entered_at: p.hotLeadEnteredAt ?? null,

@@ -46,6 +46,7 @@ create table if not exists public.projects (
   ai_summary_updated_at timestamptz,
   -- Ownership + client follow-up
   lead_user_id text,
+  co_lead_user_id text,
   last_client_contact_at date not null default current_date,
   email_reminder_days integer not null default 7
     check (email_reminder_days > 0),

@@ -374,6 +374,7 @@ const CRM_TRACKED_FIELDS: {
   { key: "market", label: "market" },
   { key: "sizeKw", label: "size_kw" },
   { key: "leadUserId", label: "lead" },
+  { key: "coLeadUserId", label: "co-lead" },
   {
     key: "stage",
     label: "stage",

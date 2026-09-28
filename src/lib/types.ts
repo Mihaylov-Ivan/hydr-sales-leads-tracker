@@ -1619,6 +1619,8 @@ export interface Project {
   emailReminderEnabled: boolean;
   /** Team member responsible for this project/deal */
   leadUserId?: string;
+  /** Secondary assignee — also matches sales board lead filter */
+  coLeadUserId?: string;
   /**
    * Pipeline metrics timestamps (yyyy-mm-dd). Commissioned also implies
    * under-development was reached even if underDevelopmentAt was never set.

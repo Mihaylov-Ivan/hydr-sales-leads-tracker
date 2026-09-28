@@ -530,8 +530,10 @@ export interface ProspectingApi {
   /** Clear a scheduled follow-up (Outstanding “Done”). */
   completeFollowUp: (contactId: string) => void;
   markEngaged: (contactId: string) => void;
-  /** Contacted → Engaged: log response and move to engaged (or not-interested). */
+  /** Contacted / Engaged: log a response; negative stays engaged. */
   logEngagement: (input: LogOutreachInput) => string;
+  /** Explicit close-out — moves company + contacts to Cancelled. */
+  markCancelled: (companyId: string, contactId?: string) => void;
   markQualified: (
     companyId: string,
     qualification?: ProspectQualification,
@@ -1162,12 +1164,15 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           if (co.id !== input.companyId) return co;
           let nextStatus = co.status;
           if (
+            newStatus === "cancelled" ||
             newStatus === "not-interested" ||
             newStatus === "disqualified" ||
             newStatus === "dormant"
           ) {
-            nextStatus = newStatus;
+            nextStatus = newStatus === "not-interested" ? "cancelled" : newStatus;
           } else if (co.status === "promoted" || co.status === "qualified") {
+            nextStatus = co.status;
+          } else if (co.status === "cancelled") {
             nextStatus = co.status;
           } else if (
             newStatus === "engaged" ||
@@ -1363,7 +1368,8 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             status:
               c.status === "promoted" ||
               c.status === "engaged" ||
-              c.status === "qualified"
+              c.status === "qualified" ||
+              c.status === "cancelled"
                 ? c.status
                 : "follow-up-due",
             updatedAt: now,
@@ -1475,6 +1481,60 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     [persistCompany, persistContact],
   );
 
+  const markCancelled = useCallback(
+    (companyId: string, contactId?: string) => {
+      const now = new Date().toISOString();
+      const company = stateRef.current.companies.find((c) => c.id === companyId);
+      setState((prev) => {
+        const companies = prev.companies.map((co) => {
+          if (co.id !== companyId) return co;
+          if (co.status === "cancelled") return co;
+          const next: ProspectCompany = {
+            ...co,
+            status: "cancelled",
+            lastActivityAt: now,
+            updatedAt: now,
+            nextAction: co.nextAction || "Cancelled in Prospecting",
+          };
+          persistCompany(next, "upsert");
+          return next;
+        });
+        const contacts = prev.contacts.map((c) => {
+          if (c.companyId !== companyId) return c;
+          if (contactId && c.id !== contactId) {
+            // Still cancel other contacts on the company for a clean Cancelled section
+          }
+          if (
+            c.status === "cancelled" ||
+            c.status === "promoted" ||
+            c.status === "disqualified"
+          ) {
+            return c;
+          }
+          const next: ProspectContact = {
+            ...c,
+            status: "cancelled",
+            updatedAt: now,
+          };
+          persistContact(next, "upsert");
+          return next;
+        });
+        return { ...prev, companies, contacts };
+      });
+      recordProspectChange({
+        entityType: "prospect_company",
+        entityId: companyId,
+        action: "update",
+        summary: `Cancelled prospect ${company?.name ?? companyId}`,
+        payloadJson: {
+          previousStatus: company?.status ?? null,
+          ...(contactId ? { contactId } : {}),
+        },
+      });
+    },
+    [persistCompany, persistContact, recordProspectChange],
+  );
+
   const markQualified = useCallback(
     (companyId: string, qualification?: ProspectQualification) => {
       const now = new Date().toISOString();
@@ -1499,6 +1559,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           if (c.companyId !== companyId) return c;
           if (
             c.status === "promoted" ||
+            c.status === "cancelled" ||
             c.status === "not-interested" ||
             c.status === "disqualified"
           ) {
@@ -1564,6 +1625,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         const contacts = prev.contacts.map((c) => {
           if (c.companyId !== companyId) return c;
           if (
+            c.status === "cancelled" ||
             c.status === "not-interested" ||
             c.status === "disqualified" ||
             c.status === "dormant"
@@ -1612,11 +1674,23 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         const companies = prev.companies.map((co) => {
           if (co.promotedProjectId !== projectId) return co;
           if (stage === "cancelled") {
-            if (co.status === "not-interested") return co;
+            if (co.status === "cancelled" || co.status === "not-interested") {
+              if (co.status === "cancelled") return co;
+              changed = true;
+              const next: ProspectCompany = {
+                ...co,
+                status: "cancelled",
+                lastActivityAt: now,
+                updatedAt: now,
+                nextAction: co.nextAction || "Cancelled in Sales Projects",
+              };
+              persistCompany(next, "upsert");
+              return next;
+            }
             changed = true;
             const next: ProspectCompany = {
               ...co,
-              status: "not-interested",
+              status: "cancelled",
               lastActivityAt: now,
               updatedAt: now,
               nextAction: co.nextAction || "Cancelled in Sales Projects",
@@ -1625,7 +1699,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             return next;
           }
           // Un-cancelled / active again — restore engaged if we had cancelled them
-          if (co.status === "not-interested") {
+          if (co.status === "cancelled" || co.status === "not-interested") {
             changed = true;
             const next: ProspectCompany = {
               ...co,
@@ -1645,16 +1719,16 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           const company = companies.find((co) => co.id === c.companyId);
           if (!company || company.promotedProjectId !== projectId) return c;
           if (stage === "cancelled") {
-            if (c.status === "not-interested") return c;
+            if (c.status === "cancelled") return c;
             const next: ProspectContact = {
               ...c,
-              status: "not-interested",
+              status: "cancelled",
               updatedAt: now,
             };
             persistContact(next, "upsert");
             return next;
           }
-          if (c.status === "not-interested") {
+          if (c.status === "cancelled" || c.status === "not-interested") {
             const next: ProspectContact = {
               ...c,
               status: "engaged",
@@ -1888,7 +1962,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     }).length;
     const overdueFollowUps = state.contacts.filter((c) => {
       if (!c.nextFollowUpAt) return false;
-      if (c.status === "promoted" || c.status === "not-interested" || c.status === "disqualified") {
+      if (c.status === "promoted" || c.status === "cancelled" || c.status === "not-interested" || c.status === "disqualified") {
         return false;
       }
       return c.nextFollowUpAt < today;
@@ -1944,6 +2018,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           completeFollowUp,
           markEngaged,
           logEngagement,
+          markCancelled,
           markQualified,
           markPromoted,
           syncFromSalesProject,
@@ -1968,6 +2043,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           "completeFollowUp",
           "markEngaged",
           "logEngagement",
+          "markCancelled",
           "markQualified",
           "markPromoted",
           "syncFromSalesProject",
@@ -1994,6 +2070,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       completeFollowUp,
       markEngaged,
       logEngagement,
+      markCancelled,
       markQualified,
       markPromoted,
       syncFromSalesProject,

@@ -10,7 +10,7 @@ import {
 } from "@/lib/prospecting-types";
 
 /**
- * Keeps Prospecting in sync with linked Sales Projects (e.g. cancelled → not interested).
+ * Keeps Prospecting in sync with linked Sales Projects (e.g. cancelled → Cancelled).
  */
 export function ProspectSalesSync() {
   const { projects, ready: projectsReady } = useProjects();
@@ -30,10 +30,10 @@ export function ProspectSalesSync() {
         project.stage === "cancelled" ? "cancelled" : "active";
       const applied = lastAppliedRef.current.get(projectId);
 
-      const needsCancel =
-        desired === "cancelled" && company.status !== "not-interested";
-      const needsRestore =
-        desired === "active" && company.status === "not-interested";
+      const isClosed =
+        company.status === "cancelled" || company.status === "not-interested";
+      const needsCancel = desired === "cancelled" && !isClosed;
+      const needsRestore = desired === "active" && isClosed;
 
       if (!needsCancel && !needsRestore) {
         lastAppliedRef.current.set(projectId, desired);

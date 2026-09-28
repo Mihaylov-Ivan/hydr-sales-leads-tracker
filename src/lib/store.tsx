@@ -322,6 +322,7 @@ export interface NewProjectInput {
   stage: Stage;
   baseDescription: string;
   leadUserId?: string;
+  coLeadUserId?: string;
   lastMeaningfulActivityAt?: string;
   /** Defaults to sales when omitted. */
   track?: ProjectTrack;
@@ -343,6 +344,7 @@ export type ProjectPatch = Partial<
     | "emailReminderDays"
     | "emailReminderEnabled"
     | "leadUserId"
+    | "coLeadUserId"
     | "coldLeadEnteredAt"
     | "hotLeadEnteredAt"
     | "underDevelopmentAt"
@@ -861,6 +863,7 @@ function loadLocal(): Project[] {
         emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
         emailReminderEnabled: p.emailReminderEnabled !== false,
         ...(p.leadUserId ? { leadUserId: p.leadUserId } : {}),
+        ...(p.coLeadUserId ? { coLeadUserId: p.coLeadUserId } : {}),
         todos: (p.todos ?? []).map((t) => ({
           ...t,
           kind: normalizeTodoKind(t.kind),
@@ -1390,6 +1393,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
+  const [supportsCoLeadField, setSupportsCoLeadField] = useState(false);
   const [supportsCommentAuthorId, setSupportsCommentAuthorId] = useState(false);
   const [supportsMetricsFields, setSupportsMetricsFields] = useState(false);
   const [supportsMetricsSettingsTable, setSupportsMetricsSettingsTable] =
@@ -1567,6 +1571,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("project_gantt_phases").select("id").limit(1),
         supabase.from("projects").select("is_warehouse_holding").limit(1),
         supabase.from("projects").select("project_track").limit(1),
+        supabase.from("projects").select("co_lead_user_id").limit(1),
       ])
         .then(
           ([
@@ -1578,6 +1583,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             ganttTable,
             warehouseHoldingCol,
             projectTrackCol,
+            coLeadCol,
           ]) => {
             setSupportsOwnershipFields(
               !projectsCols.error && !todosCols.error,
@@ -1588,6 +1594,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             setSupportsGanttTables(!ganttTable.error);
             setSupportsWarehouseHolding(!warehouseHoldingCol.error);
             setSupportsProjectTrack(!projectTrackCol.error);
+            setSupportsCoLeadField(!coLeadCol.error);
           },
         )
         .catch(() => {
@@ -1598,6 +1605,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           setSupportsGanttTables(false);
           setSupportsWarehouseHolding(false);
           setSupportsProjectTrack(false);
+          setSupportsCoLeadField(false);
         });
     }
   }, []);
@@ -2400,6 +2408,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: track === "sales",
       ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
+      ...(input.coLeadUserId ? { coLeadUserId: input.coLeadUserId } : {}),
       ...initialMetricsFields({
         stage: input.stage,
         createdDate: createdAt.slice(0, 10),
@@ -2454,6 +2463,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ...(supportsOwnershipFields
             ? { lead_user_id: project.leadUserId ?? null }
             : {}),
+          ...(supportsCoLeadField
+            ? { co_lead_user_id: project.coLeadUserId ?? null }
+            : {}),
           created_at: project.createdAt,
           ...(supportsMetricsFields
             ? {
@@ -2496,6 +2508,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, [
     supportsOwnershipFields,
+    supportsCoLeadField,
     supportsCommentAuthorId,
     supportsMetricsFields,
     supportsProjectTrack,
@@ -2710,6 +2723,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (supportsOwnershipFields && mergedPatch.leadUserId !== undefined) {
           row.lead_user_id = mergedPatch.leadUserId ?? null;
         }
+        if (supportsCoLeadField && mergedPatch.coLeadUserId !== undefined) {
+          row.co_lead_user_id = mergedPatch.coLeadUserId ?? null;
+        }
         if (supportsMetricsFields) {
           if (mergedPatch.coldLeadEnteredAt !== undefined)
             row.cold_lead_entered_at = mergedPatch.coldLeadEnteredAt;
@@ -2739,6 +2755,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
     [
       requestAiSummary,
       supportsOwnershipFields,
+      supportsCoLeadField,
       supportsMetricsFields,
       recordChangeEvent,
     ],

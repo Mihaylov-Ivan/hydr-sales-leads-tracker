@@ -460,6 +460,30 @@ export default function ProjectPage() {
             ))}
           </select>
         </div>
+
+        <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Co-lead
+          </p>
+          <select
+            value={project.coLeadUserId ?? ""}
+            disabled={!canWrite}
+            onChange={(e) =>
+              updateProject(project.id, {
+                coLeadUserId: e.target.value || undefined,
+              })
+            }
+            title="Click to assign a co-lead"
+            className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft disabled:cursor-default disabled:hover:bg-transparent"
+          >
+            <option value="">Unassigned</option>
+            {leadOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Pipeline metrics fields */}

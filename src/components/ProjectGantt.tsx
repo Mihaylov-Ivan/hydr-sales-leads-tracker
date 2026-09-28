@@ -18,10 +18,14 @@ import {
 } from "@/lib/types";
 import GanttFinancials from "@/components/GanttFinancials";
 import {
+  BANK_GUARANTEE_PHASE_NAME,
+  DEFAULT_BANK_GUARANTEE_MONTHS,
   DEFAULT_ENGINEERING_MONTHS,
   DEFAULT_INSTALLATION_MONTHS,
   DEFAULT_PROCUREMENT_MONTHS,
-  buildStandardDeliverySchedule,
+  DeliveryScheduleTemplate,
+  buildBankGuaranteePhase,
+  buildDeliveryScheduleForTemplate,
   monthsToDays,
 } from "@/lib/gantt-template";
 
@@ -1352,6 +1356,7 @@ function AutoGenerateScheduleForm({
   onDone: () => void;
 }) {
   const { replaceProjectSchedule } = useProjects();
+  const [template, setTemplate] = useState<DeliveryScheduleTemplate>("full");
   const [startDate, setStartDate] = useState(todayDate());
   const [engineeringMonths, setEngineeringMonths] = useState(
     String(DEFAULT_ENGINEERING_MONTHS),
@@ -1362,10 +1367,15 @@ function AutoGenerateScheduleForm({
   const [installationMonths, setInstallationMonths] = useState(
     String(DEFAULT_INSTALLATION_MONTHS),
   );
+  const [includeBankGuarantee, setIncludeBankGuarantee] = useState(false);
+  const [bankGuaranteeMonths, setBankGuaranteeMonths] = useState(
+    String(DEFAULT_BANK_GUARANTEE_MONTHS),
+  );
 
   const engM = Number(engineeringMonths);
   const procM = Number(procurementMonths);
   const siteM = Number(installationMonths);
+  const bgM = Number(bankGuaranteeMonths);
   const engDays = Number.isFinite(engM) && engM > 0 ? monthsToDays(engM) : 0;
   const procDays = Number.isFinite(procM) && procM > 0 ? monthsToDays(procM) : 0;
   const siteDays = Number.isFinite(siteM) && siteM > 0 ? monthsToDays(siteM) : 0;
@@ -1374,9 +1384,15 @@ function AutoGenerateScheduleForm({
     (Number.isFinite(engM) && engM > 0 ? engM : 0) +
     (Number.isFinite(procM) && procM > 0 ? procM : 0) +
     (Number.isFinite(siteM) && siteM > 0 ? siteM : 0);
+  const bgValid =
+    !includeBankGuarantee || (Number.isFinite(bgM) && bgM > 0);
 
   const valid =
-    Boolean(startDate) && engDays >= 1 && procDays >= 1 && siteDays >= 1;
+    Boolean(startDate) &&
+    engDays >= 1 &&
+    procDays >= 1 &&
+    siteDays >= 1 &&
+    bgValid;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1387,11 +1403,14 @@ function AutoGenerateScheduleForm({
       );
       if (!ok) return;
     }
-    const schedule = buildStandardDeliverySchedule({
+    const schedule = buildDeliveryScheduleForTemplate(template, {
       startDate,
       engineeringDays: engDays,
       procurementDays: procDays,
       installationDays: siteDays,
+      ...(includeBankGuarantee && Number.isFinite(bgM) && bgM > 0
+        ? { bankGuaranteeMonths: bgM }
+        : {}),
     });
     replaceProjectSchedule(projectId, schedule);
     onDone();
@@ -1405,16 +1424,51 @@ function AutoGenerateScheduleForm({
       <p className="sm:col-span-2 lg:col-span-4 text-[10px] font-semibold uppercase tracking-wide text-muted">
         Auto-generate delivery Gantt
       </p>
+      <fieldset className="sm:col-span-2 lg:col-span-4">
+        <legend className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Template
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              {
+                id: "full" as const,
+                label: "Full delivery",
+                hint: "Phases, activities, and milestones",
+              },
+              {
+                id: "phases-only" as const,
+                label: "Phases only",
+                hint: "Phases and milestones — no sub-bars",
+              },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setTemplate(option.id)}
+              className={`rounded-lg border px-3 py-2 text-left transition ${
+                template === option.id
+                  ? "border-teal-accent bg-teal-soft/50 text-deep"
+                  : "border-line bg-panel text-muted hover:border-teal-accent/40"
+              }`}
+            >
+              <span className="block text-xs font-semibold">{option.label}</span>
+              <span className="mt-0.5 block text-[10px] opacity-80">{option.hint}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
       <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
-        Builds the standard initiation → engineering → procurement/FAT →
-        installation/SAT template. Procurement and manufacturing start 1 month
-        after engineering starts. Detailed Design and Design Approval stop 20
-        days before Engineering Complete. Other sub-activities and milestones
-        scale with each phase duration (Ceramika / 8‑month proportions).
+        Contract start → initiation → engineering → procurement/FAT →
+        installation/SAT. Procurement starts 1 month after engineering.
+        {template === "full"
+          ? " Detailed Design and Design Approval stop 20 days before Engineering Complete; other activities scale with each phase."
+          : " Phases-only skips activities/sub-bars and keeps phase bars plus milestones."}
       </p>
       <label className="block sm:col-span-2 lg:col-span-1">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Start date
+          Contract start date
         </span>
         <input
           type="date"
@@ -1463,10 +1517,40 @@ function AutoGenerateScheduleForm({
           className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
         />
       </label>
+      <div className="sm:col-span-2 lg:col-span-4 grid gap-3 rounded-lg border border-dashed border-line bg-panel/60 p-3 sm:grid-cols-[1fr_auto]">
+        <label className="flex items-start gap-2 text-sm text-deep">
+          <input
+            type="checkbox"
+            checked={includeBankGuarantee}
+            onChange={(e) => setIncludeBankGuarantee(e.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="font-semibold">{BANK_GUARANTEE_PHASE_NAME}</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Optional phase before contract start (ends the day before start).
+            </span>
+          </span>
+        </label>
+        <label className="block min-w-[10rem]">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+            Duration (months)
+          </span>
+          <input
+            type="number"
+            min={0.1}
+            step={0.1}
+            disabled={!includeBankGuarantee}
+            value={bankGuaranteeMonths}
+            onChange={(e) => setBankGuaranteeMonths(e.target.value)}
+            className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-teal-accent disabled:opacity-40"
+          />
+        </label>
+      </div>
       <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
         {valid
-          ? `Total ≈ ${totalMonths} month${totalMonths === 1 ? "" : "s"} (~${totalDays} days; eng ${engDays} · proc ${procDays} · install ${siteDays}). ${hasSchedule ? "Existing schedule will be replaced." : ""}`
-          : "Enter a start date and positive durations for all three phases."}
+          ? `Delivery ≈ ${totalMonths} month${totalMonths === 1 ? "" : "s"} (~${totalDays} days; eng ${engDays} · proc ${procDays} · install ${siteDays})${includeBankGuarantee ? ` · + ${bgM} mo bank guarantee before start` : ""}. ${hasSchedule ? "Existing schedule will be replaced." : ""}`
+          : "Enter a contract start date and positive durations for all three phases."}
       </p>
       <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
         <button
@@ -1475,6 +1559,111 @@ function AutoGenerateScheduleForm({
           className="rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm disabled:opacity-40"
         >
           Generate
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          className="rounded-lg border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-muted hover:border-teal-accent/40"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AddBankGuaranteeForm({
+  projectId,
+  contractStartHint,
+  onDone,
+}: {
+  projectId: string;
+  contractStartHint: string;
+  onDone: () => void;
+}) {
+  const { addGanttPhase, projects } = useProjects();
+  const [contractStart, setContractStart] = useState(
+    contractStartHint || todayDate(),
+  );
+  const [months, setMonths] = useState(String(DEFAULT_BANK_GUARANTEE_MONTHS));
+  const m = Number(months);
+  const valid = Boolean(contractStart) && Number.isFinite(m) && m > 0;
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    const project = projects.find((p) => p.id === projectId);
+    const existing = project?.schedule?.phases ?? [];
+    const already = existing.some(
+      (p) =>
+        p.name.trim().toLowerCase() ===
+        BANK_GUARANTEE_PHASE_NAME.toLowerCase(),
+    );
+    if (already) {
+      const ok = window.confirm(
+        "A Bank Guarantee phase already exists. Add another anyway?",
+      );
+      if (!ok) return;
+    }
+    const minSort =
+      existing.length > 0
+        ? Math.min(...existing.map((p) => p.sortOrder)) - 1
+        : 0;
+    const phase = buildBankGuaranteePhase(contractStart, m, minSort);
+    addGanttPhase(projectId, {
+      name: phase.name,
+      startDate: phase.startDate,
+      durationDays: phase.durationDays,
+      color: phase.color,
+      wbs: phase.wbs,
+      sortOrder: phase.sortOrder,
+    });
+    onDone();
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2 lg:grid-cols-4"
+    >
+      <p className="sm:col-span-2 lg:col-span-4 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        Add {BANK_GUARANTEE_PHASE_NAME}
+      </p>
+      <p className="sm:col-span-2 lg:col-span-4 text-xs text-muted">
+        Inserts a phase that ends the day before the contract start date.
+      </p>
+      <label className="block sm:col-span-2 lg:col-span-1">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Contract start date
+        </span>
+        <input
+          type="date"
+          autoFocus
+          value={contractStart}
+          onChange={(e) => setContractStart(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted">
+          Duration (months)
+        </span>
+        <input
+          type="number"
+          min={0.1}
+          step={0.1}
+          value={months}
+          onChange={(e) => setMonths(e.target.value)}
+          className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm outline-none focus:border-teal-accent"
+        />
+      </label>
+      <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+        <button
+          type="submit"
+          disabled={!valid}
+          className="rounded-lg bg-teal-accent px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm disabled:opacity-40"
+        >
+          Add phase
         </button>
         <button
           type="button"
@@ -1637,7 +1826,7 @@ export default function ProjectGantt({
   const [sectionOpen, setSectionOpen] = useState(true);
   const [editListOpen, setEditListOpen] = useState(false);
   const [form, setForm] = useState<
-    null | "phase" | "activity" | "deadline" | "shift" | "autogen"
+    null | "phase" | "activity" | "deadline" | "shift" | "autogen" | "bank-guarantee"
   >(null);
   const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(
@@ -1792,6 +1981,16 @@ export default function ProjectGantt({
               type="button"
               onClick={() => {
                 closeForms();
+                setForm("bank-guarantee");
+              }}
+              className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-deep shadow-sm hover:border-teal-accent/40"
+            >
+              + Bank guarantee
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closeForms();
                 setForm("shift");
               }}
               disabled={!hasSchedule}
@@ -1902,6 +2101,19 @@ export default function ProjectGantt({
               <AutoGenerateScheduleForm
                 projectId={projectId}
                 hasSchedule={hasSchedule}
+                onDone={closeForms}
+              />
+            </div>
+          )}
+          {form === "bank-guarantee" && (
+            <div className="mt-4">
+              <AddBankGuaranteeForm
+                projectId={projectId}
+                contractStartHint={
+                  phases.find((p) => p.wbs === "1.0")?.startDate ||
+                  phases[0]?.startDate ||
+                  todayDate()
+                }
                 onDone={closeForms}
               />
             </div>

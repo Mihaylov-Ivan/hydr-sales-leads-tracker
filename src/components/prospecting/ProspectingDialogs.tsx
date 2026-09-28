@@ -975,7 +975,7 @@ export function MarkContactedDialog({
   );
 }
 
-/** Contacted → Engaged: response date, result, summary, optional cold lead. */
+/** Contacted / Engaged: log response. Negative stays engaged; Cancelled is separate. */
 export function MarkEngagedDialog({
   company,
   contact,
@@ -994,10 +994,12 @@ export function MarkEngagedDialog({
       ? currentUserId
       : contact.ownerId || teamMembers[0]?.id || "";
 
+  const alreadyEngaged =
+    contact.status === "engaged" || contact.status === "qualified";
   const [responseDate, setResponseDate] = useState(todayDateOnly());
   const [result, setResult] = useState<OutreachResult>("positive");
   const [summary, setSummary] = useState("");
-  const [openColdLead, setOpenColdLead] = useState(true);
+  const [openColdLead, setOpenColdLead] = useState(!alreadyEngaged);
 
   const createsColdLead =
     openColdLead &&
@@ -1035,11 +1037,17 @@ export function MarkEngagedDialog({
   }
 
   return (
-    <ModalShell title="Engage" onClose={onClose}>
+    <ModalShell
+      title={alreadyEngaged ? "Log communication" : "Engage"}
+      onClose={onClose}
+    >
       <p className="mb-3 text-sm text-muted">
         Record the response from{" "}
         <span className="font-semibold text-deep">{contact.name}</span> at{" "}
-        <span className="font-semibold text-deep">{company.name}</span>.
+        <span className="font-semibold text-deep">{company.name}</span>
+        {alreadyEngaged
+          ? ". Negative replies stay Engaged so you can keep communicating."
+          : "."}
       </p>
       <form onSubmit={submit} className="grid gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1083,15 +1091,19 @@ export function MarkEngagedDialog({
             placeholder="What did they say / ask for? (optional)"
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={openColdLead}
-            onChange={(e) => setOpenColdLead(e.target.checked)}
-            disabled={result === "negative"}
-          />
-          Open cold lead on Sales Projects
-        </label>
+        {(result === "positive" ||
+          result === "requested-info" ||
+          result === "requested-meeting" ||
+          result === "requested-offer") && (
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={openColdLead}
+              onChange={(e) => setOpenColdLead(e.target.checked)}
+            />
+            Open cold lead on Sales Projects
+          </label>
+        )}
         <div className="mt-2 flex justify-end gap-2">
           <button
             type="button"
@@ -1104,7 +1116,11 @@ export function MarkEngagedDialog({
             type="submit"
             className="rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink"
           >
-            {createsColdLead ? "Save & create cold lead" : "Engage"}
+            {createsColdLead
+              ? "Save & create cold lead"
+              : alreadyEngaged
+                ? "Save communication"
+                : "Engage"}
           </button>
         </div>
       </form>

@@ -5,11 +5,13 @@ import {
   ProjectSchedule,
   addCalendarMonths,
   addDays,
+  daysBetween,
   todayDate,
 } from "./types";
 import { newId } from "@/lib/id";
 
 const BAR = "#5B9BD5";
+const BANK_GUARANTEE_BAR = "#7A8B6F";
 
 /** Ceramika / image reference phase lengths (inclusive days). */
 export const REF_ENGINEERING_DAYS = 31;
@@ -20,6 +22,12 @@ export const REF_INSTALLATION_DAYS = 62;
 export const DEFAULT_ENGINEERING_MONTHS = 1;
 export const DEFAULT_PROCUREMENT_MONTHS = 5;
 export const DEFAULT_INSTALLATION_MONTHS = 2;
+
+export const DEFAULT_BANK_GUARANTEE_MONTHS = 2;
+export const BANK_GUARANTEE_PHASE_NAME = "Bank Guarantee";
+export const BANK_GUARANTEE_WBS = "0.0";
+
+export type DeliveryScheduleTemplate = "full" | "phases-only";
 
 const DAYS_PER_MONTH = 30.4375;
 
@@ -159,17 +167,62 @@ function phaseEnd(startDate: string, durationDays: number): string {
   return addDays(startDate, Math.max(1, durationDays) - 1);
 }
 
-/**
- * Build a Ceramika-shaped delivery Gantt scaled to the given major-phase lengths.
- * Engineering starts on `startDate`; procurement / manufacturing starts 1 calendar
- * month after engineering starts; installation starts on procurement end.
- */
-export function buildStandardDeliverySchedule(input: {
+export type DeliveryScheduleInput = {
   startDate: string;
   engineeringDays: number;
   procurementDays: number;
   installationDays: number;
-}): ProjectSchedule {
+  /** When set and > 0, prepends a Bank Guarantee phase ending the day before contract start. */
+  bankGuaranteeMonths?: number;
+};
+
+/**
+ * Bank Guarantee phase spanning `months` before `contractStartDate`
+ * (ends the day before contract start).
+ */
+export function buildBankGuaranteePhase(
+  contractStartDate: string,
+  months: number,
+  sortOrder = 0,
+): ProjectGanttPhase {
+  const m = Math.max(0.1, months);
+  const startDate = addCalendarMonths(contractStartDate, -m);
+  const endDate = addDays(contractStartDate, -1);
+  const durationDays = Math.max(1, daysBetween(startDate, endDate) + 1);
+  return {
+    id: newId(),
+    name: BANK_GUARANTEE_PHASE_NAME,
+    wbs: BANK_GUARANTEE_WBS,
+    startDate,
+    durationDays,
+    color: BANK_GUARANTEE_BAR,
+    sortOrder,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Prepend Bank Guarantee and shift existing phase sort orders. */
+export function prependBankGuarantee(
+  schedule: ProjectSchedule,
+  contractStartDate: string,
+  months: number,
+): ProjectSchedule {
+  if (!(months > 0)) return schedule;
+  const bg = buildBankGuaranteePhase(contractStartDate, months, 0);
+  const phases = [
+    bg,
+    ...schedule.phases.map((p, i) => ({
+      ...p,
+      sortOrder: i + 1,
+    })),
+  ];
+  return { ...schedule, phases };
+}
+
+function buildDeliverySchedule(
+  input: DeliveryScheduleInput,
+  includeActivities: boolean,
+): ProjectSchedule {
   const startDate = input.startDate || todayDate();
   const engDays = Math.max(1, Math.round(input.engineeringDays) || 1);
   const procDays = Math.max(1, Math.round(input.procurementDays) || 1);
@@ -281,37 +334,39 @@ export function buildStandardDeliverySchedule(input: {
   const designEnd = designEndOffset(engDays);
   const designDuration = designEnd + 1;
 
-  const activities: ProjectGanttActivity[] = [
-    {
-      id: newId(),
-      phaseId: pEng,
-      name: "Detailed Design",
-      wbs: "2.1",
-      startDate: engStart,
-      durationDays: designDuration,
-      color: BAR,
-      status: "Planned",
-      sortOrder: 0,
-      createdAt,
-    },
-    ...buildActivities(pEng, engStart, engDays, REF_ENGINEERING_DAYS, ENG_ACTIVITIES).map(
-      (a, i) => ({ ...a, sortOrder: i + 1 }),
-    ),
-    ...buildActivities(
-      pProc,
-      procStart,
-      procDays,
-      REF_PROCUREMENT_DAYS,
-      PROC_ACTIVITIES,
-    ),
-    ...buildActivities(
-      pSite,
-      siteStart,
-      siteDays,
-      REF_INSTALLATION_DAYS,
-      SITE_ACTIVITIES,
-    ),
-  ];
+  const activities: ProjectGanttActivity[] = includeActivities
+    ? [
+        {
+          id: newId(),
+          phaseId: pEng,
+          name: "Detailed Design",
+          wbs: "2.1",
+          startDate: engStart,
+          durationDays: designDuration,
+          color: BAR,
+          status: "Planned",
+          sortOrder: 0,
+          createdAt,
+        },
+        ...buildActivities(pEng, engStart, engDays, REF_ENGINEERING_DAYS, ENG_ACTIVITIES).map(
+          (a, i) => ({ ...a, sortOrder: i + 1 }),
+        ),
+        ...buildActivities(
+          pProc,
+          procStart,
+          procDays,
+          REF_PROCUREMENT_DAYS,
+          PROC_ACTIVITIES,
+        ),
+        ...buildActivities(
+          pSite,
+          siteStart,
+          siteDays,
+          REF_INSTALLATION_DAYS,
+          SITE_ACTIVITIES,
+        ),
+      ]
+    : [];
 
   const deadlines: ProjectGanttDeadline[] = [
     {
@@ -347,5 +402,40 @@ export function buildStandardDeliverySchedule(input: {
     ),
   ];
 
-  return { phases, activities, deadlines };
+  let schedule: ProjectSchedule = { phases, activities, deadlines };
+  const bgMonths = input.bankGuaranteeMonths;
+  if (typeof bgMonths === "number" && bgMonths > 0) {
+    schedule = prependBankGuarantee(schedule, startDate, bgMonths);
+  }
+  return schedule;
+}
+
+/**
+ * Build a Ceramika-shaped delivery Gantt scaled to the given major-phase lengths.
+ * Engineering starts on `startDate`; procurement / manufacturing starts 1 calendar
+ * month after engineering starts; installation starts on procurement end.
+ * Includes activities (sub-bars).
+ */
+export function buildStandardDeliverySchedule(
+  input: DeliveryScheduleInput,
+): ProjectSchedule {
+  return buildDeliverySchedule(input, true);
+}
+
+/**
+ * Same phase timing and milestones as the full template, without activities/sub-bars.
+ */
+export function buildPhasesOnlyDeliverySchedule(
+  input: DeliveryScheduleInput,
+): ProjectSchedule {
+  return buildDeliverySchedule(input, false);
+}
+
+export function buildDeliveryScheduleForTemplate(
+  template: DeliveryScheduleTemplate,
+  input: DeliveryScheduleInput,
+): ProjectSchedule {
+  return template === "phases-only"
+    ? buildPhasesOnlyDeliverySchedule(input)
+    : buildStandardDeliverySchedule(input);
 }

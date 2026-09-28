@@ -233,6 +233,7 @@ export type ProspectStatus =
   | "engaged"
   | "qualified"
   | "promoted"
+  | "cancelled"
   | "not-interested"
   | "dormant"
   | "disqualified";
@@ -244,6 +245,7 @@ export const PROSPECT_STATUSES: ProspectStatus[] = [
   "engaged",
   "qualified",
   "promoted",
+  "cancelled",
   "not-interested",
   "dormant",
   "disqualified",
@@ -256,14 +258,16 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   engaged: "Engaged",
   qualified: "Qualified",
   promoted: "Promoted to Sales Project",
+  cancelled: "Cancelled",
   "not-interested": "Not Interested",
   dormant: "No Response / Dormant",
   disqualified: "Disqualified",
 };
 
-/** Map legacy prep status onto the prepare-list stage. */
+/** Map legacy prep / not-interested onto current stages. */
 export function normalizeProspectStatus(raw: string | null | undefined): ProspectStatus {
   if (raw === "contact-prepared") return "target-identified";
+  if (raw === "not-interested") return "cancelled";
   if (raw && (PROSPECT_STATUSES as string[]).includes(raw)) {
     return raw as ProspectStatus;
   }
@@ -685,6 +689,7 @@ export type ProspectView =
   | "prepare"
   | "contacted"
   | "engaged"
+  | "cancelled"
   | "all"
   | "insights";
 
@@ -692,6 +697,7 @@ export const PROSPECT_VIEW_LABELS: Record<ProspectView, string> = {
   prepare: "Prepare",
   contacted: "Contacted",
   engaged: "Engaged",
+  cancelled: "Cancelled",
   all: "All Prospects",
   insights: "Insights",
 };
@@ -835,7 +841,9 @@ export function statusAfterOutreachResult(
   result: OutreachResult,
   current: ProspectStatus,
 ): ProspectStatus {
-  if (current === "promoted" || current === "disqualified") return current;
+  if (current === "promoted" || current === "disqualified" || current === "cancelled") {
+    return current;
+  }
   switch (result) {
     case "outreach-sent":
       return "contacted";
@@ -844,11 +852,12 @@ export function statusAfterOutreachResult(
     case "requested-info":
     case "requested-meeting":
     case "requested-offer":
-      return "engaged";
-    case "no-response-cancel":
     case "negative":
     case "not-relevant":
-      return "not-interested";
+      // Negative / not-relevant stay in Engaged so further communications can continue.
+      return "engaged";
+    case "no-response-cancel":
+      return "cancelled";
     case "no-response-follow-up":
     case "follow-up-later":
     case "no-response":

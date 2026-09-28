@@ -98,6 +98,7 @@ export default function ProspectingWorkspace() {
     kpis,
     deleteContact,
     deleteCompany,
+    markCancelled,
   } = useProspecting();
   const { teamMembers, currentUserId, projects } = useProjects();
   const { canWrite, can } = useAuth();
@@ -295,6 +296,14 @@ export default function ProspectingWorkspace() {
           return false;
         }
       }
+      if (view === "cancelled") {
+        if (
+          contact.status !== "cancelled" &&
+          contact.status !== "not-interested"
+        ) {
+          return false;
+        }
+      }
       if (
         filterMarkets.size > 0 &&
         filterMarkets.size < PROSPECT_MARKETS.length
@@ -341,8 +350,8 @@ export default function ProspectingWorkspace() {
       return hay.includes(q);
     });
 
-    // Engaged + All are company-centric: one row per company (primary preferred).
-    if (view !== "engaged" && view !== "all") return matched;
+    // Engaged / Cancelled / All are company-centric: one row per company (primary preferred).
+    if (view !== "engaged" && view !== "cancelled" && view !== "all") return matched;
 
     const byCompany = new Map<string, ProspectWorkRow>();
     for (const row of matched) {
@@ -464,6 +473,7 @@ export default function ProspectingWorkspace() {
 
   const viewCounts = useMemo(() => {
     const engagedCompanyIds = new Set<string>();
+    const cancelledCompanyIds = new Set<string>();
     const allCompanyIds = new Set<string>();
     for (const r of rows) {
       allCompanyIds.add(r.company.id);
@@ -473,6 +483,12 @@ export default function ProspectingWorkspace() {
         r.contact.status === "promoted"
       ) {
         engagedCompanyIds.add(r.company.id);
+      }
+      if (
+        r.contact.status === "cancelled" ||
+        r.contact.status === "not-interested"
+      ) {
+        cancelledCompanyIds.add(r.company.id);
       }
     }
     return {
@@ -485,6 +501,7 @@ export default function ProspectingWorkspace() {
           r.contact.status === "follow-up-due",
       ).length,
       engaged: engagedCompanyIds.size,
+      cancelled: cancelledCompanyIds.size,
       all: allCompanyIds.size,
       insights: 0,
     } satisfies Record<ProspectView, number>;
@@ -899,10 +916,17 @@ export default function ProspectingWorkspace() {
                                   </button>
                                 )}
                                 {(contact.status === "contacted" ||
-                                  contact.status === "follow-up-due") && (
+                                  contact.status === "follow-up-due" ||
+                                  contact.status === "engaged" ||
+                                  contact.status === "qualified") && (
                                   <button
                                     type="button"
-                                    title="Engage"
+                                    title={
+                                      contact.status === "engaged" ||
+                                      contact.status === "qualified"
+                                        ? "Log communication"
+                                        : "Engage"
+                                    }
                                     onClick={() =>
                                       openDialog({
                                         type: "mark-engaged",
@@ -912,7 +936,32 @@ export default function ProspectingWorkspace() {
                                     }
                                     className="rounded-md bg-olive px-2 py-1 text-[10px] font-bold uppercase text-olive-ink"
                                   >
-                                    Engage
+                                    {contact.status === "engaged" ||
+                                    contact.status === "qualified"
+                                      ? "Log"
+                                      : "Engage"}
+                                  </button>
+                                )}
+                                {(contact.status === "engaged" ||
+                                  contact.status === "qualified" ||
+                                  contact.status === "contacted" ||
+                                  contact.status === "follow-up-due") && (
+                                  <button
+                                    type="button"
+                                    title="Move to Cancelled"
+                                    onClick={() => {
+                                      if (
+                                        !window.confirm(
+                                          `Move ${company.name} to Cancelled?`,
+                                        )
+                                      ) {
+                                        return;
+                                      }
+                                      markCancelled(company.id, contact.id);
+                                    }}
+                                    className="rounded-md border border-line bg-panel px-2 py-1 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                                  >
+                                    Cancel
                                   </button>
                                 )}
                                 <button
@@ -1164,7 +1213,7 @@ export default function ProspectingWorkspace() {
                                 {STAGE_LABELS[linked.stage as Stage] ??
                                   linked.stage}
                                 {linked.stage === "cancelled"
-                                  ? " · synced as Not Interested"
+                                  ? " · synced as Cancelled"
                                   : ""}
                               </p>
                             )}
@@ -1205,7 +1254,9 @@ export default function ProspectingWorkspace() {
                     </button>
                   )}
                   {(selected.contact.status === "contacted" ||
-                    selected.contact.status === "follow-up-due") && (
+                    selected.contact.status === "follow-up-due" ||
+                    selected.contact.status === "engaged" ||
+                    selected.contact.status === "qualified") && (
                     <button
                       type="button"
                       onClick={() =>
@@ -1217,7 +1268,34 @@ export default function ProspectingWorkspace() {
                       }
                       className="rounded-lg bg-olive px-2.5 py-1.5 text-[10px] font-bold uppercase text-olive-ink"
                     >
-                      Engage
+                      {selected.contact.status === "engaged" ||
+                      selected.contact.status === "qualified"
+                        ? "Log communication"
+                        : "Engage"}
+                    </button>
+                  )}
+                  {(selected.contact.status === "engaged" ||
+                    selected.contact.status === "qualified" ||
+                    selected.contact.status === "contacted" ||
+                    selected.contact.status === "follow-up-due") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Move ${selected.company.name} to Cancelled?`,
+                          )
+                        ) {
+                          return;
+                        }
+                        markCancelled(
+                          selected.company.id,
+                          selected.contact.id,
+                        );
+                      }}
+                      className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase text-muted hover:border-amber-accent/50 hover:text-amber-accent"
+                    >
+                      Move to Cancelled
                     </button>
                   )}
                   <button

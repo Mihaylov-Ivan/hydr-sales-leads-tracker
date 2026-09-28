@@ -42,6 +42,7 @@ export default function ProjectCard({
 
   const suppressClick = useRef(false);
   const lead = teamMembers.find((m) => m.id === project.leadUserId);
+  const coLead = teamMembers.find((m) => m.id === project.coLeadUserId);
 
   return (
     <Link
@@ -122,6 +123,11 @@ export default function ProjectCard({
       {lead && (
         <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
           Lead: {lead.name}
+        </span>
+      )}
+      {coLead && (
+        <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
+          Co-lead: {coLead.name}
         </span>
       )}
 

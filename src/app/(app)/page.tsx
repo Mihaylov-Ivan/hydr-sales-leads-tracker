@@ -430,9 +430,11 @@ export default function Dashboard() {
     const assignable = assignableTeamMembers(teamMembers);
     const byId = new Map(assignable.map((m) => [m.id, m]));
     for (const p of projects) {
-      if (!p.leadUserId || byId.has(p.leadUserId)) continue;
-      const member = teamMembers.find((m) => m.id === p.leadUserId);
-      if (member) byId.set(member.id, member);
+      for (const uid of [p.leadUserId, p.coLeadUserId]) {
+        if (!uid || byId.has(uid)) continue;
+        const member = teamMembers.find((m) => m.id === uid);
+        if (member) byId.set(member.id, member);
+      }
     }
     const people = [...byId.values()]
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -482,8 +484,11 @@ export default function Dashboard() {
         isSalesBoardProject(p) &&
         (countryFilter === "all" || p.country === countryFilter) &&
         (allLeadsSelected ||
-          (p.leadUserId
-            ? selectedLeadIds.has(p.leadUserId)
+          (p.leadUserId || p.coLeadUserId
+            ? Boolean(
+                (p.leadUserId && selectedLeadIds.has(p.leadUserId)) ||
+                  (p.coLeadUserId && selectedLeadIds.has(p.coLeadUserId)),
+              )
             : selectedLeadIds.has(UNASSIGNED_LEAD))) &&
         MARKETS.some(
           (m) => marketFilter.has(m) && marketIncludesTag(p.market, m),
