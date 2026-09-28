@@ -8,6 +8,7 @@ export type PermissionType =
   | "eu_funding_rnd"
   | "sales_manager"
   | "ai_updates"
+  | "briefings"
   | "viewer";
 
 export const PERMISSION_TYPES: PermissionType[] = [
@@ -19,6 +20,7 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "eu_funding_rnd",
   "sales_manager",
   "ai_updates",
+  "briefings",
   "viewer",
 ];
 
@@ -31,6 +33,7 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   eu_funding_rnd: "EU Funding and R&D",
   sales_manager: "Sales Manager",
   ai_updates: "AI Updates",
+  briefings: "Briefings",
   viewer: "Viewer",
 };
 
@@ -44,6 +47,7 @@ const AREA_PERMISSIONS: PermissionType[] = [
   "eu_funding_rnd",
   "sales_manager",
   "ai_updates",
+  "briefings",
 ];
 
 export interface SessionUser {
