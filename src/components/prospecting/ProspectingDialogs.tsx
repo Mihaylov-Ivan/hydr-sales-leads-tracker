@@ -16,17 +16,22 @@ import {
   PROSPECT_PRIORITY_LABELS,
   PROSPECT_SOURCES,
   PROSPECT_SOURCE_LABELS,
+  PROSPECT_STATUS_LABELS,
   ProspectCompany,
   ProspectContact,
   ProspectMarket,
   ProspectPriority,
   ProspectQualification,
   ProspectSource,
+  ProspectStatus,
   ProspectSystem,
   OutreachChannel,
   OutreachResult,
   YesNoUnknown,
+  allowedManualProspectStatuses,
+  highestHeldProspectSection,
   promoteDefaultStage,
+  prospectPipelineSection,
   todayDateOnly,
 } from "@/lib/prospecting-types";
 import { CREATE_STAGES, STAGE_LABELS, Stage } from "@/lib/types";
@@ -1138,7 +1143,7 @@ export function EditProspectDialog({
   contact: ProspectContact;
   onClose: () => void;
 }) {
-  const { updateCompany, updateContact, addContact, contacts } =
+  const { updateCompany, updateContact, addContact, contacts, activities } =
     useProspecting();
   const { teamMembers, currentUserId } = useProjects();
   const assignable = assignableTeamMembers(teamMembers);
@@ -1178,6 +1183,15 @@ export function EditProspectDialog({
     });
   }, [contacts, company.id, contact.id]);
 
+  const statusOptions = useMemo(
+    () => allowedManualProspectStatuses(contact, company, activities),
+    [contact, company, activities],
+  );
+  const heldSection = useMemo(
+    () => highestHeldProspectSection(contact, company, activities),
+    [contact, company, activities],
+  );
+
   const [name, setName] = useState(company.name);
   const [country, setCountry] = useState(company.country);
   const [city, setCity] = useState(company.city);
@@ -1193,6 +1207,9 @@ export function EditProspectDialog({
   const [strategyWhy, setStrategyWhy] = useState(company.strategyWhy);
   const [companyNotes, setCompanyNotes] = useState(company.notes);
   const [nextAction, setNextAction] = useState(company.nextAction);
+  const [pipelineStatus, setPipelineStatus] = useState<ProspectStatus>(
+    contact.status === "not-interested" ? "cancelled" : contact.status,
+  );
 
   const [existingContacts, setExistingContacts] = useState<ExistingDraft[]>(
     () =>
@@ -1214,6 +1231,9 @@ export function EditProspectDialog({
   const [newContacts, setNewContacts] = useState<NewDraft[]>([]);
 
   const valid = name.trim().length > 0;
+  const statusChanged =
+    pipelineStatus !== contact.status &&
+    !(contact.status === "not-interested" && pipelineStatus === "cancelled");
 
   function updateExisting(id: string, patch: Partial<ExistingDraft>) {
     setExistingContacts((prev) =>
@@ -1247,6 +1267,8 @@ export function EditProspectDialog({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!valid) return;
+    if (!statusOptions.includes(pipelineStatus)) return;
+
     const parsedSize = Number(sizeKw);
     const primaryExisting = existingContacts.find((c) => c.isPrimary);
     const companyFollowUp =
@@ -1257,6 +1279,29 @@ export function EditProspectDialog({
       primaryExisting?.followUpReason.trim() ||
       existingContacts[0]?.followUpReason.trim() ||
       "";
+
+    const nextSection = prospectPipelineSection(pipelineStatus);
+    const companyStatusPatch: Partial<ProspectCompany> = {};
+    if (statusChanged) {
+      if (nextSection === "cancelled") {
+        companyStatusPatch.status = "cancelled";
+        companyStatusPatch.nextAction =
+          nextAction.trim() || companyFollowUpReason || "Cancelled in Prospecting";
+      } else if (nextSection === "engaged") {
+        companyStatusPatch.status = "engaged";
+        if (
+          !nextAction.trim() ||
+          /cancelled/i.test(nextAction) ||
+          /not interested/i.test(nextAction)
+        ) {
+          companyStatusPatch.nextAction = companyFollowUpReason;
+        }
+      } else if (nextSection === "contacted") {
+        companyStatusPatch.status = pipelineStatus;
+      } else {
+        companyStatusPatch.status = "target-identified";
+      }
+    }
 
     updateCompany(company.id, {
       name: name.trim(),
@@ -1270,13 +1315,38 @@ export function EditProspectDialog({
       ownerId: companyOwnerId,
       strategyWhy: strategyWhy.trim(),
       notes: companyNotes.trim(),
-      nextAction: nextAction.trim() || companyFollowUpReason,
+      nextAction:
+        companyStatusPatch.nextAction !== undefined
+          ? companyStatusPatch.nextAction
+          : nextAction.trim() || companyFollowUpReason,
       nextActionAt: companyFollowUp,
       sizeKw:
         Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
+      ...companyStatusPatch,
     });
 
     for (const draft of existingContacts) {
+      const statusPatch: Partial<ProspectContact> = {};
+      if (statusChanged) {
+        // Restore/cancel the whole company contact set when leaving Cancelled
+        // or moving into Cancelled, so the company leaves that section cleanly.
+        if (
+          nextSection === "cancelled" ||
+          prospectPipelineSection(contact.status) === "cancelled"
+        ) {
+          if (
+            draft.id === contact.id ||
+            contacts.find((c) => c.id === draft.id)?.status === "cancelled" ||
+            contacts.find((c) => c.id === draft.id)?.status ===
+              "not-interested" ||
+            nextSection === "cancelled"
+          ) {
+            statusPatch.status = pipelineStatus;
+          }
+        } else if (draft.id === contact.id) {
+          statusPatch.status = pipelineStatus;
+        }
+      }
       updateContact(draft.id, {
         name: draft.name.trim(),
         title: draft.title.trim(),
@@ -1289,6 +1359,7 @@ export function EditProspectDialog({
         nextFollowUpAt: draft.nextFollowUpAt.trim() || null,
         followUpReason: draft.followUpReason.trim(),
         notes: draft.notes.trim(),
+        ...statusPatch,
       });
     }
 
@@ -1333,6 +1404,29 @@ export function EditProspectDialog({
       <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <p className="text-xs font-semibold text-deep">Company</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelCls}>Pipeline section</label>
+          <select
+            className={selectCls}
+            value={pipelineStatus}
+            onChange={(e) =>
+              setPipelineStatus(e.target.value as ProspectStatus)
+            }
+          >
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>
+                {PROSPECT_STATUS_LABELS[status]}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] leading-4 text-muted">
+            {prospectPipelineSection(contact.status) === "cancelled"
+              ? `Cancelled can only return to ${heldSection === "engaged" ? "Engaged" : heldSection === "contacted" ? "Contacted" : "Prepare"} (highest section that already has info). You cannot skip or go further back.`
+              : statusOptions.length <= 1
+                ? "No other section moves are available from here without skipping or losing stage history."
+                : "Manual moves cannot skip sections or go behind a stage that already has information."}
+          </p>
         </div>
         <div className="sm:col-span-2">
           <label className={labelCls}>Company name *</label>

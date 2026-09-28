@@ -1501,9 +1501,6 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
         });
         const contacts = prev.contacts.map((c) => {
           if (c.companyId !== companyId) return c;
-          if (contactId && c.id !== contactId) {
-            // Still cancel other contacts on the company for a clean Cancelled section
-          }
           if (
             c.status === "cancelled" ||
             c.status === "promoted" ||
@@ -1511,9 +1508,17 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           ) {
             return c;
           }
+          const priorStatus = c.status as ProspectStatus;
+          const wasEngaged =
+            priorStatus === "engaged" || priorStatus === "qualified";
           const next: ProspectContact = {
             ...c,
             status: "cancelled",
+            // Preserve an engagement marker so Cancelled → Engaged restore works
+            // even when no engage activity row exists (e.g. markEngaged / Move to Cancelled).
+            responseStatus:
+              c.responseStatus ||
+              (wasEngaged ? "communication-started" : c.responseStatus),
             updatedAt: now,
           };
           persistContact(next, "upsert");

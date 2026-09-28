@@ -868,6 +868,145 @@ export function statusAfterOutreachResult(
   }
 }
 
+/** Workspace pipeline sections for manual status moves. */
+export type ProspectPipelineSection =
+  | "prepare"
+  | "contacted"
+  | "engaged"
+  | "cancelled";
+
+export function prospectPipelineSection(
+  status: ProspectStatus,
+): ProspectPipelineSection {
+  if (status === "cancelled" || status === "not-interested") return "cancelled";
+  if (
+    status === "engaged" ||
+    status === "qualified" ||
+    status === "promoted"
+  ) {
+    return "engaged";
+  }
+  if (status === "contacted" || status === "follow-up-due") return "contacted";
+  return "prepare";
+}
+
+const ENGAGED_ACTIVITY_RESULTS = new Set<string>([
+  ...ENGAGED_RESULTS,
+  "communication-started",
+  "not-relevant",
+]);
+
+function isEngagementResult(result: string | null | undefined): boolean {
+  return Boolean(result && ENGAGED_ACTIVITY_RESULTS.has(result));
+}
+
+/**
+ * Highest pipeline section this prospect has substantive evidence for
+ * (ignoring cancelled). Used so Cancelled can only restore to a section
+ * that already “holds” the history — never skip back past engaged info.
+ */
+export function highestHeldProspectSection(
+  contact: Pick<
+    ProspectContact,
+    | "id"
+    | "status"
+    | "responseStatus"
+    | "firstContactedAt"
+    | "outreachAttempts"
+    | "nextFollowUpAt"
+  >,
+  company: Pick<ProspectCompany, "id" | "status" | "promotedProjectId">,
+  activities: readonly Pick<
+    ProspectActivity,
+    "result" | "contactId" | "companyId"
+  >[] = [],
+): Exclude<ProspectPipelineSection, "cancelled"> {
+  const companyActs = activities.filter((a) => a.companyId === company.id);
+  const contactActs = companyActs.filter((a) => a.contactId === contact.id);
+
+  const hasEngagement =
+    isEngagementResult(contact.responseStatus) ||
+    contactActs.some((a) => isEngagementResult(a.result)) ||
+    companyActs.some((a) => isEngagementResult(a.result)) ||
+    Boolean(company.promotedProjectId) ||
+    company.status === "engaged" ||
+    company.status === "qualified" ||
+    company.status === "promoted" ||
+    contact.status === "engaged" ||
+    contact.status === "qualified" ||
+    contact.status === "promoted";
+
+  if (hasEngagement) return "engaged";
+
+  const hasContact =
+    Boolean(contact.firstContactedAt) ||
+    (contact.outreachAttempts ?? 0) > 0 ||
+    Boolean(contact.nextFollowUpAt) ||
+    contactActs.some((a) => a.result === "outreach-sent") ||
+    companyActs.some((a) => a.result === "outreach-sent") ||
+    contact.status === "contacted" ||
+    contact.status === "follow-up-due" ||
+    company.status === "contacted" ||
+    company.status === "follow-up-due";
+
+  if (hasContact) return "contacted";
+  return "prepare";
+}
+
+function statusForSection(
+  section: Exclude<ProspectPipelineSection, "cancelled">,
+  contact: Pick<ProspectContact, "nextFollowUpAt">,
+): ProspectStatus {
+  if (section === "engaged") return "engaged";
+  if (section === "contacted") {
+    return contact.nextFollowUpAt ? "follow-up-due" : "contacted";
+  }
+  return "target-identified";
+}
+
+/**
+ * Statuses the edit form may assign. No skipping ahead; no moving behind
+ * a section that already has info. From Cancelled, only restore to the
+ * highest prior section that can hold the prospect.
+ */
+export function allowedManualProspectStatuses(
+  contact: ProspectContact,
+  company: ProspectCompany,
+  activities: readonly ProspectActivity[] = [],
+): ProspectStatus[] {
+  const current = normalizeProspectStatus(contact.status);
+  const options = new Set<ProspectStatus>([current]);
+  const section = prospectPipelineSection(current);
+  const held = highestHeldProspectSection(contact, company, activities);
+
+  if (section === "cancelled") {
+    options.add(statusForSection(held, contact));
+    return [...options];
+  }
+
+  // Stay put, or close out to Cancelled without skipping (only from engaged).
+  if (section === "engaged") {
+    options.add("cancelled");
+    return [...options];
+  }
+
+  // Contacted: may cancel only if no engagement evidence yet would be skip
+  // of engaged — so from contacted, allow cancel as close-out when never engaged.
+  if (section === "contacted") {
+    if (held === "contacted" || held === "prepare") {
+      options.add("cancelled");
+    }
+    return [...options];
+  }
+
+  // Prepare: allow cancel (disengage early) without skipping engaged.
+  if (section === "prepare") {
+    options.add("cancelled");
+  }
+
+  return [...options];
+}
+
 export function promoteDefaultStage(
   company: ProspectCompany,
 ): Stage {
