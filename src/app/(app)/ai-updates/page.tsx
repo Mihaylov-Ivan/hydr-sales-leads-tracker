@@ -23,6 +23,7 @@ type Suggestion = {
   project_id: string;
   source_type: string;
   source_label: string | null;
+  source_hash: string | null;
   source_excerpt: string | null;
   operation: Operation;
   title: string;
@@ -114,6 +115,92 @@ function sourceTypeLabel(sourceType: string): string {
   return sourceType.replace(/[-_]/g, " ") || "AI source";
 }
 
+type SourceGroup = {
+  key: string;
+  type: string;
+  label: string;
+  items: Suggestion[];
+  newestAt: string;
+  excerpts: string[];
+};
+
+function sourceGroupKey(suggestion: Suggestion): string {
+  const hash = suggestion.source_hash?.trim();
+  if (hash) return suggestion.source_type + "||" + hash;
+  const label = suggestion.source_label?.trim() || "Unlabelled source";
+  return suggestion.source_type + "||label||" + label;
+}
+
+function preferredSourceLabel(items: Suggestion[]): string {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const label = item.source_label?.trim() || "Unlabelled source";
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  let best = "Unlabelled source";
+  let bestCount = -1;
+  for (const [label, count] of counts) {
+    const shorterTie = count === bestCount && label.length < best.length;
+    if (count > bestCount || shorterTie) {
+      best = label;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function operationSummary(items: Suggestion[]): string {
+  const labels = [...new Set(items.map((item) => operationLabel(item.operation)))];
+  if (labels.length <= 3) return labels.join(" · ");
+  return labels.slice(0, 2).join(" · ") + " · +" + (labels.length - 2) + " more";
+}
+
+function SourceExcerpt({ excerpts }: { excerpts: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = excerpts.join("\n\n");
+  const long = text.length > 280 || text.split("\n").length > 4;
+
+  return (
+    <div className="rounded-lg border border-dashed border-line bg-surface px-3 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">
+        Original source
+      </p>
+      <p
+        className={
+          "mt-1 whitespace-pre-wrap text-sm leading-6 text-deep " +
+          (!expanded && long ? "line-clamp-4" : "")
+        }
+      >
+        {text}
+      </p>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 text-xs font-semibold text-teal-accent hover:underline"
+        >
+          {expanded ? "Show less" : "Show full source"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className={
+        "mt-0.5 h-4 w-4 shrink-0 fill-current text-muted transition-transform " +
+        (open ? "rotate-90 text-teal-accent" : "")
+      }
+      aria-hidden
+    >
+      <path d="M7.2 4.5a.75.75 0 0 1 1.06 0l5 5.25a.75.75 0 0 1 0 1.05l-5 5.25a.75.75 0 1 1-1.06-1.06L11.64 10 7.2 5.56a.75.75 0 0 1 0-1.06Z" />
+    </svg>
+  );
+}
+
 function fieldLabel(key: string): string {
   const labels: Record<string, string> = {
     name: "Project name",
@@ -192,6 +279,8 @@ export default function AiUpdatesPage() {
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  const [openItems, setOpenItems] = useState<Set<string>>(() => new Set());
 
   const projectMap = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -208,22 +297,59 @@ export default function AiUpdatesPage() {
     [teamMembers],
   );
 
-  const groupedSuggestions = useMemo(() => {
+  const groupedSuggestions = useMemo((): SourceGroup[] => {
     const groups = new Map<string, Suggestion[]>();
     for (const suggestion of suggestions) {
-      const key =
-        sourceTypeLabel(suggestion.source_type) +
-        "||" +
-        (suggestion.source_label?.trim() || "Unlabelled source");
+      const key = sourceGroupKey(suggestion);
       const current = groups.get(key) ?? [];
       current.push(suggestion);
       groups.set(key, current);
     }
-    return [...groups.entries()].map(([key, items]) => {
-      const [type, label] = key.split("||");
-      return { key, type, label, items };
-    });
+    return [...groups.entries()]
+      .map(([key, items]) => ({
+        key,
+        type: sourceTypeLabel(items[0]?.source_type ?? ""),
+        label: preferredSourceLabel(items),
+        items,
+        newestAt: items.reduce(
+          (max, item) => (item.created_at > max ? item.created_at : max),
+          items[0]?.created_at ?? "",
+        ),
+        excerpts: [
+          ...new Set(
+            items
+              .map((item) => item.source_excerpt?.trim())
+              .filter((excerpt): excerpt is string => Boolean(excerpt)),
+          ),
+        ],
+      }))
+      .sort((a, b) => {
+        if (a.newestAt !== b.newestAt) return a.newestAt < b.newestAt ? 1 : -1;
+        return a.label.localeCompare(b.label);
+      });
   }, [suggestions]);
+
+  function toggleGroup(key: string) {
+    setOpenGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleItem(id: string) {
+    setOpenItems((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const sourcesExpanded =
+    groupedSuggestions.length > 0 &&
+    groupedSuggestions.every((group) => openGroups.has(group.key));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -461,17 +587,35 @@ export default function AiUpdatesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-deep">AI Suggested Updates</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">
-            Review, correct and approve AI-generated CRM proposals before they change project data.
+            Each block is one source. Open it to see the updates that came from it, then review and approve them.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {groupedSuggestions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (sourcesExpanded) {
+                  setOpenGroups(new Set());
+                  setOpenItems(new Set());
+                } else {
+                  setOpenGroups(new Set(groupedSuggestions.map((group) => group.key)));
+                }
+              }}
+              className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent"
+            >
+              {sourcesExpanded ? "Collapse sources" : "Expand sources"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="rounded-lg border border-line bg-panel px-3 py-2 text-xs font-semibold text-deep shadow-sm transition hover:border-teal-accent/40 hover:text-teal-accent disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -480,7 +624,11 @@ export default function AiUpdatesPage() {
             <button
               key={value}
               type="button"
-              onClick={() => setFilter(value)}
+              onClick={() => {
+                setFilter(value);
+                setOpenGroups(new Set());
+                setOpenItems(new Set());
+              }}
               className={
                 "rounded-lg px-3 py-2 text-xs font-semibold transition " +
                 (filter === value
@@ -509,222 +657,269 @@ export default function AiUpdatesPage() {
           </p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {groupedSuggestions.map((group) => {
-            const excerpts = [...new Set(group.items.map((item) => item.source_excerpt).filter(Boolean))] as string[];
+            const open = openGroups.has(group.key);
             return (
-              <section key={group.key} className="space-y-3">
-                <div className="rounded-xl border border-line bg-surface px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">{group.type}</p>
-                      <h2 className="mt-0.5 text-sm font-semibold text-deep">{group.label}</h2>
-                    </div>
-                    <span className="rounded-md border border-line bg-panel px-2 py-1 text-[10px] font-semibold text-muted">
-                      {group.items.length} update{group.items.length === 1 ? "" : "s"}
+              <section
+                key={group.key}
+                className={
+                  "overflow-hidden rounded-xl border bg-panel shadow-sm " +
+                  (open ? "border-teal-accent/40" : "border-line")
+                }
+              >
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => toggleGroup(group.key)}
+                  className={
+                    "flex w-full items-start gap-3 px-4 py-3.5 text-left transition hover:bg-surface/80 " +
+                    (open ? "bg-teal-soft/40" : "")
+                  }
+                >
+                  <Chevron open={open} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-teal-accent/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-teal-accent">
+                        {group.type}
+                      </span>
+                      <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-semibold text-muted">
+                        {group.items.length} update{group.items.length === 1 ? "" : "s"}
+                      </span>
                     </span>
-                  </div>
-                  {excerpts.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-xs font-semibold text-muted hover:text-deep">
-                        Source context
-                      </summary>
-                      <div className="mt-2 space-y-2 text-xs leading-5 text-muted">
-                        {excerpts.map((excerpt, index) => (
-                          <p key={index} className="whitespace-pre-wrap">{excerpt}</p>
-                        ))}
+                    <span className="mt-1 block text-sm font-semibold text-deep">
+                      {group.label}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted">
+                      {operationSummary(group.items)}
+                      {group.newestAt ? " · " + dateTime(group.newestAt) : ""}
+                    </span>
+                  </span>
+                </button>
+
+                {open && (
+                  <div className="border-t border-line bg-surface/60 px-3 py-3 sm:px-5">
+                    {group.excerpts.length > 0 && (
+                      <div className="mb-3 ml-2 sm:ml-3">
+                        <SourceExcerpt excerpts={group.excerpts} />
                       </div>
-                    </details>
-                  )}
-                </div>
+                    )}
+                    <ul className="ml-2 space-y-2 border-l-2 border-teal-accent/35 sm:ml-3">
+                      {group.items.map((suggestion) => {
+                        const project = projectMap.get(suggestion.project_id);
+                        const draft = drafts[suggestion.id] ?? draftFor(suggestion);
+                        const busy = workingId === suggestion.id;
+                        const itemOpen = openItems.has(suggestion.id);
+                        const clarification =
+                          suggestion.status === "needs-clarification" ||
+                          suggestion.operation === "clarification";
+                        const isTask = suggestion.operation === "create_project_task";
+                        const isTextUpdate = suggestion.operation === "add_project_comment";
+                        const staticLines = staticProposalLines(suggestion);
+                        const editable = filter === "actionable" && !clarification;
+                        const projectName = project?.name ?? "Unknown project";
 
-                {group.items.map((suggestion) => {
-                  const project = projectMap.get(suggestion.project_id);
-                  const draft = drafts[suggestion.id] ?? draftFor(suggestion);
-                  const busy = workingId === suggestion.id;
-                  const clarification =
-                    suggestion.status === "needs-clarification" || suggestion.operation === "clarification";
-                  const isTask = suggestion.operation === "create_project_task";
-                  const isTextUpdate = suggestion.operation === "add_project_comment";
-                  const staticLines = staticProposalLines(suggestion);
-                  const editable = filter === "actionable" && !clarification;
-
-                  return (
-                    <article key={suggestion.id} className="overflow-hidden rounded-xl border border-line bg-panel shadow-sm">
-                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-4 sm:px-5">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded-md border border-line bg-surface px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted">
-                              {operationLabel(suggestion.operation)}
-                            </span>
-                            <span className={"rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wide " + statusCls(suggestion.status)}>
-                              {statusLabel(suggestion.status)}
-                            </span>
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                              {suggestion.confidence} confidence
-                            </span>
-                          </div>
-                          <h3 className="mt-2 text-base font-semibold text-deep">{suggestion.title}</h3>
-                          <p className="mt-1 text-xs text-muted">{dateTime(suggestion.created_at)}</p>
-                        </div>
-
-                        {filter === "actionable" && (
-                          <div className="flex shrink-0 flex-wrap gap-2">
-                            {hasDraftChanges(suggestion) && (
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={async () => {
-                                  setWorkingId(suggestion.id);
-                                  setMessage(null);
-                                  try {
-                                    await saveEdits(suggestion);
-                                    setMessage("Saved edits: " + suggestion.title);
-                                  } catch (error) {
-                                    setMessage(error instanceof Error ? error.message : "Could not save edits.");
-                                  } finally {
-                                    setWorkingId(null);
-                                  }
-                                }}
-                                className="rounded-lg border border-teal-accent/40 bg-surface px-3 py-2 text-xs font-semibold text-teal-accent transition hover:bg-teal-soft/30 disabled:opacity-50"
-                              >
-                                Save changes
-                              </button>
-                            )}
-                            {!clarification && (
-                              <button
-                                type="button"
-                                disabled={busy || !canWrite}
-                                onClick={() => void approve(suggestion)}
-                                className="rounded-lg bg-teal-accent px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {busy ? "Applying…" : "Approve"}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void reject(suggestion)}
-                              className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-4 px-4 py-4 sm:px-5">
-                        <div>
-                          <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Project</label>
-                          {editable ? (
-                            <select
-                              value={draft.projectId}
-                              onChange={(event) => updateDraft(suggestion.id, { projectId: event.target.value })}
-                              className="mt-1 w-full max-w-xl rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
-                            >
-                              {sortedProjects.map((item) => (
-                                <option key={item.id} value={item.id}>{item.name}</option>
-                              ))}
-                            </select>
-                          ) : project ? (
-                            <div className="mt-1">
-                              <Link href={"/projects/" + project.id} className="text-sm font-semibold text-teal-accent hover:underline">
-                                {project.name}
-                              </Link>
-                            </div>
-                          ) : (
-                            <p className="mt-1 text-sm text-muted">{suggestion.project_id}</p>
-                          )}
-                        </div>
-
-                        {(isTextUpdate || isTask) && (
-                          <div>
-                            <label className="text-[10px] font-bold uppercase tracking-wide text-muted">
-                              {isTask ? "Task" : "Suggested update"}
-                            </label>
-                            {editable ? (
-                              <textarea
-                                value={draft.text}
-                                onChange={(event) => updateDraft(suggestion.id, { text: event.target.value })}
-                                rows={isTask ? 4 : 5}
-                                className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 text-deep outline-none focus:border-teal-accent"
-                              />
-                            ) : (
-                              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-deep">
-                                {draft.text || "—"}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {isTask && (
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Deadline</label>
-                              {editable ? (
-                                <input
-                                  type="date"
-                                  value={draft.dueDate}
-                                  onChange={(event) => updateDraft(suggestion.id, { dueDate: event.target.value })}
-                                  className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
-                                />
-                              ) : (
-                                <p className="mt-1 text-sm text-deep">{draft.dueDate || "No deadline"}</p>
-                              )}
-                            </div>
-                            <div>
-                              <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Assigned to</label>
-                              {editable ? (
-                                <select
-                                  value={draft.ownerUserId}
-                                  onChange={(event) => updateDraft(suggestion.id, { ownerUserId: event.target.value })}
-                                  className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
+                        return (
+                          <li key={suggestion.id} className="relative pl-4">
+                            <span
+                              className="absolute top-4 left-0 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-surface bg-teal-accent"
+                              aria-hidden
+                            />
+                            <article className="overflow-hidden rounded-lg border border-line bg-panel">
+                              <div className="flex flex-wrap items-start gap-2 px-3 py-3">
+                                <button
+                                  type="button"
+                                  aria-expanded={itemOpen}
+                                  onClick={() => toggleItem(suggestion.id)}
+                                  className="flex min-w-0 flex-1 items-start gap-2 text-left"
                                 >
-                                  <option value="">Unassigned</option>
-                                  {assignees.map((member) => (
-                                    <option key={member.id} value={member.id}>{member.name}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <p className="mt-1 text-sm text-deep">
-                                  {assignees.find((member) => member.id === draft.ownerUserId)?.name || "Unassigned"}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
+                                  <Chevron open={itemOpen} />
+                                  <span className="min-w-0">
+                                    <span className="flex flex-wrap items-center gap-1.5">
+                                      <span className="rounded-md border border-line bg-surface px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                                        {operationLabel(suggestion.operation)}
+                                      </span>
+                                      <span className={"rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide " + statusCls(suggestion.status)}>
+                                        {statusLabel(suggestion.status)}
+                                      </span>
+                                    </span>
+                                    <span className="mt-1 block text-sm font-semibold text-deep">
+                                      {suggestion.title}
+                                    </span>
+                                    <span className="mt-0.5 block text-xs text-muted">
+                                      {projectName} · {dateTime(suggestion.created_at)}
+                                    </span>
+                                  </span>
+                                </button>
 
-                        {clarification && (
-                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                            <span className="font-semibold">Clarification needed: </span>
-                            {draft.text || "More information is required before this can be approved."}
-                          </div>
-                        )}
+                                {filter === "actionable" && (
+                                  <div className="flex shrink-0 flex-wrap gap-2 pl-6 sm:pl-0">
+                                    {itemOpen && hasDraftChanges(suggestion) && (
+                                      <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={async () => {
+                                          setWorkingId(suggestion.id);
+                                          setMessage(null);
+                                          try {
+                                            await saveEdits(suggestion);
+                                            setMessage("Saved edits: " + suggestion.title);
+                                          } catch (error) {
+                                            setMessage(error instanceof Error ? error.message : "Could not save edits.");
+                                          } finally {
+                                            setWorkingId(null);
+                                          }
+                                        }}
+                                        className="rounded-lg border border-teal-accent/40 bg-surface px-3 py-2 text-xs font-semibold text-teal-accent transition hover:bg-teal-soft/30 disabled:opacity-50"
+                                      >
+                                        Save changes
+                                      </button>
+                                    )}
+                                    {!clarification && (
+                                      <button
+                                        type="button"
+                                        disabled={busy || !canWrite}
+                                        onClick={() => void approve(suggestion)}
+                                        className="rounded-lg bg-teal-accent px-3 py-2 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {busy ? "Applying…" : "Approve"}
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() => void reject(suggestion)}
+                                      className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-muted transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
 
-                        {staticLines.length > 0 && (
-                          <div className="rounded-lg border border-line bg-surface p-3">
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Suggested change</p>
-                            <dl className="mt-2 space-y-2">
-                              {staticLines.map((line) => (
-                                <div key={line.label} className="grid gap-1 sm:grid-cols-[140px_1fr]">
-                                  <dt className="text-xs font-semibold text-muted">{line.label}</dt>
-                                  <dd className="text-sm text-deep">{line.value}</dd>
+                              {itemOpen && (
+                                <div className="space-y-4 border-t border-line px-3 py-4 sm:px-4">
+                                  <div>
+                                    <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Project</label>
+                                    {editable ? (
+                                      <select
+                                        value={draft.projectId}
+                                        onChange={(event) => updateDraft(suggestion.id, { projectId: event.target.value })}
+                                        className="mt-1 w-full max-w-xl rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
+                                      >
+                                        {sortedProjects.map((item) => (
+                                          <option key={item.id} value={item.id}>{item.name}</option>
+                                        ))}
+                                      </select>
+                                    ) : project ? (
+                                      <div className="mt-1">
+                                        <Link href={"/projects/" + project.id} className="text-sm font-semibold text-teal-accent hover:underline">
+                                          {project.name}
+                                        </Link>
+                                      </div>
+                                    ) : (
+                                      <p className="mt-1 text-sm text-muted">{suggestion.project_id}</p>
+                                    )}
+                                  </div>
+
+                                  {(isTextUpdate || isTask) && (
+                                    <div>
+                                      <label className="text-[10px] font-bold uppercase tracking-wide text-muted">
+                                        {isTask ? "Task" : "Suggested update"}
+                                      </label>
+                                      {editable ? (
+                                        <textarea
+                                          value={draft.text}
+                                          onChange={(event) => updateDraft(suggestion.id, { text: event.target.value })}
+                                          rows={isTask ? 4 : 5}
+                                          className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 text-deep outline-none focus:border-teal-accent"
+                                        />
+                                      ) : (
+                                        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-deep">
+                                          {draft.text || "—"}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {isTask && (
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                      <div>
+                                        <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Deadline</label>
+                                        {editable ? (
+                                          <input
+                                            type="date"
+                                            value={draft.dueDate}
+                                            onChange={(event) => updateDraft(suggestion.id, { dueDate: event.target.value })}
+                                            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
+                                          />
+                                        ) : (
+                                          <p className="mt-1 text-sm text-deep">{draft.dueDate || "No deadline"}</p>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <label className="text-[10px] font-bold uppercase tracking-wide text-muted">Assigned to</label>
+                                        {editable ? (
+                                          <select
+                                            value={draft.ownerUserId}
+                                            onChange={(event) => updateDraft(suggestion.id, { ownerUserId: event.target.value })}
+                                            className="mt-1 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-deep outline-none focus:border-teal-accent"
+                                          >
+                                            <option value="">Unassigned</option>
+                                            {assignees.map((member) => (
+                                              <option key={member.id} value={member.id}>{member.name}</option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <p className="mt-1 text-sm text-deep">
+                                            {assignees.find((member) => member.id === draft.ownerUserId)?.name || "Unassigned"}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {clarification && (
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+                                      <span className="font-semibold">Clarification needed: </span>
+                                      {draft.text || "More information is required before this can be approved."}
+                                    </div>
+                                  )}
+
+                                  {staticLines.length > 0 && (
+                                    <div className="rounded-lg border border-line bg-surface p-3">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Suggested change</p>
+                                      <dl className="mt-2 space-y-2">
+                                        {staticLines.map((line) => (
+                                          <div key={line.label} className="grid gap-1 sm:grid-cols-[140px_1fr]">
+                                            <dt className="text-xs font-semibold text-muted">{line.label}</dt>
+                                            <dd className="text-sm text-deep">{line.value}</dd>
+                                          </div>
+                                        ))}
+                                      </dl>
+                                    </div>
+                                  )}
+
+                                  <p className="text-xs leading-5 text-muted">
+                                    <span className="font-semibold text-deep">Confidence: </span>
+                                    {suggestion.confidence}
+                                    {suggestion.rationale ? (
+                                      <>
+                                        <span className="mx-1.5 text-line">·</span>
+                                        <span className="font-semibold text-deep">Why: </span>
+                                        {suggestion.rationale}
+                                      </>
+                                    ) : null}
+                                  </p>
                                 </div>
-                              ))}
-                            </dl>
-                          </div>
-                        )}
-
-                        {suggestion.rationale && (
-                          <p className="text-xs leading-5 text-muted">
-                            <span className="font-semibold text-deep">Why AI suggested it: </span>
-                            {suggestion.rationale}
-                          </p>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
+                              )}
+                            </article>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </section>
             );
           })}
