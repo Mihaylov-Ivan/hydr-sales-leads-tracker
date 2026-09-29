@@ -32,6 +32,7 @@ export default function ProjectCard({
   const nextStepMissing = isProjectNextStepMissing(
     project,
     projectUserReminders,
+    currentUserId,
   );
   // Flatten bullet-point summaries into a single line for the card preview
   const summary = raw
@@ -95,7 +96,7 @@ export default function ProjectCard({
         </div>
         {nextStepMissing && (
           <span
-            title="No open action items and no user has a follow-up reminder enabled"
+            title="No open action items / follow-up for this project (or none assigned to you as lead)"
             className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-600/15 px-2 py-1 text-[11px] font-semibold text-red-700"
           >
             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">

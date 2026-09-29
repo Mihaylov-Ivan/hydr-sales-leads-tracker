@@ -1864,23 +1864,63 @@ export function hasMeaningfulOpenTodo(p: Project): boolean {
   );
 }
 
+/** Open meaningful action items owned by a specific user. */
+export function hasMeaningfulOpenTodoForUser(
+  p: Project,
+  userId: string,
+): boolean {
+  return (p.todos ?? []).some(
+    (t) =>
+      !t.done &&
+      !isSetNextStepTodo(t) &&
+      !isClientFollowUpTodo(t, p.client) &&
+      t.ownerUserId === userId,
+  );
+}
+
+function hasEnabledFollowUpReminder(
+  projectId: string,
+  userReminders: readonly ProjectUserReminder[],
+  userId?: string,
+): boolean {
+  return userReminders.some(
+    (r) =>
+      r.projectId === projectId &&
+      r.emailReminderEnabled === true &&
+      (userId === undefined || r.userId === userId),
+  );
+}
+
 /**
- * True when the project has nothing next: no open action items and
- * no user has an enabled follow-up reminder. Project-level
- * `emailReminderEnabled` is ignored — upcoming contact is driven only by
- * per-user prefs. Applies to sales, EU, and RnD. Warehouse holding,
- * cancelled, and commissioned projects are excluded.
+ * Whether the current viewer should see the "No action" label.
+ *
+ * - Project-wide: no open actions and no follow-up reminder by anyone →
+ *   shown to every viewer.
+ * - Lead-only: the project lead has no personal open actions / reminder →
+ *   shown only when `viewerUserId` is that lead.
+ *
+ * Warehouse holding, cancelled, and commissioned projects are excluded.
  */
 export function isProjectNextStepMissing(
   p: Project,
   userReminders: readonly ProjectUserReminder[] = [],
+  viewerUserId?: string | null,
 ): boolean {
   if (isInternalHiddenProject(p)) return false;
   if (p.stage === "cancelled" || p.stage === "commissioned") return false;
-  const contactPlanned = userReminders.some(
-    (r) => r.projectId === p.id && r.emailReminderEnabled === true,
+
+  const anyoneHasFollowUp = hasEnabledFollowUpReminder(p.id, userReminders);
+  if (!hasMeaningfulOpenTodo(p) && !anyoneHasFollowUp) return true;
+
+  const leadId = p.leadUserId;
+  if (!viewerUserId || !leadId || viewerUserId !== leadId) return false;
+
+  const leadHasFollowUp = hasEnabledFollowUpReminder(
+    p.id,
+    userReminders,
+    leadId,
   );
-  return !hasMeaningfulOpenTodo(p) && !contactPlanned;
+  return !hasMeaningfulOpenTodoForUser(p, leadId) && !leadHasFollowUp;
 }
 
 /** Positive = days until due; 0 = due today; negative = days overdue */
