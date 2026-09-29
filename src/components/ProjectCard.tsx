@@ -120,15 +120,19 @@ export default function ProjectCard({
       <span className="w-fit rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
         {project.market}
       </span>
-      {lead && (
-        <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
-          Lead: {lead.name}
-        </span>
-      )}
-      {coLead && (
-        <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
-          Co-lead: {coLead.name}
-        </span>
+      {(lead || coLead) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {lead && (
+            <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
+              Lead: {lead.name}
+            </span>
+          )}
+          {coLead && (
+            <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
+              Co-lead: {coLead.name}
+            </span>
+          )}
+        </div>
       )}
 
       {showSummary && summary && (

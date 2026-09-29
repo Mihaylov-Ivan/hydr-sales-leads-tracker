@@ -5,10 +5,11 @@
 import type { Project, ProjectGanttOutstanding, ProjectSchedule } from "./types";
 import { todayDate, trackOfProject } from "./types";
 
-/** Delivery stages where a Gantt chart is expected. */
+/** Delivery stages where Outstanding Gantt reminders apply.
+ * Cancelled and commissioned projects are excluded. */
 export function isGanttDeliveryProject(p: Project): boolean {
   if (trackOfProject(p) !== "sales") return false;
-  return p.stage === "under-development" || p.stage === "commissioned";
+  return p.stage === "under-development";
 }
 
 export function projectHasGanttSchedule(
