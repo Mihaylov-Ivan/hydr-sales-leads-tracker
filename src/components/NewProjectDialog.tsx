@@ -13,6 +13,7 @@ import {
   createStagesForTrack,
   defaultStageForTrack,
   PROJECT_TRACK_LABELS,
+  normalizeOptionalProjectText,
 } from "@/lib/types";
 import { assignableTeamMembers } from "@/lib/permissions";
 
@@ -44,7 +45,7 @@ export default function NewProjectDialog({
   const [coLeadUserId, setCoLeadUserId] = useState("");
   const [description, setDescription] = useState("");
 
-  const valid = name.trim() && client.trim() && country.trim();
+  const valid = Boolean(name.trim());
   const title =
     track === "eu"
       ? "New EU Project"
@@ -64,8 +65,8 @@ export default function NewProjectDialog({
     const parsedSize = Number(sizeKw);
     const id = addProject({
       name: name.trim(),
-      client: client.trim(),
-      country: country.trim(),
+      client: normalizeOptionalProjectText(client),
+      country: normalizeOptionalProjectText(country),
       city: city.trim(),
       series,
       market,
@@ -114,7 +115,7 @@ export default function NewProjectDialog({
           </div>
           <div className="sm:col-span-2">
             <label className={labelCls}>
-              {track === "eu" ? "Organisation / consortium *" : "Client *"}
+              {track === "eu" ? "Organisation / consortium" : "Client"}
             </label>
             <input
               className={inputCls}
@@ -124,7 +125,7 @@ export default function NewProjectDialog({
             />
           </div>
           <div>
-            <label className={labelCls}>Country *</label>
+            <label className={labelCls}>Country</label>
             <input
               className={inputCls}
               value={country}

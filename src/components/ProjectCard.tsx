@@ -92,7 +92,9 @@ export default function ProjectCard({
           <h3 className="font-semibold text-deep group-hover:text-teal-accent">
             {project.name}
           </h3>
-          <p className="mt-0.5 text-sm text-muted">{project.client}</p>
+          {project.client ? (
+            <p className="mt-0.5 text-sm text-muted">{project.client}</p>
+          ) : null}
         </div>
         {nextStepMissing && (
           <span
@@ -143,12 +145,14 @@ export default function ProjectCard({
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs text-muted">
-        <span className="inline-flex items-center gap-1">
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current opacity-70">
-            <path d="M8 0a5.5 5.5 0 0 0-5.5 5.5C2.5 9.6 8 16 8 16s5.5-6.4 5.5-10.5A5.5 5.5 0 0 0 8 0Zm0 7.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z" />
-          </svg>
-          {project.city}, {project.country}
-        </span>
+          {project.city || project.country ? (
+            <span className="inline-flex items-center gap-1">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current opacity-70">
+                <path d="M8 0a5.5 5.5 0 0 0-5.5 5.5C2.5 9.6 8 16 8 16s5.5-6.4 5.5-10.5A5.5 5.5 0 0 0 8 0Zm0 7.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z" />
+              </svg>
+              {[project.city, project.country].filter(Boolean).join(", ")}
+            </span>
+          ) : null}
         {project.sizeKw > 0 && (
           <span className="font-semibold text-teal-accent">
             {project.sizeKw.toLocaleString()} kW

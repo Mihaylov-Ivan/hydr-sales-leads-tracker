@@ -1595,6 +1595,17 @@ export function partitionOpenProjectTodos(todos: ProjectTodo[]) {
   return { active, upcoming, rest, done };
 }
 
+/**
+ * Optional free-text project fields (client, country, city).
+ * Treats blank and the old required-field placeholder "..." as empty.
+ */
+export function normalizeOptionalProjectText(
+  value: string | null | undefined,
+): string {
+  const t = (value ?? "").trim();
+  return !t || t === "..." ? "" : t;
+}
+
 export interface Project {
   id: string;
   name: string;

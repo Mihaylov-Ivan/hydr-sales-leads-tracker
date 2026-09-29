@@ -28,6 +28,7 @@ import {
   STAGE_LABELS,
   TODO_KIND_LABELS,
   isInternalHiddenProject,
+  normalizeOptionalProjectText,
   stagesForTrack,
   trackOfProject,
   type Project,
@@ -260,7 +261,7 @@ const EXTENDED_CRM_TOOLS = [
     type: "function",
     name: "create_project",
     description:
-      "Create a new Sales, EU, or RnD project when the signed-in user has access to that track. Ask only for genuinely required missing fields. Project name, client/organisation, and country are required.",
+      "Create a new Sales, EU, or RnD project when the signed-in user has access to that track. Ask only for genuinely required missing fields. Project name is required; client/organisation and country are optional.",
     parameters: {
       type: "object",
       properties: {
@@ -277,7 +278,7 @@ const EXTENDED_CRM_TOOLS = [
         co_lead_user_id: { type: "string" },
         track: { type: "string", enum: ["sales", "eu", "rnd"] },
       },
-      required: ["name", "client", "country"],
+      required: ["name"],
     },
   },
   {
@@ -2966,12 +2967,12 @@ export default function VoiceAssistant() {
         }
 
         const projectName = stringValue(args.name);
-        const client = stringValue(args.client);
-        const country = stringValue(args.country);
-        if (!projectName || !client || !country) {
+        const client = stringValue(args.client) ?? "";
+        const country = stringValue(args.country) ?? "";
+        if (!projectName) {
           return JSON.stringify({
             ok: false,
-            error: "Project name, client/organisation, and country are required.",
+            error: "Project name is required.",
           });
         }
 
@@ -3013,8 +3014,8 @@ export default function VoiceAssistant() {
 
         const id = s.addProject({
           name: projectName,
-          client,
-          country,
+          client: normalizeOptionalProjectText(client),
+          country: normalizeOptionalProjectText(country),
           city: stringValue(args.city) ?? "",
           series: (stringValue(args.series) ?? "Z Series") as Project["series"],
           market: (stringValue(args.market) ?? "Clean H2") as Project["market"],

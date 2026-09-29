@@ -263,16 +263,23 @@ export default function ProjectPage() {
           <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-muted">
             <EditableText
               value={project.client}
-              onSave={(v) => {
-                if (v.trim()) updateProject(project.id, { client: v.trim() });
-              }}
+              placeholder="Client"
+              onSave={(v) =>
+                updateProject(project.id, {
+                  client: v.trim(),
+                })
+              }
               className="text-sm text-muted"
               readOnly={!canWrite}
             />
-            <span>·</span>
-            <span>
-              {project.city}, {project.country}
-            </span>
+            {(project.city || project.country) && (
+              <>
+                <span>·</span>
+                <span>
+                  {[project.city, project.country].filter(Boolean).join(", ")}
+                </span>
+              </>
+            )}
           </p>
         </div>
         {/* Clickable stage badge: opens a native dropdown */}

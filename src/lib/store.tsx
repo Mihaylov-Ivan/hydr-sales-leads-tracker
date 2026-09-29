@@ -67,6 +67,7 @@ import {
   isOwnPersonalTodo,
   normalizeStage,
   normalizeProjectTrack,
+  normalizeOptionalProjectText,
   normalizeTodoKind,
   parseSeriesTags,
   parseMarketTags,
@@ -873,6 +874,8 @@ function loadLocal(): Project[] {
       return parsed.map((p) => ({
         ...p,
         stage: normalizeStage(p.stage),
+        client: normalizeOptionalProjectText(p.client),
+        country: normalizeOptionalProjectText(p.country),
         market: formatMarketTags(parseMarketTags(p.market ?? "Clean H2")),
         ...(p.isWarehouseHolding ? { isWarehouseHolding: true as const } : {}),
         lastClientContactAt:
@@ -1578,6 +1581,13 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             withLocalSchedule(withLocalFinancials(remoteProjects)),
             wh.holdingProjectId,
           ),
+        );
+        // Clear old required-field placeholders left in the DB as "..."
+        void Promise.all([
+          supabase.from("projects").update({ client: "" }).eq("client", "..."),
+          supabase.from("projects").update({ country: "" }).eq("country", "..."),
+        ]).catch((e) =>
+          console.error("Failed to clear client/country placeholders:", e),
         );
         setFinanceSettings(defaultFinanceSettings());
         setMetricsSettings(remoteMetrics);
@@ -2494,6 +2504,9 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       : null;
     const project: Project = {
       ...input,
+      client: normalizeOptionalProjectText(input.client),
+      country: normalizeOptionalProjectText(input.country),
+      city: input.city.trim(),
       series: formatSeriesTags(parseSeriesTags(input.series)),
       market: formatMarketTags(parseMarketTags(input.market)),
       id,
@@ -2769,6 +2782,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         mergedPatch.market = formatMarketTags(
           parseMarketTags(mergedPatch.market),
         );
+      }
+      if (mergedPatch.client !== undefined) {
+        mergedPatch.client = normalizeOptionalProjectText(mergedPatch.client);
+      }
+      if (mergedPatch.country !== undefined) {
+        mergedPatch.country = normalizeOptionalProjectText(mergedPatch.country);
       }
       const updated: Project = { ...current, ...mergedPatch };
       // Empty strings clear optional text/date fields

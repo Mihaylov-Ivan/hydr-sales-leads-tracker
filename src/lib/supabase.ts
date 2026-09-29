@@ -31,6 +31,7 @@ import {
   normalizeTodoKind,
   normalizeStage,
   normalizeStageForTrack,
+  normalizeOptionalProjectText,
   parseSeriesTags,
   parseMarketTags,
   trackOfProject,
@@ -422,9 +423,9 @@ export function projectFromRow(
   return {
     id: row.id,
     name: row.name,
-    client: row.client,
-    country: row.country,
-    city: row.city,
+    client: normalizeOptionalProjectText(row.client),
+    country: normalizeOptionalProjectText(row.country),
+    city: row.city ?? "",
     series: formatSeriesTags(parseSeriesTags(row.series)),
     // Rows created before the markets feature have no market column value
     market: formatMarketTags(parseMarketTags(row.market ?? "Clean H2")),
@@ -478,8 +479,8 @@ export function projectToRow(p: Project): ProjectRow {
   return {
     id: p.id,
     name: p.name,
-    client: p.client,
-    country: p.country,
+    client: normalizeOptionalProjectText(p.client),
+    country: normalizeOptionalProjectText(p.country),
     city: p.city,
     series: p.series,
     market: p.market,
