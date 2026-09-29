@@ -73,28 +73,6 @@ function periodLabel(item: Briefing) {
   )}`;
 }
 
-function metricEntries(value: unknown): Array<[string, string]> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => ["string", "number"].includes(typeof v))
-    .slice(0, 6)
-    .map(([key, v]) => [
-      key
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (char) => char.toUpperCase()),
-      String(v),
-    ]);
-}
-
-function highlightItems(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
 function SummaryBody({ text }: { text: string }) {
   const lines = text.split(/\r?\n/);
   const nodes: React.ReactNode[] = [];
@@ -186,8 +164,6 @@ function CurrentCard({
   onToggle: () => void;
 }) {
   const meta = TYPE_META[type];
-  const metrics = item ? metricEntries(item.metrics) : [];
-  const highlights = item ? highlightItems(item.highlights) : [];
 
   return (
     <section className="overflow-hidden rounded-2xl border border-line bg-panel shadow-sm">
@@ -234,43 +210,7 @@ function CurrentCard({
               </p>
             </div>
           ) : (
-            <div className="space-y-5">
-              {metrics.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {metrics.map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-line bg-surface px-3 py-2"
-                    >
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                        {label}
-                      </div>
-                      <div className="mt-0.5 text-base font-semibold text-deep">
-                        {value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {highlights.length > 0 && (
-                <div className="rounded-xl border border-teal-accent/20 bg-teal-soft/20 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-teal-accent">
-                    Key points
-                  </p>
-                  <ul className="mt-2 space-y-2">
-                    {highlights.map((highlight, index) => (
-                      <li key={index} className="flex gap-2 text-sm leading-5 text-deep">
-                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-accent" />
-                        <span>{highlight}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <SummaryBody text={item.summary} />
-            </div>
+            <SummaryBody text={item.summary} />
           )}
         </div>
       )}
