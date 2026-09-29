@@ -1,6 +1,6 @@
 /**
  * Workspace for a project. Sales stays on the main Board;
- * EU / RnD live on the EU Projects & RnD page.
+ * EU and RnD each have their own board page.
  */
 export type ProjectTrack = "sales" | "eu" | "rnd";
 
@@ -281,7 +281,7 @@ export function parseMarketTags(market: string | null | undefined): MarketTag[] 
   const tags: MarketTag[] = [];
   const seen = new Set<MarketTag>();
   for (const part of parts) {
-    // Funding moved to the EU Projects & RnD page — ignore if still stored.
+    // Funding moved to the EU Projects page — ignore if still stored.
     if (part === "Funding") continue;
     if (!isMarketTag(part) || seen.has(part)) continue;
     seen.add(part);

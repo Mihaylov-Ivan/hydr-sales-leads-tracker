@@ -108,7 +108,8 @@ function canAccessProject(
       permissions.includes("technical_sales")
     );
   }
-  return permissions.includes("eu_funding_rnd");
+  if (track === "eu") return permissions.includes("eu_funding");
+  return permissions.includes("rnd");
 }
 
 function sha256(value: string): string {

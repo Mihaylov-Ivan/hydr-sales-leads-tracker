@@ -2,6 +2,7 @@ import {
   PermissionType,
   SessionUser,
   isPermissionType,
+  normalizePermissionList,
 } from "@/lib/permissions";
 import { createServiceClient } from "@/lib/supabase-server";
 import { newId } from "@/lib/id";
@@ -55,12 +56,11 @@ async function loadPermissions(
     .select("permission_type")
     .eq("user_id", userId);
   if (error) throw new Error(error.message);
-  const out: PermissionType[] = [];
-  for (const row of data ?? []) {
-    const t = (row as { permission_type: string }).permission_type;
-    if (isPermissionType(t) && !out.includes(t)) out.push(t);
-  }
-  return out;
+  return normalizePermissionList(
+    (data ?? []).map(
+      (row) => (row as { permission_type: string }).permission_type,
+    ),
+  );
 }
 
 export async function findUserByUsername(
@@ -117,13 +117,16 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   if (membersRes.error) throw new Error(membersRes.error.message);
   if (permsRes.error) throw new Error(permsRes.error.message);
 
-  const permsByUser = new Map<string, PermissionType[]>();
+  const rawPermsByUser = new Map<string, string[]>();
   for (const row of permsRes.data ?? []) {
     const r = row as { user_id: string; permission_type: string };
-    if (!isPermissionType(r.permission_type)) continue;
-    const list = permsByUser.get(r.user_id) ?? [];
-    if (!list.includes(r.permission_type)) list.push(r.permission_type);
-    permsByUser.set(r.user_id, list);
+    const list = rawPermsByUser.get(r.user_id) ?? [];
+    list.push(r.permission_type);
+    rawPermsByUser.set(r.user_id, list);
+  }
+  const permsByUser = new Map<string, PermissionType[]>();
+  for (const [userId, raw] of rawPermsByUser) {
+    permsByUser.set(userId, normalizePermissionList(raw));
   }
 
   return (membersRes.data ?? [])

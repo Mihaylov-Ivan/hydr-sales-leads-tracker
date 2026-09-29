@@ -5,7 +5,8 @@ export type PermissionType =
   | "warehouse"
   | "production"
   | "technical_sales"
-  | "eu_funding_rnd"
+  | "eu_funding"
+  | "rnd"
   | "sales_manager"
   | "ai_updates"
   | "briefings"
@@ -17,7 +18,8 @@ export const PERMISSION_TYPES: PermissionType[] = [
   "warehouse",
   "production",
   "technical_sales",
-  "eu_funding_rnd",
+  "eu_funding",
+  "rnd",
   "sales_manager",
   "ai_updates",
   "briefings",
@@ -30,7 +32,8 @@ export const PERMISSION_LABELS: Record<PermissionType, string> = {
   warehouse: "Warehouse",
   production: "Production",
   technical_sales: "Technical sales",
-  eu_funding_rnd: "EU Funding and R&D",
+  eu_funding: "EU Funding",
+  rnd: "R&D",
   sales_manager: "Sales Manager",
   ai_updates: "AI Updates",
   briefings: "Briefings",
@@ -44,7 +47,8 @@ const AREA_PERMISSIONS: PermissionType[] = [
   "warehouse",
   "production",
   "technical_sales",
-  "eu_funding_rnd",
+  "eu_funding",
+  "rnd",
   "sales_manager",
   "ai_updates",
   "briefings",
@@ -108,9 +112,18 @@ export function canAccessRoute(
   return access.permissions.some((p) => user.permissions.includes(p));
 }
 
+/** Permission required for an EU / RnD project track. */
+export function permissionForTrack(
+  track: "sales" | "eu" | "rnd",
+): PermissionType | PermissionType[] {
+  if (track === "eu") return "eu_funding";
+  if (track === "rnd") return "rnd";
+  return ["sales", "technical_sales"];
+}
+
 /**
  * Map pathname → required access.
- * `/` and `/projects/*` are sales, technical_sales, or eu_funding_rnd
+ * `/` and `/projects/*` are sales, technical_sales, eu_funding, or rnd
  * (project page further gates by track).
  * `/todos` is any authenticated non-viewer.
  * Unknown app paths default to admin-only for safety.
@@ -147,13 +160,20 @@ export function accessForPath(pathname: string): RouteAccess {
   if (pathname === "/prospecting" || pathname.startsWith("/prospecting/")) {
     return { kind: "permission", permission: "sales" };
   }
+  if (pathname === "/eu" || pathname.startsWith("/eu/")) {
+    return { kind: "permission", permission: "eu_funding" };
+  }
+  if (pathname === "/rnd" || pathname.startsWith("/rnd/")) {
+    return { kind: "permission", permission: "rnd" };
+  }
+  // Legacy combined board redirects to /eu; keep accessible to either perm.
   if (pathname === "/eu-rnd" || pathname.startsWith("/eu-rnd/")) {
-    return { kind: "permission", permission: "eu_funding_rnd" };
+    return { kind: "anyOf", permissions: ["eu_funding", "rnd"] };
   }
   if (pathname.startsWith("/projects/")) {
     return {
       kind: "anyOf",
-      permissions: ["sales", "technical_sales", "eu_funding_rnd"],
+      permissions: ["sales", "technical_sales", "eu_funding", "rnd"],
     };
   }
   if (
@@ -194,7 +214,8 @@ export function defaultHomePath(
   ) {
     return "/";
   }
-  if (user.permissions.includes("eu_funding_rnd")) return "/eu-rnd";
+  if (user.permissions.includes("eu_funding")) return "/eu";
+  if (user.permissions.includes("rnd")) return "/rnd";
   if (user.permissions.includes("finance")) return "/finance";
   if (user.permissions.includes("warehouse")) return "/warehouse";
   if (user.permissions.includes("production")) return "/production";
@@ -219,9 +240,14 @@ export const NAV_ITEMS: NavItem[] = [
     access: { kind: "anyOf", permissions: ["sales", "technical_sales"] },
   },
   {
-    href: "/eu-rnd",
-    label: "EU Projects & RnD",
-    access: { kind: "permission", permission: "eu_funding_rnd" },
+    href: "/eu",
+    label: "EU Projects",
+    access: { kind: "permission", permission: "eu_funding" },
+  },
+  {
+    href: "/rnd",
+    label: "RnD",
+    access: { kind: "permission", permission: "rnd" },
   },
   { href: "/todos", label: "To-Dos", access: { kind: "nonViewer" } },
   {
@@ -252,6 +278,25 @@ export function visibleNavItems(
 
 export function isPermissionType(value: string): value is PermissionType {
   return (PERMISSION_TYPES as string[]).includes(value);
+}
+
+/**
+ * Expand legacy combined `eu_funding_rnd` into the split permissions when
+ * reading rows that have not been migrated yet.
+ */
+export function normalizePermissionList(
+  values: readonly string[],
+): PermissionType[] {
+  const out: PermissionType[] = [];
+  for (const value of values) {
+    if (value === "eu_funding_rnd") {
+      if (!out.includes("eu_funding")) out.push("eu_funding");
+      if (!out.includes("rnd")) out.push("rnd");
+      continue;
+    }
+    if (isPermissionType(value) && !out.includes(value)) out.push(value);
+  }
+  return out;
 }
 
 export function hasAreaPermission(

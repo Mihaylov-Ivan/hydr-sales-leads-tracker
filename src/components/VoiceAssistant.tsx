@@ -1417,7 +1417,8 @@ export default function VoiceAssistant() {
           s.user.permissions.includes("technical_sales")
         );
       }
-      return s.user.permissions.includes("eu_funding_rnd");
+      if (track === "eu") return s.user.permissions.includes("eu_funding");
+      return s.user.permissions.includes("rnd");
     });
   }, []);
 
@@ -1458,18 +1459,22 @@ export default function VoiceAssistant() {
             s.user.permissions.includes("technical_sales")
           );
         }
-        return s.user.permissions.includes("eu_funding_rnd");
+        if (track === "eu") return s.user.permissions.includes("eu_funding");
+        return s.user.permissions.includes("rnd");
       };
       const hasFinanceProjectAccess = (project: Project): boolean => {
         if (has("finance")) return true;
         const track = trackOfProject(project);
-        return track !== "sales" && has("eu_funding_rnd");
+        if (track === "eu") return has("eu_funding");
+        if (track === "rnd") return has("rnd");
+        return false;
       };
       const hasGanttWriteAccess = (project: Project): boolean => {
         if (!s.authEnabled || s.user?.isAdmin) return true;
         const track = trackOfProject(project);
         if (track === "sales") return has("technical_sales");
-        return has("eu_funding_rnd");
+        if (track === "eu") return has("eu_funding");
+        return has("rnd");
       };
       const hasGanttReadAccess = (project: Project): boolean => {
         if (has("production")) return true;
@@ -2958,7 +2963,9 @@ export default function VoiceAssistant() {
         const trackAllowed =
           track === "sales"
             ? has("sales") || has("technical_sales")
-            : has("eu_funding_rnd");
+            : track === "eu"
+              ? has("eu_funding")
+              : has("rnd");
         if (!trackAllowed) {
           return JSON.stringify({
             ok: false,

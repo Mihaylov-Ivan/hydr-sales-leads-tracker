@@ -162,27 +162,39 @@ export default function ProjectPage() {
   const project = useMemo(() => projects.find((p) => p.id === id), [projects, id]);
   const projectTrack = project ? trackOfProject(project) : "sales";
   const trackStages = stagesForTrack(projectTrack);
-  const isEuRndTrack = projectTrack === "eu" || projectTrack === "rnd";
   const expensesOnly = projectTrack === "rnd";
 
   const canAccessProject = useMemo(() => {
     if (!project || !user) return false;
     if (user.isAdmin) return true;
-    if (isEuRndTrack) {
-      return user.permissions.includes("eu_funding_rnd");
+    if (projectTrack === "eu") {
+      return user.permissions.includes("eu_funding");
+    }
+    if (projectTrack === "rnd") {
+      return user.permissions.includes("rnd");
     }
     return (
       user.permissions.includes("sales") ||
       user.permissions.includes("technical_sales")
     );
-  }, [project, user, isEuRndTrack]);
+  }, [project, user, projectTrack]);
 
   const canViewGantt =
-    can("technical_sales") || (isEuRndTrack && can("eu_funding_rnd"));
+    can("technical_sales") ||
+    (projectTrack === "eu" && can("eu_funding")) ||
+    (projectTrack === "rnd" && can("rnd"));
   const canViewFinance =
-    can("finance") || (isEuRndTrack && can("eu_funding_rnd"));
-  const boardHref = isEuRndTrack ? "/eu-rnd" : "/";
-  const boardLabel = isEuRndTrack ? "EU Projects & RnD" : "All projects";
+    can("finance") ||
+    (projectTrack === "eu" && can("eu_funding")) ||
+    (projectTrack === "rnd" && can("rnd"));
+  const boardHref =
+    projectTrack === "eu" ? "/eu" : projectTrack === "rnd" ? "/rnd" : "/";
+  const boardLabel =
+    projectTrack === "eu"
+      ? "EU Projects"
+      : projectTrack === "rnd"
+        ? "RnD"
+        : "All projects";
 
   if (!ready) {
     return <p className="py-20 text-center text-muted">Loading…</p>;
