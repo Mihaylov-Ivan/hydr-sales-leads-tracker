@@ -7,7 +7,7 @@ import {
   PERSONAL_TODO_BOARD_STATUSES,
   PERSONAL_TODO_STATUS_LABELS,
   PERSONAL_TODO_STATUSES,
-  comparePersonalTodos,
+  comparePersonalTodosByDeadline,
   isOwnPersonalTodo,
 } from "@/lib/types";
 import PersonalTodoCard, {
@@ -367,7 +367,7 @@ export default function PersonalTodosPage() {
     };
     for (const t of filtered) map[t.status].push(t);
     for (const status of PERSONAL_TODO_STATUSES) {
-      map[status].sort(comparePersonalTodos);
+      map[status].sort(comparePersonalTodosByDeadline);
     }
     return map;
   }, [filtered]);
