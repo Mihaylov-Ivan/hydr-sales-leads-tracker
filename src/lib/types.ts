@@ -1868,8 +1868,8 @@ export function hasMeaningfulOpenTodo(p: Project): boolean {
  * True when the project has nothing next: no open action items and
  * no user has an enabled follow-up reminder. Project-level
  * `emailReminderEnabled` is ignored — upcoming contact is driven only by
- * per-user prefs. Warehouse holding, cancelled, and commissioned projects
- * are excluded.
+ * per-user prefs. Applies to sales, EU, and RnD. Warehouse holding,
+ * cancelled, and commissioned projects are excluded.
  */
 export function isProjectNextStepMissing(
   p: Project,
@@ -1877,7 +1877,6 @@ export function isProjectNextStepMissing(
 ): boolean {
   if (isInternalHiddenProject(p)) return false;
   if (p.stage === "cancelled" || p.stage === "commissioned") return false;
-  if (trackOfProject(p) !== "sales") return false;
   const contactPlanned = userReminders.some(
     (r) => r.projectId === p.id && r.emailReminderEnabled === true,
   );
