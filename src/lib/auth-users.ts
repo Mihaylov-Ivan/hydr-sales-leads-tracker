@@ -15,6 +15,7 @@ export interface AuthUserRow {
   password_hash: string | null;
   is_admin: boolean;
   is_active: boolean;
+  is_assignable?: boolean | null;
   must_change_password: boolean;
 }
 
@@ -25,6 +26,8 @@ export interface ManagedUser {
   username: string;
   isAdmin: boolean;
   isActive: boolean;
+  /** When false, hidden from project lead / task assignment pickers. */
+  isAssignable: boolean;
   mustChangePassword: boolean;
   permissions: PermissionType[];
   hasPassword: boolean;
@@ -108,9 +111,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
   const [membersRes, permsRes] = await Promise.all([
     db
       .from("team_members")
-      .select(
-        "id, name, email, username, password_hash, is_admin, is_active, must_change_password, created_at",
-      )
+      .select("*")
       .order("name", { ascending: true }),
     db.from("user_permission_types").select("user_id, permission_type"),
   ]);
@@ -140,6 +141,7 @@ export async function listManagedUsers(): Promise<ManagedUser[]> {
         username,
         isAdmin: Boolean(row.is_admin),
         isActive: row.is_active !== false,
+        isAssignable: row.is_assignable !== false,
         mustChangePassword: Boolean(row.must_change_password),
         permissions: permsByUser.get(row.id) ?? [],
         hasPassword: Boolean(row.password_hash),
@@ -200,6 +202,7 @@ export async function createManagedUser(input: {
   email?: string;
   passwordHash: string;
   isAdmin: boolean;
+  isAssignable?: boolean;
   permissions: PermissionType[];
 }): Promise<ManagedUser> {
   const db = createServiceClient();
@@ -207,6 +210,7 @@ export async function createManagedUser(input: {
   const username = input.username.trim().toLowerCase();
   const name = input.name.trim();
   const email = input.email?.trim() || null;
+  const isAssignable = input.isAssignable !== false;
 
   const { error } = await db.from("team_members").insert({
     id,
@@ -216,6 +220,7 @@ export async function createManagedUser(input: {
     password_hash: input.passwordHash,
     is_admin: input.isAdmin,
     is_active: true,
+    is_assignable: isAssignable,
     must_change_password: true,
   });
   if (error) throw new Error(error.message);
@@ -235,6 +240,7 @@ export async function createManagedUser(input: {
     username,
     isAdmin: input.isAdmin,
     isActive: true,
+    isAssignable,
     mustChangePassword: true,
     permissions: input.isAdmin ? [] : input.permissions,
     hasPassword: true,
@@ -249,6 +255,7 @@ export async function updateManagedUser(
     username?: string;
     isAdmin?: boolean;
     isActive?: boolean;
+    isAssignable?: boolean;
     mustChangePassword?: boolean;
     passwordHash?: string;
     permissions?: PermissionType[];
@@ -265,6 +272,7 @@ export async function updateManagedUser(
   }
   if (patch.isAdmin !== undefined) row.is_admin = patch.isAdmin;
   if (patch.isActive !== undefined) row.is_active = patch.isActive;
+  if (patch.isAssignable !== undefined) row.is_assignable = patch.isAssignable;
   if (patch.mustChangePassword !== undefined) {
     row.must_change_password = patch.mustChangePassword;
   }

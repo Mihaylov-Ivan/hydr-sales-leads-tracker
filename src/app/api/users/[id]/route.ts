@@ -58,6 +58,7 @@ export async function PATCH(
     username?: string;
     isAdmin?: boolean;
     isActive?: boolean;
+    isAssignable?: boolean;
     password?: string;
     permissions?: string[];
   };
@@ -98,6 +99,9 @@ export async function PATCH(
       ...(body.username !== undefined ? { username: body.username } : {}),
       ...(body.isAdmin !== undefined ? { isAdmin: body.isAdmin } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+      ...(body.isAssignable !== undefined
+        ? { isAssignable: body.isAssignable }
+        : {}),
       ...(permissions !== undefined ? { permissions } : {}),
       ...(body.password
         ? {

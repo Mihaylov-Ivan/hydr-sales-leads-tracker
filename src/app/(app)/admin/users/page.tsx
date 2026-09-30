@@ -15,6 +15,7 @@ interface ManagedUser {
   username: string;
   isAdmin: boolean;
   isActive: boolean;
+  isAssignable: boolean;
   mustChangePassword: boolean;
   permissions: PermissionType[];
   hasPassword: boolean;
@@ -70,6 +71,7 @@ function UserRow({
   const [email, setEmail] = useState(user.email ?? "");
   const [isAdmin, setIsAdmin] = useState(user.isAdmin);
   const [isActive, setIsActive] = useState(user.isActive);
+  const [isAssignable, setIsAssignable] = useState(user.isAssignable !== false);
   const [permissions, setPermissions] = useState<PermissionType[]>(
     user.permissions,
   );
@@ -84,6 +86,7 @@ function UserRow({
     setEmail(user.email ?? "");
     setIsAdmin(user.isAdmin);
     setIsActive(user.isActive);
+    setIsAssignable(user.isAssignable !== false);
     setPermissions(user.permissions);
   }, [user]);
 
@@ -102,6 +105,7 @@ function UserRow({
           email: email.trim() || null,
           isAdmin,
           isActive,
+          isAssignable,
           permissions: isAdmin ? [] : permissions,
           ...(password.trim() ? { password: password.trim() } : {}),
         }),
@@ -191,6 +195,17 @@ function UserRow({
           />
           Active
         </label>
+        <label
+          className="flex items-center gap-1.5 text-sm text-deep"
+          title="Uncheck to hide this user from project lead and task assignment menus"
+        >
+          <input
+            type="checkbox"
+            checked={isAssignable}
+            onChange={(e) => setIsAssignable(e.target.checked)}
+          />
+          Assignable (project lead & tasks)
+        </label>
         {!user.hasPassword && (
           <span className="text-xs font-semibold text-amber-700">
             No password set yet
@@ -205,6 +220,11 @@ function UserRow({
           <span className="text-xs text-muted">Must change password</span>
         )}
       </div>
+      {!isAssignable && (
+        <p className="mt-1.5 text-[11px] text-muted">
+          Hidden from project lead and task assignment options.
+        </p>
+      )}
 
       {!isAdmin && (
         <div className="mt-3">
@@ -245,6 +265,7 @@ export default function AdminUsersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isAssignable, setIsAssignable] = useState(true);
   const [permissions, setPermissions] = useState<PermissionType[]>(["sales"]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -290,6 +311,7 @@ export default function AdminUsersPage() {
           email: email.trim() || undefined,
           password,
           isAdmin,
+          isAssignable,
           permissions: isAdmin ? [] : permissions,
         }),
       });
@@ -306,6 +328,7 @@ export default function AdminUsersPage() {
       setEmail("");
       setPassword("");
       setIsAdmin(false);
+      setIsAssignable(true);
       setPermissions(["sales"]);
       setUsers((prev) =>
         [...prev, data.user!].sort((a, b) => a.name.localeCompare(b.name)),
@@ -323,8 +346,9 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-2xl font-bold text-deep">Users</h1>
         <p className="mt-1 text-sm text-muted">
-          Create accounts, assign permission types, and reset passwords. Admin
-          users have access to every feature and all data.
+          Create accounts, set who can be chosen as project lead or task
+          assignee, assign permission types, and reset passwords. Admin users
+          have access to every feature and all data.
         </p>
       </div>
 
@@ -389,6 +413,14 @@ export default function AdminUsersPage() {
                 onChange={(e) => setIsAdmin(e.target.checked)}
               />
               Admin
+            </label>
+            <label className="flex items-center gap-1.5 text-sm text-deep">
+              <input
+                type="checkbox"
+                checked={isAssignable}
+                onChange={(e) => setIsAssignable(e.target.checked)}
+              />
+              Assignable (project lead & tasks)
             </label>
           </div>
           {!isAdmin && (

@@ -307,13 +307,14 @@ export function hasAreaPermission(
 }
 
 /** Members who can be chosen as lead/owner/assignee.
- * Hides only the system `admin` account (not other admin-role users), plus
- * viewers and inactive members.
+ * Respects `isAssignable` (Users admin checkbox). Also hides inactive
+ * members and viewers.
  */
 export function assignableTeamMembers<
   T extends {
     id: string;
     isActive?: boolean;
+    isAssignable?: boolean;
     username?: string;
     name?: string;
     isAdmin?: boolean;
@@ -323,11 +324,9 @@ export function assignableTeamMembers<
 >(members: T[]): T[] {
   return members.filter((m) => {
     if (m.isActive === false) return false;
+    if (m.isAssignable === false) return false;
     if (m.isViewer) return false;
     if (m.permissions?.includes("viewer")) return false;
-    const username = m.username?.trim().toLowerCase() ?? "";
-    if (username === "admin" || m.id === "u-admin") return false;
-    if (m.name?.trim().toLowerCase() === "admin") return false;
     return true;
   });
 }

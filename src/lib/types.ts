@@ -315,10 +315,16 @@ export interface TeamMember {
   name: string;
   email?: string;
   username?: string;
-  /** From team_members.is_admin — excluded from assignment pickers */
+  /** From team_members.is_admin */
   isAdmin?: boolean;
   /** From team_members.is_active — inactive users hidden from pickers */
   isActive?: boolean;
+  /**
+   * From team_members.is_assignable — when false, hidden from project lead
+   * and task assignment pickers (admin / test accounts, etc.).
+   * Defaults to true when omitted.
+   */
+  isAssignable?: boolean;
   /** From user_permission_types — viewers cannot be assigned tasks/projects */
   isViewer?: boolean;
 }

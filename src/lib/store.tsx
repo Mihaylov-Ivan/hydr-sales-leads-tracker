@@ -1069,6 +1069,9 @@ function sanitizeTeamMembers(rows: TeamMember[]): TeamMember[] {
       ...(m.username?.trim() ? { username: m.username.trim() } : {}),
       ...(m.isAdmin ? { isAdmin: true } : {}),
       ...(m.isActive === false ? { isActive: false } : { isActive: true }),
+      ...(m.isAssignable === false
+        ? { isAssignable: false }
+        : { isAssignable: true }),
       ...(m.isViewer ? { isViewer: true } : {}),
     }))
     .filter((m) => m.id && m.name);

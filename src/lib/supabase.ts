@@ -362,6 +362,7 @@ export interface TeamMemberRow {
   username?: string | null;
   is_admin?: boolean | null;
   is_active?: boolean | null;
+  is_assignable?: boolean | null;
 }
 
 export function teamMemberFromRow(row: TeamMemberRow): TeamMember {
@@ -372,6 +373,9 @@ export function teamMemberFromRow(row: TeamMemberRow): TeamMember {
     ...(row.username ? { username: row.username } : {}),
     ...(row.is_admin ? { isAdmin: true } : {}),
     ...(row.is_active === false ? { isActive: false } : { isActive: true }),
+    ...(row.is_assignable === false
+      ? { isAssignable: false }
+      : { isAssignable: true }),
   };
 }
 

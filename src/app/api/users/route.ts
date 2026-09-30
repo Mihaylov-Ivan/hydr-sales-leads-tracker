@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     email?: string;
     password?: string;
     isAdmin?: boolean;
+    isAssignable?: boolean;
     permissions?: string[];
   };
   try {
@@ -103,6 +104,7 @@ export async function POST(request: NextRequest) {
       email: body.email,
       passwordHash: hashPassword(password),
       isAdmin: Boolean(body.isAdmin),
+      isAssignable: body.isAssignable !== false,
       permissions,
     });
     return NextResponse.json({ user }, { status: 201 });
