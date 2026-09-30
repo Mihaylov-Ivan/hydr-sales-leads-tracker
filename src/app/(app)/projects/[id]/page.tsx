@@ -825,7 +825,7 @@ export default function ProjectPage() {
                       </span>
                       )}
                     </div>
-                    {editingCommentId === c.id ? (
+                    {editingCommentId === c.id && canWrite ? (
                       <div className="flex flex-col gap-2">
                         <ChainTextarea
                           autoFocus
@@ -864,7 +864,7 @@ export default function ProjectPage() {
                           </button>
                         </div>
                       </div>
-                    ) : (
+                    ) : canWrite ? (
                       <p
                         onClick={() => {
                           setEditingCommentId(c.id);
@@ -874,6 +874,10 @@ export default function ProjectPage() {
                         title="Click to edit"
                         className="-mx-1 cursor-text whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink transition hover:bg-teal-soft/60"
                       >
+                        <MentionRichText text={c.text ?? ""} />
+                      </p>
+                    ) : (
+                      <p className="-mx-1 whitespace-pre-wrap rounded px-1 text-sm leading-relaxed text-ink">
                         <MentionRichText text={c.text ?? ""} />
                       </p>
                     )}

@@ -571,7 +571,7 @@ export default function ProspectingWorkspace() {
         </div>
       </div>
 
-      <StrategySection />
+      {canSeeInsights && <StrategySection />}
 
       {/* Views */}
       <div className="flex flex-wrap items-center gap-1 border-b border-line pb-0">
@@ -884,6 +884,7 @@ export default function ProspectingWorkspace() {
                               className="px-3 py-2.5"
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {canWrite ? (
                               <div className="flex flex-wrap gap-1">
                                 <button
                                   type="button"
@@ -975,6 +976,11 @@ export default function ProspectingWorkspace() {
                                   Delete
                                 </button>
                               </div>
+                              ) : (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                                  View only
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1005,6 +1011,7 @@ export default function ProspectingWorkspace() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
+                      {canWrite && (
                       <button
                         type="button"
                         onClick={() =>
@@ -1018,6 +1025,7 @@ export default function ProspectingWorkspace() {
                       >
                         Edit
                       </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setSelectedContactId(null)}
@@ -1094,6 +1102,7 @@ export default function ProspectingWorkspace() {
                       <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                         Contacts ({companyContacts.length})
                       </h4>
+                      {canWrite && (
                       <button
                         type="button"
                         onClick={() =>
@@ -1106,6 +1115,7 @@ export default function ProspectingWorkspace() {
                       >
                         + Add
                       </button>
+                      )}
                     </div>
                     <ul className="mt-1 space-y-1">
                       {companyContacts.map((c) => (
@@ -1169,7 +1179,7 @@ export default function ProspectingWorkspace() {
                     {selectedActivities.length === 0 ? (
                       <p className="mt-1 text-xs text-muted">No outreach yet</p>
                     ) : (
-                      <ul className="mt-1 space-y-2">
+                      <ul className="mt-1 max-h-48 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
                         {selectedActivities.map((a) => (
                           <li
                             key={a.id}
@@ -1225,6 +1235,8 @@ export default function ProspectingWorkspace() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 border-t border-line p-3">
+                  {canWrite ? (
+                    <>
                   <button
                     type="button"
                     onClick={() =>
@@ -1314,6 +1326,12 @@ export default function ProspectingWorkspace() {
                   >
                     Delete company
                   </button>
+                    </>
+                  ) : (
+                    <span className="rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                      View only
+                    </span>
+                  )}
                 </div>
               </aside>
             )}

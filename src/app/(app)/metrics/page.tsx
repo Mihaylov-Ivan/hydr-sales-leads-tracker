@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useProjects } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 import { TEAM_MEMBERS, todayDate, isSalesBoardProject } from "@/lib/types";
 import {
   buildMetricsSnapshot,
@@ -83,6 +84,7 @@ export default function MetricsPage() {
     metricsSettings,
     updateMetricsSettings,
   } = useProjects();
+  const { user } = useAuth();
   const asOf = todayDate();
 
   const [filters, setFilters] = useState<MetricsFilters>({
@@ -128,11 +130,15 @@ export default function MetricsPage() {
   }, [owners]);
 
   const metricsProjects = useMemo(() => {
-    if (useDemoData) return PLACEHOLDER_METRICS_PROJECTS;
+    if (useDemoData && user?.isAdmin) return PLACEHOLDER_METRICS_PROJECTS;
     return projects
       .filter((p) => isSalesBoardProject(p))
       .map(projectToMetricsProject);
-  }, [projects, useDemoData]);
+  }, [projects, useDemoData, user?.isAdmin]);
+
+  useEffect(() => {
+    if (!user?.isAdmin && useDemoData) setUseDemoData(false);
+  }, [user?.isAdmin, useDemoData]);
 
   const snapshot = useMemo(
     () =>
@@ -213,16 +219,18 @@ export default function MetricsPage() {
           Pipeline Metrics
         </h1>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-medium text-ink">
-            <input
-              type="checkbox"
-              checked={useDemoData}
-              onChange={(e) => setUseDemoData(e.target.checked)}
-              className="rounded border-line"
-            />
-            Use demo cohort (100 placeholder projects)
-          </label>
-          {!useDemoData && (
+          {user?.isAdmin && (
+            <label className="inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2 text-xs font-medium text-ink">
+              <input
+                type="checkbox"
+                checked={useDemoData}
+                onChange={(e) => setUseDemoData(e.target.checked)}
+                className="rounded border-line"
+              />
+              Use demo cohort (100 placeholder projects)
+            </label>
+          )}
+          {(!user?.isAdmin || !useDemoData) && (
             <span className="text-xs text-muted">
               Using {projects.length} live Sales Project
               {projects.length === 1 ? "" : "s"}
