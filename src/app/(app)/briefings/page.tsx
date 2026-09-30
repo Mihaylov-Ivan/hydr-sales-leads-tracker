@@ -206,7 +206,7 @@ function CurrentCard({
                 No {meta.label.toLowerCase()} briefing yet
               </p>
               <p className="mt-1 text-xs text-muted">
-                The scheduled CRM briefing task will create it at 20:00 Sofia time.
+                The ChatGPT scheduled task writes it at 20:00 Sofia time; the CRM emails Project updates at 20:30.
               </p>
             </div>
           ) : (
@@ -320,9 +320,11 @@ export default function BriefingsPage() {
 
           <div className="rounded-xl border border-line bg-surface px-3 py-2 text-right">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Automatic generation
+              ChatGPT write · email
             </p>
-            <p className="mt-0.5 text-sm font-semibold text-deep">20:00 Sofia</p>
+            <p className="mt-0.5 text-sm font-semibold text-deep">
+              20:00 · 20:30 Sofia
+            </p>
             {latestGenerated && (
               <p className="mt-0.5 text-[11px] text-muted">
                 Last: {formatDateTime(latestGenerated)}

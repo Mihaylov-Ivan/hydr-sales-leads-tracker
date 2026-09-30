@@ -11,13 +11,15 @@
     "start:https": "node scripts/https-proxy.mjs",
     "fireflies:poll": "node scripts/poll-fireflies.mjs",
     "fireflies:poll:once": "node scripts/poll-fireflies.mjs --once",
-    "summaries:refresh": "node scripts/refresh-project-summaries.mjs"
+    "summaries:refresh": "node scripts/refresh-project-summaries.mjs",
+    "briefings:email-daily": "node scripts/email-daily-briefing.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "resend": "^6.31.0",
     "vercel": "^56.5.0",
     "xlsx": "^0.18.5"
   },

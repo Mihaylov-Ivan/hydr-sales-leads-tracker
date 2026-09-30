@@ -11,12 +11,39 @@ import {
   defaultHomePath,
 } from "@/lib/permissions";
 
+function bearerToken(request: NextRequest): string {
+  const value = request.headers.get("authorization")?.trim() ?? "";
+  return value.toLowerCase().startsWith("bearer ") ? value.slice(7).trim() : "";
+}
+
+/** Unauthenticated cron jobs that authenticate via shared secret. */
+function isCronAuthorized(request: NextRequest, pathname: string): boolean {
+  const cronPaths = [
+    "/api/ai/project-summaries/refresh",
+    "/api/briefings/email-daily",
+  ];
+  if (!cronPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return false;
+  }
+  const token = bearerToken(request);
+  if (!token) return false;
+  const secrets = [
+    process.env.BRIEFING_EMAIL_CRON_SECRET?.trim(),
+    process.env.AI_SUMMARY_CRON_SECRET?.trim(),
+  ].filter(Boolean) as string[];
+  return secrets.includes(token);
+}
+
 export async function middleware(request: NextRequest) {
   if (!isAuthEnabled()) {
     return NextResponse.next();
   }
 
   const { pathname } = request.nextUrl;
+
+  if (isCronAuthorized(request, pathname)) {
+    return NextResponse.next();
+  }
 
   const isPublic =
     pathname === "/login" ||
