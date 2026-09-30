@@ -132,14 +132,18 @@ export async function sendDailyProjectUpdatesEmail(
     `CRM Project Updates — ${dateLabel}`;
 
   const resend = new Resend(apiKey);
-  const { data, error } = await resend.emails.send({
-    from,
-    to: [to],
-    subject,
-    html: projectUpdatesToHtml(section),
-    text: section,
-    idempotencyKey: `crm-daily-project-updates/${briefing.id}`,
-  });
+  const { data, error } = await resend.emails.send(
+    {
+      from,
+      to: [to],
+      subject,
+      html: projectUpdatesToHtml(section),
+      text: section,
+    },
+    {
+      idempotencyKey: `crm-daily-project-updates/${briefing.id}`,
+    },
+  );
 
   if (error) {
     return {
