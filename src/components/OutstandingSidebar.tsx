@@ -41,10 +41,12 @@ import {
   projectTodoSortDate,
   todayDate,
 } from "@/lib/types";
+import { useUiPref } from "@/lib/ui-prefs";
 
 const SORT_KEY = "hydr-outstanding-sort";
 const SCOPE_KEY = "hydr-outstanding-scope";
 const OWNER_FILTER_KEY = "hydr-outstanding-owner";
+const TODAY_PRIORITY_KEY = "hydr-outstanding-today-priority";
 
 type SortMode = "by-project" | "by-deadline";
 type ScopeMode = "project" | "personal";
@@ -98,6 +100,111 @@ function urgencyBucket(sortDate: string): UrgencyBucket {
   if (sortDate === today) return "today";
   return "upcoming";
 }
+
+type TodayPriorityPrefs = {
+  project: string[];
+  personal: string[];
+};
+
+const EMPTY_TODAY_PRIORITY: TodayPriorityPrefs = {
+  project: [],
+  personal: [],
+};
+
+function personalEntryKey(todo: PersonalTodo): string {
+  return `personal:${todo.id}`;
+}
+
+function orderByPriorityKeys<T>(
+  items: T[],
+  order: string[],
+  keyOf: (item: T) => string,
+): T[] {
+  if (items.length <= 1 || order.length === 0) return items;
+  const byKey = new Map(items.map((item) => [keyOf(item), item]));
+  const result: T[] = [];
+  const seen = new Set<string>();
+  for (const key of order) {
+    const item = byKey.get(key);
+    if (!item || seen.has(key)) continue;
+    result.push(item);
+    seen.add(key);
+  }
+  for (const item of items) {
+    const key = keyOf(item);
+    if (!seen.has(key)) result.push(item);
+  }
+  return result;
+}
+
+function movePriorityKey(
+  visibleKeys: string[],
+  order: string[],
+  key: string,
+  direction: -1 | 1,
+): string[] {
+  const current = orderByPriorityKeys(visibleKeys, order, (k) => k);
+  const index = current.indexOf(key);
+  const next = index + direction;
+  if (index < 0 || next < 0 || next >= current.length) return current;
+  const swapped = [...current];
+  [swapped[index], swapped[next]] = [swapped[next], swapped[index]];
+  return swapped;
+}
+
+function TodayPriorityNudge({
+  canUp,
+  canDown,
+  onUp,
+  onDown,
+}: {
+  canUp: boolean;
+  canDown: boolean;
+  onUp: () => void;
+  onDown: () => void;
+}) {
+  return (
+    <div className="absolute right-1 top-1 z-10 flex flex-col opacity-0 transition-opacity duration-150 group-hover/prio:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        disabled={!canUp}
+        onClick={(e) => {
+          e.stopPropagation();
+          onUp();
+        }}
+        aria-label="Higher priority"
+        title="Higher priority"
+        className="rounded p-0.5 text-muted/40 transition hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-0"
+      >
+        <svg viewBox="0 0 12 12" className="h-3 w-3 fill-current" aria-hidden>
+          <path d="M6 3.2 2.4 7.2h7.2L6 3.2Z" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        disabled={!canDown}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDown();
+        }}
+        aria-label="Lower priority"
+        title="Lower priority"
+        className="rounded p-0.5 text-muted/40 transition hover:bg-surface hover:text-ink disabled:pointer-events-none disabled:opacity-0"
+      >
+        <svg viewBox="0 0 12 12" className="h-3 w-3 fill-current" aria-hidden>
+          <path d="M6 8.8 9.6 4.8H2.4L6 8.8Z" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+type PriorityNudgeProps = {
+  canUp: boolean;
+  canDown: boolean;
+  onUp: () => void;
+  onDown: () => void;
+};
 
 function readSortMode(): SortMode {
   try {
@@ -327,6 +434,7 @@ function OutstandingItem({
   highlight = false,
   projectLink,
   onProjectNavigate,
+  priorityNudge,
 }: {
   projectId: string;
   todo: ProjectTodo;
@@ -336,6 +444,7 @@ function OutstandingItem({
   highlight?: boolean;
   projectLink?: { id: string; name: string };
   onProjectNavigate?: () => void;
+  priorityNudge?: PriorityNudgeProps;
 }) {
   const { toggleTodo, updateTodo } = useProjects();
   const sortDate = projectTodoSortDate(todo);
@@ -343,12 +452,13 @@ function OutstandingItem({
 
   return (
     <li
-      className={`rounded-lg border p-2.5 ${
+      className={`group/prio relative rounded-lg border p-2.5 ${
         highlight
           ? "border-teal-accent/35 bg-teal-soft/35"
           : "border-line/80 bg-surface/80"
       }`}
     >
+      {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -444,11 +554,13 @@ function PersonalOutstandingItem({
   expanded,
   highlight = false,
   onNavigate,
+  priorityNudge,
 }: {
   todo: PersonalTodo;
   expanded: boolean;
   highlight?: boolean;
   onNavigate?: () => void;
+  priorityNudge?: PriorityNudgeProps;
 }) {
   const { updatePersonalTodo } = useProjects();
   const sortDate = personalTodoSortDate(todo);
@@ -457,12 +569,13 @@ function PersonalOutstandingItem({
 
   return (
     <li
-      className={`rounded-lg border p-2.5 ${
+      className={`group/prio relative rounded-lg border p-2.5 ${
         highlight
           ? "border-teal-accent/35 bg-teal-soft/35"
           : "border-line/80 bg-surface/80"
       }`}
     >
+      {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <button
           type="button"
@@ -543,12 +656,14 @@ function ContactItem({
   onContacted,
   showProjectLink,
   onProjectNavigate,
+  priorityNudge,
 }: {
   project: Project;
   dueDate: string;
   onContacted: () => void;
   showProjectLink?: boolean;
   onProjectNavigate?: () => void;
+  priorityNudge?: PriorityNudgeProps;
 }) {
   const delta = daysBetween(todayDate(), dueDate);
   const status =
@@ -559,7 +674,8 @@ function ContactItem({
         : null;
 
   return (
-    <li className="rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5">
+    <li className="group/prio relative rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5">
+      {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-amber-accent">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
@@ -611,6 +727,7 @@ function ProspectFollowUpItem({
   onReschedule,
   showCompanyLink,
   onNavigate,
+  priorityNudge,
 }: {
   company: ProspectCompany;
   contact: ProspectContact;
@@ -619,6 +736,7 @@ function ProspectFollowUpItem({
   onReschedule: (date: string) => void;
   showCompanyLink?: boolean;
   onNavigate?: () => void;
+  priorityNudge?: PriorityNudgeProps;
 }) {
   const delta = daysBetween(todayDate(), dueDate);
   const status =
@@ -634,7 +752,8 @@ function ProspectFollowUpItem({
     "contact";
 
   return (
-    <li className="rounded-lg border border-teal-accent/35 bg-teal-soft/40 p-2.5">
+    <li className="group/prio relative rounded-lg border border-teal-accent/35 bg-teal-soft/40 p-2.5">
+      {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-teal-accent">
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current">
@@ -715,6 +834,7 @@ function GanttNotificationItem({
   onSnooze,
   showProjectLink,
   onProjectNavigate,
+  priorityNudge,
 }: {
   project: Project;
   kind: GanttOutstandingKind;
@@ -723,12 +843,14 @@ function GanttNotificationItem({
   onSnooze: () => void;
   showProjectLink?: boolean;
   onProjectNavigate?: () => void;
+  priorityNudge?: PriorityNudgeProps;
 }) {
   const isMissing = kind === "missing";
   const startLabel = scheduleEarliestStart(project.schedule);
 
   return (
-    <li className="rounded-lg border border-deep/35 bg-gradient-to-br from-deep/10 via-panel to-teal-soft/30 p-2.5 shadow-[inset_3px_0_0_0_var(--deep)]">
+    <li className="group/prio relative rounded-lg border border-deep/35 bg-gradient-to-br from-deep/10 via-panel to-teal-soft/30 p-2.5 shadow-[inset_3px_0_0_0_var(--deep)]">
+      {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-deep">
           <GanttBarsIcon />
@@ -814,6 +936,15 @@ type FlatEntry =
   | ProspectFollowUpFlat
   | GanttOutstandingFlat;
 type TodoFlatEntry = Extract<FlatEntry, { type: "todo" }>;
+
+function flatEntryKey(entry: FlatEntry): string {
+  if (entry.type === "todo") return `todo:${entry.project.id}:${entry.todo.id}`;
+  if (entry.type === "contact") return `contact:${entry.project.id}`;
+  if (entry.type === "prospect-follow-up") {
+    return `prospect:${entry.contact.id}`;
+  }
+  return `gantt:${entry.project.id}:${entry.kind}`;
+}
 
 type Group = {
   project: Project;
@@ -950,6 +1081,10 @@ export default function OutstandingSidebar() {
   const [ownerFilterIds, setOwnerFilterIds] = useState<OwnerFilterIds>(null);
   const [pendingSelectAll, setPendingSelectAll] = useState(false);
   const [prefsReady, setPrefsReady] = useState(false);
+  const [todayPriority, setTodayPriority] = useUiPref<TodayPriorityPrefs>(
+    TODAY_PRIORITY_KEY,
+    EMPTY_TODAY_PRIORITY,
+  );
 
   useEffect(() => {
     setSortMode(readSortMode());
@@ -1374,6 +1509,82 @@ export default function OutstandingSidebar() {
     return buckets;
   }, [openPersonal, personalWorkWindow.excludedIds]);
 
+  const prioritizedProjectToday = useMemo(
+    () =>
+      orderByPriorityKeys(
+        flatByBucket.today,
+        Array.isArray(todayPriority.project) ? todayPriority.project : [],
+        flatEntryKey,
+      ),
+    [flatByBucket.today, todayPriority.project],
+  );
+
+  const prioritizedPersonalToday = useMemo(
+    () =>
+      orderByPriorityKeys(
+        personalFlatByBucket.today,
+        Array.isArray(todayPriority.personal) ? todayPriority.personal : [],
+        personalEntryKey,
+      ),
+    [personalFlatByBucket.today, todayPriority.personal],
+  );
+
+  function moveProjectTodayPriority(key: string, direction: -1 | 1) {
+    const visibleKeys = flatByBucket.today.map(flatEntryKey);
+    setTodayPriority((prev) => ({
+      project: movePriorityKey(
+        visibleKeys,
+        Array.isArray(prev.project) ? prev.project : [],
+        key,
+        direction,
+      ),
+      personal: Array.isArray(prev.personal) ? prev.personal : [],
+    }));
+  }
+
+  function movePersonalTodayPriority(key: string, direction: -1 | 1) {
+    const visibleKeys = personalFlatByBucket.today.map(personalEntryKey);
+    setTodayPriority((prev) => ({
+      project: Array.isArray(prev.project) ? prev.project : [],
+      personal: movePriorityKey(
+        visibleKeys,
+        Array.isArray(prev.personal) ? prev.personal : [],
+        key,
+        direction,
+      ),
+    }));
+  }
+
+  function projectTodayNudge(
+    entry: FlatEntry,
+    index: number,
+    total: number,
+  ): PriorityNudgeProps | undefined {
+    if (total <= 1) return undefined;
+    const key = flatEntryKey(entry);
+    return {
+      canUp: index > 0,
+      canDown: index < total - 1,
+      onUp: () => moveProjectTodayPriority(key, -1),
+      onDown: () => moveProjectTodayPriority(key, 1),
+    };
+  }
+
+  function personalTodayNudge(
+    todo: PersonalTodo,
+    index: number,
+    total: number,
+  ): PriorityNudgeProps | undefined {
+    if (total <= 1) return undefined;
+    const key = personalEntryKey(todo);
+    return {
+      canUp: index > 0,
+      canDown: index < total - 1,
+      onUp: () => movePersonalTodayPriority(key, -1),
+      onDown: () => movePersonalTodayPriority(key, 1),
+    };
+  }
+
   const projectTotalOpen = useMemo(() => {
     let n =
       projectWorkWindow.active.length + projectWorkWindow.upcoming.length;
@@ -1529,6 +1740,7 @@ export default function OutstandingSidebar() {
   function renderFlatEntry(
     entry: FlatEntry,
     layout: "rail" | "fullscreen",
+    priorityNudge?: PriorityNudgeProps,
   ) {
     if (entry.type === "prospect-follow-up") {
       return (
@@ -1547,6 +1759,7 @@ export default function OutstandingSidebar() {
           }
           showCompanyLink
           onNavigate={exitFullscreen}
+          priorityNudge={priorityNudge}
         />
       );
     }
@@ -1561,6 +1774,7 @@ export default function OutstandingSidebar() {
           onSnooze={() => snoozeGanttMissingNotification(entry.project.id)}
           showProjectLink
           onProjectNavigate={exitFullscreen}
+          priorityNudge={priorityNudge}
         />
       );
     }
@@ -1573,6 +1787,7 @@ export default function OutstandingSidebar() {
           onContacted={() => markClientContacted(entry.project.id)}
           showProjectLink
           onProjectNavigate={exitFullscreen}
+          priorityNudge={priorityNudge}
         />
       );
     }
@@ -1586,7 +1801,53 @@ export default function OutstandingSidebar() {
         deadlineEditable={layout === "fullscreen"}
         projectLink={{ id: entry.project.id, name: entry.project.name }}
         onProjectNavigate={exitFullscreen}
+        priorityNudge={priorityNudge}
       />
+    );
+  }
+
+  function renderPersonalDeadlineBuckets(layout: "rail" | "fullscreen") {
+    const listClass =
+      layout === "fullscreen"
+        ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+        : "flex flex-col gap-2";
+
+    return (
+      <div className="flex flex-col gap-5">
+        {renderPersonalWorkWindowSections(layout)}
+        {BUCKET_ORDER.map((bucket) => {
+          const items =
+            bucket === "today"
+              ? prioritizedPersonalToday
+              : personalFlatByBucket[bucket];
+          if (items.length === 0) return null;
+          return (
+            <section key={bucket}>
+              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
+                {BUCKET_LABELS[bucket]}
+                <span className="ml-1.5 font-semibold text-muted/70">
+                  {items.length}
+                </span>
+              </h3>
+              <ul className={listClass}>
+                {items.map((todo, index) => (
+                  <PersonalOutstandingItem
+                    key={todo.id}
+                    todo={todo}
+                    expanded={richChrome}
+                    onNavigate={exitFullscreen}
+                    priorityNudge={
+                      bucket === "today"
+                        ? personalTodayNudge(todo, index, items.length)
+                        : undefined
+                    }
+                  />
+                ))}
+              </ul>
+            </section>
+          );
+        })}
+      </div>
     );
   }
 
@@ -1599,54 +1860,27 @@ export default function OutstandingSidebar() {
       );
     }
 
-    if (layout === "rail") {
-      return (
-        <>
-          {renderPersonalWorkWindowSections(layout)}
-          <ul className="flex flex-col gap-2">
-            {openPersonal
-              .filter((todo) => !personalWorkWindow.excludedIds.has(todo.id))
-              .map((todo) => (
-                <PersonalOutstandingItem
-                  key={todo.id}
-                  todo={todo}
-                  expanded={richChrome}
-                  onNavigate={exitFullscreen}
-                />
-              ))}
-          </ul>
-        </>
-      );
+    // By-deadline (and personal fullscreen) use urgency buckets; Due today is prioritizable.
+    if (layout === "fullscreen" || sortMode === "by-deadline") {
+      return renderPersonalDeadlineBuckets(layout);
     }
 
     return (
-      <div className="flex flex-col gap-5">
+      <>
         {renderPersonalWorkWindowSections(layout)}
-        {BUCKET_ORDER.map((bucket) => {
-          const items = personalFlatByBucket[bucket];
-          if (items.length === 0) return null;
-          return (
-            <section key={bucket}>
-              <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted">
-                {BUCKET_LABELS[bucket]}
-                <span className="ml-1.5 font-semibold text-muted/70">
-                  {items.length}
-                </span>
-              </h3>
-              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                {items.map((todo) => (
-                  <PersonalOutstandingItem
-                    key={todo.id}
-                    todo={todo}
-                    expanded={richChrome}
-                    onNavigate={exitFullscreen}
-                  />
-                ))}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
+        <ul className="flex flex-col gap-2">
+          {openPersonal
+            .filter((todo) => !personalWorkWindow.excludedIds.has(todo.id))
+            .map((todo) => (
+              <PersonalOutstandingItem
+                key={todo.id}
+                todo={todo}
+                expanded={richChrome}
+                onNavigate={exitFullscreen}
+              />
+            ))}
+        </ul>
+      </>
     );
   }
 
@@ -1798,7 +2032,8 @@ export default function OutstandingSidebar() {
       <div className="flex flex-col gap-5">
         {renderProjectWorkWindowSections(layout)}
         {BUCKET_ORDER.map((bucket) => {
-          const items = flatByBucket[bucket];
+          const items =
+            bucket === "today" ? prioritizedProjectToday : flatByBucket[bucket];
           if (items.length === 0) return null;
           return (
             <section key={bucket}>
@@ -1815,7 +2050,15 @@ export default function OutstandingSidebar() {
                     : "flex flex-col gap-2"
                 }
               >
-                {items.map((entry) => renderFlatEntry(entry, layout))}
+                {items.map((entry, index) =>
+                  renderFlatEntry(
+                    entry,
+                    layout,
+                    bucket === "today"
+                      ? projectTodayNudge(entry, index, items.length)
+                      : undefined,
+                  ),
+                )}
               </ul>
             </section>
           );
