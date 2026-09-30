@@ -8,6 +8,11 @@ import { ProspectingProvider } from "@/lib/prospecting-store";
 import Header from "@/components/Header";
 import OutstandingSidebar from "@/components/OutstandingSidebar";
 import { ProspectSalesSync } from "@/components/prospecting/ProspectSalesSync";
+import { getScrollPos, setScrollPos } from "@/lib/scroll-restore";
+
+function shellScrollKey(pathname: string, part: "outer" | "main" | "window") {
+  return `shell:${part}:${pathname}`;
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,14 +21,72 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const lockBoard = pathname === "/" || pathname === "/todos";
   const outerScrollRef = useRef<HTMLDivElement>(null);
   const mainScrollRef = useRef<HTMLDivElement>(null);
+  const prevPathRef = useRef(pathname);
 
-  // Custom scroll containers keep scrollTop across client navigations —
-  // reset so project (and other) pages always open at the top.
+  // Save the leaving page's scroll, then restore the destination page's.
   useEffect(() => {
-    outerScrollRef.current?.scrollTo(0, 0);
-    mainScrollRef.current?.scrollTo(0, 0);
-    window.scrollTo(0, 0);
+    const prev = prevPathRef.current;
+    if (prev && prev !== pathname) {
+      setScrollPos(shellScrollKey(prev, "outer"), {
+        top: outerScrollRef.current?.scrollTop ?? 0,
+      });
+      setScrollPos(shellScrollKey(prev, "main"), {
+        top: mainScrollRef.current?.scrollTop ?? 0,
+      });
+      setScrollPos(shellScrollKey(prev, "window"), {
+        top: window.scrollY || document.documentElement.scrollTop || 0,
+      });
+    }
+    prevPathRef.current = pathname;
+
+    const outer = getScrollPos(shellScrollKey(pathname, "outer")).top;
+    const main = getScrollPos(shellScrollKey(pathname, "main")).top;
+    const win = getScrollPos(shellScrollKey(pathname, "window")).top;
+
+    const restore = () => {
+      outerScrollRef.current?.scrollTo(0, outer);
+      mainScrollRef.current?.scrollTo(0, main);
+      window.scrollTo(0, win);
+    };
+    restore();
+    const raf = requestAnimationFrame(restore);
+    const t = window.setTimeout(restore, 50);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+    };
   }, [pathname]);
+
+  // Keep shell scroll positions fresh while the user scrolls (survives refresh).
+  useEffect(() => {
+    const outer = outerScrollRef.current;
+    const main = mainScrollRef.current;
+    let raf = 0;
+    const persist = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const path = prevPathRef.current;
+        if (outer) {
+          setScrollPos(shellScrollKey(path, "outer"), { top: outer.scrollTop });
+        }
+        if (main) {
+          setScrollPos(shellScrollKey(path, "main"), { top: main.scrollTop });
+        }
+        setScrollPos(shellScrollKey(path, "window"), {
+          top: window.scrollY || document.documentElement.scrollTop || 0,
+        });
+      });
+    };
+    outer?.addEventListener("scroll", persist, { passive: true });
+    main?.addEventListener("scroll", persist, { passive: true });
+    window.addEventListener("scroll", persist, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      outer?.removeEventListener("scroll", persist);
+      main?.removeEventListener("scroll", persist);
+      window.removeEventListener("scroll", persist);
+    };
+  }, []);
 
   return (
     <ProjectsProvider>

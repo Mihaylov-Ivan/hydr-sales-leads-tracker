@@ -15,6 +15,7 @@ import ProjectCard, { PROJECT_DRAG_TYPE } from "@/components/ProjectCard";
 import NewProjectDialog from "@/components/NewProjectDialog";
 import { useAuth } from "@/lib/auth-context";
 import { readUiPref, writeUiPref } from "@/lib/ui-prefs";
+import { usePersistedScroll } from "@/lib/scroll-restore";
 
 const COLUMN_ACCENT: Partial<Record<Stage, string>> = {
   "eu-application-prep": "border-t-teal-accent",
@@ -36,6 +37,7 @@ function StageColumn({
   accentClass,
   headerExtra,
   allowDrag = true,
+  scrollKey,
 }: {
   stage: Stage;
   projects: ReturnType<typeof useProjects>["projects"];
@@ -46,7 +48,10 @@ function StageColumn({
   accentClass: string;
   headerExtra?: React.ReactNode;
   allowDrag?: boolean;
+  scrollKey: string;
 }) {
+  const listRef = usePersistedScroll(scrollKey, [projects.length]);
+
   return (
     <section
       onDragOver={onDragOver}
@@ -83,7 +88,7 @@ function StageColumn({
           </span>
         </div>
       </header>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {projects.length === 0 ? (
           <p className="px-1 py-6 text-center text-xs text-muted">No projects</p>
         ) : (
@@ -124,6 +129,10 @@ export default function TrackBoardPage({ track }: { track: "eu" | "rnd" }) {
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [prefsReady, setPrefsReady] = useState(false);
+  const boardHScrollRef = usePersistedScroll(`board:${track}:h`, [
+    ready,
+    showCancelled,
+  ]);
 
   const prefsKey = `hydrogenera-${track}-board-prefs-v1`;
   const copy = TRACK_COPY[track];
@@ -288,6 +297,7 @@ export default function TrackBoardPage({ track }: { track: "eu" | "rnd" }) {
               isOver={dragOverStage === "cancelled"}
               accentClass={COLUMN_ACCENT.cancelled ?? "border-t-muted"}
               allowDrag={canWrite}
+              scrollKey={`board:${track}:col:cancelled`}
               {...columnDragHandlers("cancelled")}
               headerExtra={
                 <button
@@ -303,7 +313,10 @@ export default function TrackBoardPage({ track }: { track: "eu" | "rnd" }) {
           </div>
         )}
 
-        <div className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        <div
+          ref={boardHScrollRef}
+          className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+        >
           {boardStages.map((stage) => (
             <div
               key={stage}
@@ -315,6 +328,7 @@ export default function TrackBoardPage({ track }: { track: "eu" | "rnd" }) {
                 isOver={dragOverStage === stage}
                 accentClass={COLUMN_ACCENT[stage] ?? "border-t-muted"}
                 allowDrag={canWrite}
+                scrollKey={`board:${track}:col:${stage}`}
                 {...columnDragHandlers(stage)}
               />
             </div>

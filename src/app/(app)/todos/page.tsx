@@ -14,6 +14,7 @@ import PersonalTodoCard, {
   PERSONAL_TODO_DRAG_TYPE,
 } from "@/components/PersonalTodoCard";
 import NewPersonalTodoDialog from "@/components/NewPersonalTodoDialog";
+import { usePersistedScroll } from "@/lib/scroll-restore";
 
 const COLUMN_ACCENT: Record<PersonalTodoStatus, string> = {
   cancelled: "border-t-muted",
@@ -187,6 +188,10 @@ function StatusColumn({
     : status === "cancelled" || status === "done"
       ? "bg-muted/5"
       : "bg-surface-tint/60";
+  const listRef = usePersistedScroll(
+    `board:todos:col:${status}${expanded ? ":expanded" : ""}`,
+    [todos.length],
+  );
 
   return (
     <section
@@ -238,6 +243,7 @@ function StatusColumn({
         </div>
       </header>
       <div
+        ref={listRef}
         onDragOver={handleListDragOver}
         onDrop={handleListDrop}
         className={`min-h-0 flex-1 gap-2 overflow-y-auto overscroll-contain px-3 py-3 ${
@@ -305,6 +311,11 @@ export default function PersonalTodosPage() {
   const [expandedStatus, setExpandedStatus] =
     useState<PersonalTodoStatus | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const boardHScrollRef = usePersistedScroll("board:todos:h", [
+    ready,
+    showCancelled,
+    showDone,
+  ]);
 
   useEffect(() => {
     try {
@@ -500,7 +511,10 @@ export default function PersonalTodosPage() {
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        <div
+          ref={boardHScrollRef}
+          className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+        >
           {PERSONAL_TODO_BOARD_STATUSES.map((status) => (
             <div
               key={status}

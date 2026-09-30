@@ -31,6 +31,7 @@ import {
   readUiPref,
   writeUiPref,
 } from "@/lib/ui-prefs";
+import { usePersistedScroll } from "@/lib/scroll-restore";
 
 const UNASSIGNED_LEAD = "__unassigned__";
 
@@ -182,6 +183,10 @@ function StageColumn({
       : stage === "cancelled"
         ? "bg-muted/5"
         : "bg-surface-tint/60";
+  const listRef = usePersistedScroll(
+    `board:sales:col:${stage}${expanded ? ":expanded" : ""}`,
+    [projects.length],
+  );
 
   return (
     <section
@@ -231,6 +236,7 @@ function StageColumn({
         </div>
       </header>
       <div
+        ref={listRef}
         className={`flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-3 py-3 ${expanded
           ? "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
           : "flex-col"
@@ -401,6 +407,11 @@ export default function Dashboard() {
   );
   const [prefsReady, setPrefsReady] = useState(false);
   const prevKeyDateFilterIdsRef = useRef<Set<string>>(new Set());
+  const boardHScrollRef = usePersistedScroll("board:sales:h", [
+    ready,
+    showCancelled,
+    showCommissioned,
+  ]);
 
   useEffect(() => {
     try {
@@ -912,7 +923,10 @@ export default function Dashboard() {
         </div>
 
         {/* Active stage columns — min 270px, scroll horizontally when they won't fit */}
-        <div className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        <div
+          ref={boardHScrollRef}
+          className="flex min-h-0 min-w-0 flex-1 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+        >
           {BOARD_OPEN_STAGES.map((stage) => (
             <div
               key={stage}
