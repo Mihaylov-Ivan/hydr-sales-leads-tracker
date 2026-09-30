@@ -481,6 +481,11 @@ function PersonalOutstandingItem({
             {todo.title}
           </Link>
           {hasDate && <DeadlineBadge date={sortDate} />}
+          {expanded && todo.description?.trim() && (
+            <p className="mt-1 whitespace-pre-wrap text-[11px] leading-relaxed text-muted">
+              {todo.description.trim()}
+            </p>
+          )}
           {(overdue || (expanded && hasDate && todo.dueDate)) && (
             <div className="mt-1 flex flex-wrap gap-1">
               {overdue && (
