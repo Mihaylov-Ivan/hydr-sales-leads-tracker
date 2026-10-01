@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useProjects } from "@/lib/store";
 import { useProspecting } from "@/lib/prospecting-store";
 import {
@@ -152,6 +152,27 @@ function movePriorityKey(
   return swapped;
 }
 
+function reorderPriorityKey(
+  visibleKeys: string[],
+  order: string[],
+  fromKey: string,
+  toKey: string,
+): string[] {
+  if (fromKey === toKey) {
+    return orderByPriorityKeys(visibleKeys, order, (k) => k);
+  }
+  const current = orderByPriorityKeys(visibleKeys, order, (k) => k);
+  const from = current.indexOf(fromKey);
+  const to = current.indexOf(toKey);
+  if (from < 0 || to < 0) return current;
+  const next = [...current];
+  next.splice(from, 1);
+  next.splice(to, 0, fromKey);
+  return next;
+}
+
+const PRIORITY_DRAG_TYPE = "application/x-outstanding-priority";
+
 function TodayPriorityNudge({
   canUp,
   canDown,
@@ -204,7 +225,47 @@ type PriorityNudgeProps = {
   canDown: boolean;
   onUp: () => void;
   onDown: () => void;
+  dragId: string;
+  onReorder: (fromId: string, toId: string) => void;
 };
+
+function priorityDragHandlers(nudge: PriorityNudgeProps) {
+  return {
+    draggable: true as const,
+    onDragStart: (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "button, a, input, textarea, label, select, [contenteditable]",
+        )
+      ) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer.setData(PRIORITY_DRAG_TYPE, nudge.dragId);
+      e.dataTransfer.setData("text/plain", nudge.dragId);
+      e.dataTransfer.effectAllowed = "move";
+    },
+    onDragOver: (e: DragEvent) => {
+      if (
+        !e.dataTransfer.types.includes(PRIORITY_DRAG_TYPE) &&
+        !e.dataTransfer.types.includes("text/plain")
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      const from =
+        e.dataTransfer.getData(PRIORITY_DRAG_TYPE) ||
+        e.dataTransfer.getData("text/plain");
+      if (!from || from === nudge.dragId) return;
+      nudge.onReorder(from, nudge.dragId);
+    },
+  };
+}
 
 function readSortMode(): SortMode {
   try {
@@ -456,7 +517,8 @@ function OutstandingItem({
         highlight
           ? "border-teal-accent/35 bg-teal-soft/35"
           : "border-line/80 bg-surface/80"
-      }`}
+      }${priorityNudge ? " cursor-grab active:cursor-grabbing" : ""}`}
+      {...(priorityNudge ? priorityDragHandlers(priorityNudge) : {})}
     >
       {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
@@ -573,7 +635,8 @@ function PersonalOutstandingItem({
         highlight
           ? "border-teal-accent/35 bg-teal-soft/35"
           : "border-line/80 bg-surface/80"
-      }`}
+      }${priorityNudge ? " cursor-grab active:cursor-grabbing" : ""}`}
+      {...(priorityNudge ? priorityDragHandlers(priorityNudge) : {})}
     >
       {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
@@ -674,7 +737,12 @@ function ContactItem({
         : null;
 
   return (
-    <li className="group/prio relative rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5">
+    <li
+      className={`group/prio relative rounded-lg border border-amber-accent/40 bg-amber-accent/5 p-2.5${
+        priorityNudge ? " cursor-grab active:cursor-grabbing" : ""
+      }`}
+      {...(priorityNudge ? priorityDragHandlers(priorityNudge) : {})}
+    >
       {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-amber-accent">
@@ -752,7 +820,12 @@ function ProspectFollowUpItem({
     "contact";
 
   return (
-    <li className="group/prio relative rounded-lg border border-teal-accent/35 bg-teal-soft/40 p-2.5">
+    <li
+      className={`group/prio relative rounded-lg border border-teal-accent/35 bg-teal-soft/40 p-2.5${
+        priorityNudge ? " cursor-grab active:cursor-grabbing" : ""
+      }`}
+      {...(priorityNudge ? priorityDragHandlers(priorityNudge) : {})}
+    >
       {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-teal-accent">
@@ -849,7 +922,12 @@ function GanttNotificationItem({
   const startLabel = scheduleEarliestStart(project.schedule);
 
   return (
-    <li className="group/prio relative rounded-lg border border-deep/35 bg-gradient-to-br from-deep/10 via-panel to-teal-soft/30 p-2.5 shadow-[inset_3px_0_0_0_var(--deep)]">
+    <li
+      className={`group/prio relative rounded-lg border border-deep/35 bg-gradient-to-br from-deep/10 via-panel to-teal-soft/30 p-2.5 shadow-[inset_3px_0_0_0_var(--deep)]${
+        priorityNudge ? " cursor-grab active:cursor-grabbing" : ""
+      }`}
+      {...(priorityNudge ? priorityDragHandlers(priorityNudge) : {})}
+    >
       {priorityNudge && <TodayPriorityNudge {...priorityNudge} />}
       <div className="flex items-start gap-2">
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center text-deep">
@@ -1555,6 +1633,32 @@ export default function OutstandingSidebar() {
     }));
   }
 
+  function reorderProjectTodayPriority(fromKey: string, toKey: string) {
+    const visibleKeys = flatByBucket.today.map(flatEntryKey);
+    setTodayPriority((prev) => ({
+      project: reorderPriorityKey(
+        visibleKeys,
+        Array.isArray(prev.project) ? prev.project : [],
+        fromKey,
+        toKey,
+      ),
+      personal: Array.isArray(prev.personal) ? prev.personal : [],
+    }));
+  }
+
+  function reorderPersonalTodayPriority(fromKey: string, toKey: string) {
+    const visibleKeys = personalFlatByBucket.today.map(personalEntryKey);
+    setTodayPriority((prev) => ({
+      project: Array.isArray(prev.project) ? prev.project : [],
+      personal: reorderPriorityKey(
+        visibleKeys,
+        Array.isArray(prev.personal) ? prev.personal : [],
+        fromKey,
+        toKey,
+      ),
+    }));
+  }
+
   function projectTodayNudge(
     entry: FlatEntry,
     index: number,
@@ -1567,6 +1671,8 @@ export default function OutstandingSidebar() {
       canDown: index < total - 1,
       onUp: () => moveProjectTodayPriority(key, -1),
       onDown: () => moveProjectTodayPriority(key, 1),
+      dragId: key,
+      onReorder: reorderProjectTodayPriority,
     };
   }
 
@@ -1582,6 +1688,8 @@ export default function OutstandingSidebar() {
       canDown: index < total - 1,
       onUp: () => movePersonalTodayPriority(key, -1),
       onDown: () => movePersonalTodayPriority(key, 1),
+      dragId: key,
+      onReorder: reorderPersonalTodayPriority,
     };
   }
 
