@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export type FilterMultiSelectOption = {
@@ -55,6 +55,7 @@ export default function FilterMultiSelect({
   oneLabel,
   manyLabel,
   compact,
+  footer,
 }: {
   title: string;
   options: FilterMultiSelectOption[];
@@ -67,6 +68,8 @@ export default function FilterMultiSelect({
   oneLabel?: (label: string) => string;
   manyLabel?: (count: number) => string;
   compact?: boolean;
+  /** Optional content below the option list (e.g. extra toggles). */
+  footer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<MenuPos | null>(null);
@@ -193,6 +196,11 @@ export default function FilterMultiSelect({
             );
           })}
         </ul>
+        {footer && (
+          <div className="shrink-0 border-t border-line px-3 py-2">
+            {footer}
+          </div>
+        )}
       </div>,
       document.body,
     );

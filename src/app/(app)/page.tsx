@@ -67,6 +67,8 @@ type SalesBoardPrefs = {
   showCancelled?: boolean;
   showCommissioned?: boolean;
   keyDatesOpen?: boolean;
+  /** When false, lead filter matches project lead only (not co-lead). Default true. */
+  includeCoLead?: boolean;
 };
 
 const selectCls =
@@ -400,6 +402,7 @@ export default function Dashboard() {
   const [dragOverStage, setDragOverStage] = useState<Stage | null>(null);
   const [showCancelled, setShowCancelled] = useState(false);
   const [showCommissioned, setShowCommissioned] = useState(false);
+  const [includeCoLead, setIncludeCoLead] = useState(true);
   const [expandedStage, setExpandedStage] = useState<Stage | null>(null);
   const [keyDatesOpen, setKeyDatesOpen] = useState(false);
   const [keyDateProjectIds, setKeyDateProjectIds] = useState<Set<string> | null>(
@@ -447,6 +450,9 @@ export default function Dashboard() {
       }
       if (typeof saved.showCommissioned === "boolean") {
         setShowCommissioned(saved.showCommissioned);
+      }
+      if (typeof saved.includeCoLead === "boolean") {
+        setIncludeCoLead(saved.includeCoLead);
       }
       if (typeof saved.keyDatesOpen === "boolean") {
         setKeyDatesOpen(saved.keyDatesOpen);
@@ -501,6 +507,7 @@ export default function Dashboard() {
       showCancelled,
       showCommissioned,
       keyDatesOpen,
+      includeCoLead,
     } satisfies SalesBoardPrefs);
   }, [
     prefsReady,
@@ -512,37 +519,55 @@ export default function Dashboard() {
     showCancelled,
     showCommissioned,
     keyDatesOpen,
+    includeCoLead,
   ]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const bucket = SIZE_BUCKETS.find((b) => b.id === sizeFilter)!;
-    return projects.filter(
-      (p) =>
-        isSalesBoardProject(p) &&
-        (countryFilter === "all" || p.country === countryFilter) &&
-        (allLeadsSelected ||
-          (p.leadUserId || p.coLeadUserId
-            ? Boolean(
-                (p.leadUserId && selectedLeadIds.has(p.leadUserId)) ||
-                  (p.coLeadUserId && selectedLeadIds.has(p.coLeadUserId)),
-              )
-            : selectedLeadIds.has(UNASSIGNED_LEAD))) &&
-        MARKETS.some(
+    return projects.filter((p) => {
+      if (!isSalesBoardProject(p)) return false;
+      if (countryFilter !== "all" && p.country !== countryFilter) return false;
+
+      if (!allLeadsSelected) {
+        const leadMatch = Boolean(
+          p.leadUserId && selectedLeadIds.has(p.leadUserId),
+        );
+        const coLeadMatch =
+          includeCoLead &&
+          Boolean(p.coLeadUserId && selectedLeadIds.has(p.coLeadUserId));
+        const unassignedMatch =
+          !p.leadUserId &&
+          (!includeCoLead || !p.coLeadUserId) &&
+          selectedLeadIds.has(UNASSIGNED_LEAD);
+        if (!(leadMatch || coLeadMatch || unassignedMatch)) return false;
+      }
+
+      if (
+        !MARKETS.some(
           (m) => marketFilter.has(m) && marketIncludesTag(p.market, m),
-        ) &&
-        bucket.match(p.sizeKw) &&
-        (!q ||
-          [p.name, p.client, p.city, p.country, p.market, p.baseDescription]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)),
-    );
+        )
+      ) {
+        return false;
+      }
+      if (!bucket.match(p.sizeKw)) return false;
+      if (
+        q &&
+        ![p.name, p.client, p.city, p.country, p.market, p.baseDescription]
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    });
   }, [
     projects,
     countryFilter,
     allLeadsSelected,
     selectedLeadIds,
+    includeCoLead,
     marketFilter,
     sizeFilter,
     search,
@@ -727,6 +752,32 @@ export default function Dashboard() {
           allLabel="All leads"
           noneLabel="No leads"
           manyLabel={(n) => `${n} leads`}
+          footer={
+            <label
+              className="flex cursor-pointer items-center gap-2 text-sm text-ink"
+              title="When on, projects where a selected person is co-lead also appear"
+            >
+              <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${
+                  includeCoLead
+                    ? "border-teal-accent bg-teal-accent text-white"
+                    : "border-line bg-panel text-transparent"
+                }`}
+                aria-hidden
+              >
+                ✓
+              </span>
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={includeCoLead}
+                onChange={(e) => setIncludeCoLead(e.target.checked)}
+              />
+              <span className="min-w-0 flex-1 font-medium">
+                Include co-lead projects
+              </span>
+            </label>
+          }
         />
         <select
           className={selectCls}
