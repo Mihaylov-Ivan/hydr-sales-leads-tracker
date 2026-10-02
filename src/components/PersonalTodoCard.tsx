@@ -275,6 +275,12 @@ export default function PersonalTodoCard({
         )}
       </div>
 
+      {!expanded && todo.dueDate && (
+        <div className="mt-1.5 pl-6">
+          <DeadlineBadge date={todo.dueDate} />
+        </div>
+      )}
+
       {expanded && (
         <>
           {editingDescription ? (
