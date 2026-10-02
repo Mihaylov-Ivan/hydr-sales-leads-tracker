@@ -14,6 +14,7 @@ import ClientFollowUp from "@/components/ClientFollowUp";
 import ProjectGantt from "@/components/ProjectGantt";
 import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import MarketMultiSelect from "@/components/MarketMultiSelect";
+import CoLeadMultiSelect from "@/components/CoLeadMultiSelect";
 import {
   MentionTextarea,
   MentionRichText,
@@ -195,6 +196,16 @@ export default function ProjectPage() {
       : projectTrack === "rnd"
         ? "RnD"
         : "All projects";
+  const coLeadMembers = (() => {
+    const byId = new Map(leadOptions.map((member) => [member.id, member]));
+    for (const memberId of project?.coLeadUserIds ?? []) {
+      if (byId.has(memberId)) continue;
+      const member = teamMembers.find((item) => item.id === memberId);
+      if (member) byId.set(member.id, member);
+    }
+    const leadId = project?.leadUserId;
+    return [...byId.values()].filter((member) => member.id !== leadId);
+  })();
 
   if (!ready) {
     return <p className="py-20 text-center text-muted">Loading…</p>;
@@ -466,11 +477,15 @@ export default function ProjectPage() {
             <select
               value={project.leadUserId ?? ""}
               disabled={!canWrite}
-              onChange={(e) =>
+              onChange={(e) => {
+                const leadUserId = e.target.value || undefined;
                 updateProject(project.id, {
-                  leadUserId: e.target.value || undefined,
-                })
-              }
+                  leadUserId,
+                  coLeadUserIds: (project.coLeadUserIds ?? []).filter(
+                    (memberId) => memberId !== leadUserId,
+                  ),
+                });
+              }}
               title="Click to assign the project lead"
               className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft disabled:cursor-default disabled:hover:bg-transparent"
             >
@@ -485,26 +500,21 @@ export default function ProjectPage() {
 
           <div className="rounded-xl border border-line bg-panel px-4 py-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-              Co-lead
+              Co-leads
             </p>
-            <select
-              value={project.coLeadUserId ?? ""}
-              disabled={!canWrite}
-              onChange={(e) =>
-                updateProject(project.id, {
-                  coLeadUserId: e.target.value || undefined,
-                })
-              }
-              title="Click to assign a co-lead"
-              className="-mx-1 mt-1 w-full cursor-pointer rounded bg-transparent px-1 text-sm font-medium text-deep outline-none transition hover:bg-teal-soft disabled:cursor-default disabled:hover:bg-transparent"
-            >
-              <option value="">Unassigned</option>
-              {leadOptions.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <CoLeadMultiSelect
+                members={coLeadMembers}
+                value={(project.coLeadUserIds ?? []).filter(
+                  (memberId) => memberId !== project.leadUserId,
+                )}
+                disabled={!canWrite}
+                fullWidth
+                onChange={(coLeadUserIds) =>
+                  updateProject(project.id, { coLeadUserIds })
+                }
+              />
+            </div>
           </div>
         </div>
       </div>

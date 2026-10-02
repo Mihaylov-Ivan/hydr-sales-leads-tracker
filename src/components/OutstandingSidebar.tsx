@@ -1099,7 +1099,7 @@ function projectMatchesOwnerFilter(
   if (selectedIds.size === 0) return false;
   return Boolean(
     (project.leadUserId && selectedIds.has(project.leadUserId)) ||
-      (project.coLeadUserId && selectedIds.has(project.coLeadUserId)),
+      (project.coLeadUserIds ?? []).some((id) => selectedIds.has(id)),
   );
 }
 

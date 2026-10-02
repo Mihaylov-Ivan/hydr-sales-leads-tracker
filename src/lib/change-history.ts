@@ -374,7 +374,14 @@ const CRM_TRACKED_FIELDS: {
   { key: "market", label: "market" },
   { key: "sizeKw", label: "size_kw" },
   { key: "leadUserId", label: "lead" },
-  { key: "coLeadUserId", label: "co-lead" },
+  {
+    key: "coLeadUserIds",
+    label: "co-leads",
+    format: (v) =>
+      Array.isArray(v)
+        ? v.filter((id) => typeof id === "string" && id.trim()).join(", ")
+        : formatValue(v),
+  },
   {
     key: "stage",
     label: "stage",

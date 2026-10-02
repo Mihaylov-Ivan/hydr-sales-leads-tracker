@@ -32,6 +32,8 @@ import {
   normalizeStage,
   normalizeStageForTrack,
   normalizeOptionalProjectText,
+  coLeadUserIdsOf,
+  normalizeCoLeadUserIds,
   parseSeriesTags,
   parseMarketTags,
   trackOfProject,
@@ -66,6 +68,7 @@ export interface ProjectRow {
   email_reminder_enabled: boolean | null;
   lead_user_id: string | null;
   co_lead_user_id?: string | null;
+  co_lead_user_ids?: string[] | null;
   created_at: string;
   /** Pipeline metrics columns (migration-014); may be absent before migration */
   cold_lead_entered_at?: string | null;
@@ -443,7 +446,13 @@ export function projectFromRow(
     emailReminderDays: row.email_reminder_days ?? DEFAULT_EMAIL_REMINDER_DAYS,
     emailReminderEnabled: row.email_reminder_enabled !== false,
     ...(row.lead_user_id ? { leadUserId: row.lead_user_id } : {}),
-    ...(row.co_lead_user_id ? { coLeadUserId: row.co_lead_user_id } : {}),
+    ...(() => {
+      const coLeadUserIds = coLeadUserIdsOf({
+        coLeadUserIds: row.co_lead_user_ids,
+        coLeadUserId: row.co_lead_user_id,
+      });
+      return coLeadUserIds.length ? { coLeadUserIds } : {};
+    })(),
     coldLeadEnteredAt: dateOnly(row.cold_lead_entered_at, createdDate),
     ...(optionalDate(row.warm_lead_entered_at)
       ? { warmLeadEnteredAt: optionalDate(row.warm_lead_entered_at) }
@@ -496,7 +505,8 @@ export function projectToRow(p: Project): ProjectRow {
     email_reminder_days: p.emailReminderDays,
     email_reminder_enabled: p.emailReminderEnabled,
     lead_user_id: p.leadUserId ?? null,
-    co_lead_user_id: p.coLeadUserId ?? null,
+    co_lead_user_id: p.coLeadUserIds?.[0] ?? null,
+    co_lead_user_ids: normalizeCoLeadUserIds(p.coLeadUserIds),
     created_at: p.createdAt,
     cold_lead_entered_at: p.coldLeadEnteredAt,
     warm_lead_entered_at: p.warmLeadEnteredAt ?? null,

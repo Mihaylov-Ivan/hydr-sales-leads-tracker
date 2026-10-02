@@ -43,7 +43,9 @@ export default function ProjectCard({
 
   const suppressClick = useRef(false);
   const lead = teamMembers.find((m) => m.id === project.leadUserId);
-  const coLead = teamMembers.find((m) => m.id === project.coLeadUserId);
+  const coLeads = (project.coLeadUserIds ?? [])
+    .map((id) => teamMembers.find((m) => m.id === id))
+    .filter((member): member is (typeof teamMembers)[number] => Boolean(member));
 
   return (
     <Link
@@ -123,18 +125,21 @@ export default function ProjectCard({
       <span className="w-fit rounded-full bg-teal-soft px-2 py-0.5 text-[11px] font-semibold text-teal-accent">
         {project.market}
       </span>
-      {(lead || coLead) && (
+      {(lead || coLeads.length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {lead && (
             <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
               Lead: {lead.name}
             </span>
           )}
-          {coLead && (
-            <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted">
+          {coLeads.map((coLead) => (
+            <span
+              key={coLead.id}
+              className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-muted"
+            >
               Co-lead: {coLead.name}
             </span>
-          )}
+          ))}
         </div>
       )}
 

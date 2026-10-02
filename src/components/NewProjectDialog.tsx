@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/store";
 import SeriesMultiSelect from "@/components/SeriesMultiSelect";
 import MarketMultiSelect from "@/components/MarketMultiSelect";
+import CoLeadMultiSelect from "@/components/CoLeadMultiSelect";
 import {
   Series,
   Stage,
@@ -42,7 +43,7 @@ export default function NewProjectDialog({
   const [sizeKw, setSizeKw] = useState("");
   const [stage, setStage] = useState<Stage>(defaultStageForTrack(track));
   const [leadUserId, setLeadUserId] = useState("");
-  const [coLeadUserId, setCoLeadUserId] = useState("");
+  const [coLeadUserIds, setCoLeadUserIds] = useState<string[]>([]);
   const [description, setDescription] = useState("");
 
   const valid = Boolean(name.trim());
@@ -75,7 +76,7 @@ export default function NewProjectDialog({
       track,
       baseDescription: description.trim(),
       leadUserId: leadUserId || undefined,
-      coLeadUserId: coLeadUserId || undefined,
+      coLeadUserIds: coLeadUserIds.filter((id) => id !== leadUserId),
     });
     onClose();
     router.push(`/projects/${id}`);
@@ -196,7 +197,13 @@ export default function NewProjectDialog({
             <select
               className={inputCls}
               value={leadUserId}
-              onChange={(e) => setLeadUserId(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setLeadUserId(next);
+                if (next) {
+                  setCoLeadUserIds((ids) => ids.filter((id) => id !== next));
+                }
+              }}
             >
               <option value="">Unassigned</option>
               {assignable.map((member) => (
@@ -207,19 +214,12 @@ export default function NewProjectDialog({
             </select>
           </div>
           <div>
-            <label className={labelCls}>Co-lead</label>
-            <select
-              className={inputCls}
-              value={coLeadUserId}
-              onChange={(e) => setCoLeadUserId(e.target.value)}
-            >
-              <option value="">Unassigned</option>
-              {assignable.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
+            <label className={labelCls}>Co-leads</label>
+            <CoLeadMultiSelect
+              members={assignable.filter((member) => member.id !== leadUserId)}
+              value={coLeadUserIds.filter((id) => id !== leadUserId)}
+              onChange={setCoLeadUserIds}
+            />
           </div>
         </div>
 

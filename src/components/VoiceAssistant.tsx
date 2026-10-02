@@ -29,6 +29,7 @@ import {
   TODO_KIND_LABELS,
   isInternalHiddenProject,
   normalizeOptionalProjectText,
+  normalizeCoLeadUserIds,
   stagesForTrack,
   trackOfProject,
   type Project,
@@ -275,7 +276,15 @@ const EXTENDED_CRM_TOOLS = [
         stage: { type: "string", enum: SALES_STAGE_VALUES },
         description: { type: "string" },
         lead_user_id: { type: "string" },
-        co_lead_user_id: { type: "string" },
+        co_lead_user_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "All co-leads. Replaces any previous co-lead list.",
+        },
+        co_lead_user_id: {
+          type: "string",
+          description: "Single co-lead. Prefer co_lead_user_ids when assigning more than one.",
+        },
         track: { type: "string", enum: ["sales", "eu", "rnd"] },
       },
       required: ["name"],
@@ -300,7 +309,16 @@ const EXTENDED_CRM_TOOLS = [
         stage: { type: "string", enum: SALES_STAGE_VALUES },
         description: { type: "string" },
         lead_user_id: { type: ["string", "null"] },
-        co_lead_user_id: { type: ["string", "null"] },
+        co_lead_user_ids: {
+          type: ["array", "null"],
+          items: { type: "string" },
+          description:
+            "Full co-lead list. Pass an empty array or null to clear co-leads.",
+        },
+        co_lead_user_id: {
+          type: ["string", "null"],
+          description: "Sets a single co-lead. Ignored when co_lead_user_ids is provided.",
+        },
         last_client_contact_at: { type: "string" },
         email_reminder_days: { type: "integer" },
         email_reminder_enabled: { type: "boolean" },
@@ -1040,6 +1058,30 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+/** Full co-lead list from a tool call. Undefined when the caller did not set one. */
+function requestedCoLeadIds(
+  args: Record<string, unknown>,
+): string[] | undefined | Error {
+  if (args.co_lead_user_ids !== undefined) {
+    const value = args.co_lead_user_ids;
+    if (value === null) return [];
+    if (!Array.isArray(value) || value.some((id) => typeof id !== "string")) {
+      return new Error("co_lead_user_ids must be a list of team member ids.");
+    }
+    return normalizeCoLeadUserIds(value);
+  }
+  if (args.co_lead_user_id !== undefined) {
+    const value = args.co_lead_user_id;
+    if (value === null) return [];
+    if (typeof value !== "string") {
+      return new Error("co_lead_user_id must be a team member id.");
+    }
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  return undefined;
+}
+
 function nullableStringValue(value: unknown): string | null | undefined {
   if (value === null) return null;
   return typeof value === "string" ? value.trim() : undefined;
@@ -1628,7 +1670,7 @@ export default function VoiceAssistant() {
             summary: project.aiSummary || project.baseDescription || "",
             base_description: project.baseDescription,
             lead_user_id: project.leadUserId ?? null,
-            co_lead_user_id: project.coLeadUserId ?? null,
+            co_lead_user_ids: project.coLeadUserIds ?? [],
             last_client_contact_at: project.lastClientContactAt,
             email_reminder_days: project.emailReminderDays,
             email_reminder_enabled: project.emailReminderEnabled,
@@ -2993,14 +3035,19 @@ export default function VoiceAssistant() {
             error: "The requested project lead is not assignable. Search the team roster first.",
           });
         }
-        const coLeadUserId = stringValue(args.co_lead_user_id);
+        const coLeadUserIds = requestedCoLeadIds(args);
+        if (coLeadUserIds instanceof Error) {
+          return JSON.stringify({ ok: false, error: coLeadUserIds.message });
+        }
         if (
-          coLeadUserId &&
-          !assignableTeamMembers(s.teamMembers).some((member) => member.id === coLeadUserId)
+          coLeadUserIds?.some(
+            (id) =>
+              !assignableTeamMembers(s.teamMembers).some((member) => member.id === id),
+          )
         ) {
           return JSON.stringify({
             ok: false,
-            error: "The requested project co-lead is not assignable. Search the team roster first.",
+            error: "A requested project co-lead is not assignable. Search the team roster first.",
           });
         }
 
@@ -3030,7 +3077,7 @@ export default function VoiceAssistant() {
           stage: requestedStage,
           baseDescription: stringValue(args.description) ?? "",
           ...(leadUserId ? { leadUserId } : {}),
-          ...(coLeadUserId ? { coLeadUserId } : {}),
+          ...(coLeadUserIds?.length ? { coLeadUserIds } : {}),
           track,
         });
         appendLog("action", `Created project ${projectName}.`);
@@ -3093,20 +3140,23 @@ export default function VoiceAssistant() {
           }
           patch.leadUserId = lead || undefined;
         }
-        if (args.co_lead_user_id === null) {
-          patch.coLeadUserId = undefined;
-        } else if (typeof args.co_lead_user_id === "string") {
-          const coLead = args.co_lead_user_id.trim();
+        const coLeadUserIds = requestedCoLeadIds(args);
+        if (coLeadUserIds instanceof Error) {
+          return JSON.stringify({ ok: false, error: coLeadUserIds.message });
+        }
+        if (coLeadUserIds) {
           if (
-            coLead &&
-            !assignableTeamMembers(s.teamMembers).some((member) => member.id === coLead)
+            coLeadUserIds.some(
+              (id) =>
+                !assignableTeamMembers(s.teamMembers).some((member) => member.id === id),
+            )
           ) {
             return JSON.stringify({
               ok: false,
-              error: "The requested project co-lead is not assignable.",
+              error: "A requested project co-lead is not assignable.",
             });
           }
-          patch.coLeadUserId = coLead || undefined;
+          patch.coLeadUserIds = coLeadUserIds;
         }
         if (typeof args.last_client_contact_at === "string") {
           if (!isValidDateOnly(args.last_client_contact_at)) {

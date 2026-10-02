@@ -472,7 +472,7 @@ export default function Dashboard() {
     const assignable = assignableTeamMembers(teamMembers);
     const byId = new Map(assignable.map((m) => [m.id, m]));
     for (const p of projects) {
-      for (const uid of [p.leadUserId, p.coLeadUserId]) {
+      for (const uid of [p.leadUserId, ...(p.coLeadUserIds ?? [])]) {
         if (!uid || byId.has(uid)) continue;
         const member = teamMembers.find((m) => m.id === uid);
         if (member) byId.set(member.id, member);
@@ -533,12 +533,13 @@ export default function Dashboard() {
         const leadMatch = Boolean(
           p.leadUserId && selectedLeadIds.has(p.leadUserId),
         );
+        const coLeadIds = p.coLeadUserIds ?? [];
         const coLeadMatch =
           includeCoLead &&
-          Boolean(p.coLeadUserId && selectedLeadIds.has(p.coLeadUserId));
+          coLeadIds.some((id) => selectedLeadIds.has(id));
         const unassignedMatch =
           !p.leadUserId &&
-          (!includeCoLead || !p.coLeadUserId) &&
+          (!includeCoLead || coLeadIds.length === 0) &&
           selectedLeadIds.has(UNASSIGNED_LEAD);
         if (!(leadMatch || coLeadMatch || unassignedMatch)) return false;
       }

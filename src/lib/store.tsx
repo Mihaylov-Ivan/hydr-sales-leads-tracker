@@ -68,6 +68,8 @@ import {
   normalizeStage,
   normalizeProjectTrack,
   normalizeOptionalProjectText,
+  coLeadUserIdsOf,
+  normalizeCoLeadUserIds,
   normalizeTodoKind,
   parseSeriesTags,
   parseMarketTags,
@@ -335,7 +337,7 @@ export interface NewProjectInput {
   stage: Stage;
   baseDescription: string;
   leadUserId?: string;
-  coLeadUserId?: string;
+  coLeadUserIds?: string[];
   lastMeaningfulActivityAt?: string;
   /** Defaults to sales when omitted. */
   track?: ProjectTrack;
@@ -357,7 +359,7 @@ export type ProjectPatch = Partial<
     | "emailReminderDays"
     | "emailReminderEnabled"
     | "leadUserId"
-    | "coLeadUserId"
+    | "coLeadUserIds"
     | "coldLeadEnteredAt"
     | "warmLeadEnteredAt"
     | "hotLeadEnteredAt"
@@ -872,7 +874,11 @@ function loadLocal(): Project[] {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Project[];
-      return parsed.map((p) => ({
+      return parsed.map((raw) => {
+        const legacy = raw as Project & { coLeadUserId?: string };
+        const coLeadUserIds = coLeadUserIdsOf(legacy);
+        const { coLeadUserId: _legacyCoLead, ...p } = legacy;
+        return {
         ...p,
         stage: normalizeStage(p.stage),
         client: normalizeOptionalProjectText(p.client),
@@ -884,7 +890,7 @@ function loadLocal(): Project[] {
         emailReminderDays: p.emailReminderDays ?? DEFAULT_EMAIL_REMINDER_DAYS,
         emailReminderEnabled: p.emailReminderEnabled !== false,
         ...(p.leadUserId ? { leadUserId: p.leadUserId } : {}),
-        ...(p.coLeadUserId ? { coLeadUserId: p.coLeadUserId } : {}),
+        ...(coLeadUserIds.length ? { coLeadUserIds } : {}),
         todos: (p.todos ?? []).map((t) => ({
           ...t,
           kind: normalizeTodoKind(t.kind),
@@ -904,7 +910,8 @@ function loadLocal(): Project[] {
         })),
         financials: emptyFinancials(),
         schedule: ensureScheduleShape(p.schedule),
-      }));
+      };
+      });
     }
   } catch {
     // corrupted storage: fall back to seed data
@@ -1478,6 +1485,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [supportsOwnershipFields, setSupportsOwnershipFields] = useState(false);
   const [supportsCoLeadField, setSupportsCoLeadField] = useState(false);
+  const [supportsCoLeadIdsField, setSupportsCoLeadIdsField] = useState(false);
   const [supportsCommentAuthorId, setSupportsCommentAuthorId] = useState(false);
   const [supportsMetricsFields, setSupportsMetricsFields] = useState(false);
   const [supportsMetricsSettingsTable, setSupportsMetricsSettingsTable] =
@@ -1674,6 +1682,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         supabase.from("projects").select("is_warehouse_holding").limit(1),
         supabase.from("projects").select("project_track").limit(1),
         supabase.from("projects").select("co_lead_user_id").limit(1),
+        supabase.from("projects").select("co_lead_user_ids").limit(1),
       ])
         .then(
           ([
@@ -1686,6 +1695,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             warehouseHoldingCol,
             projectTrackCol,
             coLeadCol,
+            coLeadIdsCol,
           ]) => {
             setSupportsOwnershipFields(
               !projectsCols.error && !todosCols.error,
@@ -1697,6 +1707,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
             setSupportsWarehouseHolding(!warehouseHoldingCol.error);
             setSupportsProjectTrack(!projectTrackCol.error);
             setSupportsCoLeadField(!coLeadCol.error);
+            setSupportsCoLeadIdsField(!coLeadIdsCol.error);
           },
         )
         .catch(() => {
@@ -1708,6 +1719,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           setSupportsWarehouseHolding(false);
           setSupportsProjectTrack(false);
           setSupportsCoLeadField(false);
+          setSupportsCoLeadIdsField(false);
         });
     }
   }, []);
@@ -2522,7 +2534,12 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       emailReminderDays: DEFAULT_EMAIL_REMINDER_DAYS,
       emailReminderEnabled: track === "sales",
       ...(input.leadUserId ? { leadUserId: input.leadUserId } : {}),
-      ...(input.coLeadUserId ? { coLeadUserId: input.coLeadUserId } : {}),
+      ...(() => {
+        const coLeadUserIds = normalizeCoLeadUserIds(input.coLeadUserIds).filter(
+          (id) => id !== input.leadUserId,
+        );
+        return coLeadUserIds.length ? { coLeadUserIds } : { coLeadUserIds: undefined };
+      })(),
       ...initialMetricsFields({
         stage: input.stage,
         createdDate: createdAt.slice(0, 10),
@@ -2577,8 +2594,17 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
           ...(supportsOwnershipFields
             ? { lead_user_id: project.leadUserId ?? null }
             : {}),
+          ...(supportsCoLeadIdsField
+            ? { co_lead_user_ids: project.coLeadUserIds ?? [] }
+            : {}),
           ...(supportsCoLeadField
-            ? { co_lead_user_id: project.coLeadUserId ?? null }
+            ? {
+                co_lead_user_id: supportsCoLeadIdsField
+                  ? (project.coLeadUserIds?.[0] ?? null)
+                  : project.coLeadUserIds?.length
+                    ? project.coLeadUserIds.join(",")
+                    : null,
+              }
             : {}),
           created_at: project.createdAt,
           ...(supportsMetricsFields
@@ -2624,6 +2650,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   }, [
     supportsOwnershipFields,
     supportsCoLeadField,
+    supportsCoLeadIdsField,
     supportsCommentAuthorId,
     supportsMetricsFields,
     supportsProjectTrack,
@@ -2796,7 +2823,31 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       if (mergedPatch.country !== undefined) {
         mergedPatch.country = normalizeOptionalProjectText(mergedPatch.country);
       }
+      if (
+        mergedPatch.coLeadUserIds !== undefined ||
+        mergedPatch.leadUserId !== undefined
+      ) {
+        const lead =
+          mergedPatch.leadUserId !== undefined
+            ? mergedPatch.leadUserId
+            : current.leadUserId;
+        const source =
+          mergedPatch.coLeadUserIds !== undefined
+            ? mergedPatch.coLeadUserIds
+            : coLeadUserIdsOf(current);
+        const next = normalizeCoLeadUserIds(source).filter((id) => id !== lead);
+        const prev = coLeadUserIdsOf(current);
+        if (
+          mergedPatch.coLeadUserIds !== undefined ||
+          next.join("\0") !== prev.join("\0")
+        ) {
+          mergedPatch.coLeadUserIds = next;
+        }
+      }
       const updated: Project = { ...current, ...mergedPatch };
+      if (updated.coLeadUserIds && updated.coLeadUserIds.length === 0) {
+        delete updated.coLeadUserIds;
+      }
       // Empty strings clear optional text/date fields
       if (mergedPatch.warmLeadEnteredAt === "") delete updated.warmLeadEnteredAt;
       if (mergedPatch.hotLeadEnteredAt === "") delete updated.hotLeadEnteredAt;
@@ -2827,7 +2878,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
       setProjects((prev) => prev.map((p) => (p.id === projectId ? updated : p)));
       if (supabase) {
-        const row: Record<string, string | number | boolean | null> = {};
+        const row: Record<string, string | number | boolean | string[] | null> = {};
         if (mergedPatch.name !== undefined) row.name = mergedPatch.name;
         if (mergedPatch.client !== undefined) row.client = mergedPatch.client;
         if (mergedPatch.country !== undefined) row.country = mergedPatch.country;
@@ -2847,8 +2898,18 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         if (supportsOwnershipFields && mergedPatch.leadUserId !== undefined) {
           row.lead_user_id = mergedPatch.leadUserId ?? null;
         }
-        if (supportsCoLeadField && mergedPatch.coLeadUserId !== undefined) {
-          row.co_lead_user_id = mergedPatch.coLeadUserId ?? null;
+        if (mergedPatch.coLeadUserIds !== undefined) {
+          const ids = mergedPatch.coLeadUserIds;
+          if (supportsCoLeadIdsField) {
+            row.co_lead_user_ids = ids;
+          }
+          if (supportsCoLeadField) {
+            row.co_lead_user_id = supportsCoLeadIdsField
+              ? (ids[0] ?? null)
+              : ids.length
+                ? ids.join(",")
+                : null;
+          }
         }
         if (supportsMetricsFields) {
           if (mergedPatch.coldLeadEnteredAt !== undefined)
@@ -2882,6 +2943,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
       requestAiSummary,
       supportsOwnershipFields,
       supportsCoLeadField,
+      supportsCoLeadIdsField,
       supportsMetricsFields,
       recordChangeEvent,
     ],

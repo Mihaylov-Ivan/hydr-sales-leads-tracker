@@ -1648,8 +1648,8 @@ export interface Project {
   emailReminderEnabled: boolean;
   /** Team member responsible for this project/deal */
   leadUserId?: string;
-  /** Secondary assignee — also matches sales board lead filter */
-  coLeadUserId?: string;
+  /** Additional assignees — also match the sales board lead filter */
+  coLeadUserIds?: string[];
   /**
    * Pipeline metrics timestamps (yyyy-mm-dd). Commissioned also implies
    * under-development was reached even if underDevelopmentAt was never set.
@@ -1723,6 +1723,36 @@ export interface ProjectGanttOutstanding {
 export const EMAIL_REMINDER_DAY_OPTIONS = [1, 3, 7, 14, 30] as const;
 
 export const DEFAULT_EMAIL_REMINDER_DAYS = 7;
+
+/** Drops blanks and duplicates, keeping the first occurrence of each id. */
+export function normalizeCoLeadUserIds(
+  ids: readonly string[] | null | undefined,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of ids ?? []) {
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+/**
+ * Co-leads for a project. Prefers `coLeadUserIds`, then a legacy single id
+ * or comma-separated list stored in `coLeadUserId`.
+ */
+export function coLeadUserIdsOf(project: {
+  coLeadUserIds?: string[] | null;
+  coLeadUserId?: string | null;
+}): string[] {
+  const fromList = normalizeCoLeadUserIds(project.coLeadUserIds);
+  if (fromList.length > 0) return fromList;
+  const legacy = project.coLeadUserId?.trim();
+  if (!legacy) return [];
+  return normalizeCoLeadUserIds(legacy.split(","));
+}
 
 export function todayDate(): string {
   const d = new Date();

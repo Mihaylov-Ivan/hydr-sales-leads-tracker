@@ -55,6 +55,8 @@ export default function FilterMultiSelect({
   oneLabel,
   manyLabel,
   compact,
+  fullWidth,
+  disabled,
   footer,
 }: {
   title: string;
@@ -68,6 +70,8 @@ export default function FilterMultiSelect({
   oneLabel?: (label: string) => string;
   manyLabel?: (count: number) => string;
   compact?: boolean;
+  fullWidth?: boolean;
+  disabled?: boolean;
   /** Optional content below the option list (e.g. extra toggles). */
   footer?: ReactNode;
 }) {
@@ -212,11 +216,16 @@ export default function FilterMultiSelect({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setOpen((v) => !v);
+        }}
         className={
-          compact
-            ? "inline-flex w-full max-w-[14rem] items-center justify-between gap-1 rounded border border-line bg-panel px-1.5 py-0.5 text-[10px] font-semibold text-ink outline-none transition hover:border-teal-accent/40 focus:border-teal-accent"
-            : "inline-flex max-w-[16rem] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent"
+          fullWidth
+            ? "flex w-full items-center justify-between gap-2 rounded-md bg-transparent px-1 py-1 text-left text-sm font-medium text-deep outline-none transition hover:bg-teal-soft disabled:cursor-default disabled:hover:bg-transparent"
+            : compact
+              ? "inline-flex w-full max-w-[14rem] items-center justify-between gap-1 rounded border border-line bg-panel px-1.5 py-0.5 text-[10px] font-semibold text-ink outline-none transition hover:border-teal-accent/40 focus:border-teal-accent disabled:cursor-default"
+              : "inline-flex w-full max-w-[16rem] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink shadow-sm outline-none transition hover:border-teal-accent/40 focus:border-teal-accent disabled:cursor-default"
         }
       >
         <span className="truncate">{label}</span>
