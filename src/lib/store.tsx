@@ -88,7 +88,11 @@ import {
 } from "./notifications";
 import { SEED_PROJECTS } from "./seed";
 import { isProjectSummaryEnabled } from "./summary";
-import { scheduleEarliestStart } from "./gantt-outstanding";
+import {
+  mergeProjectGanttOutstanding,
+  resolveGanttOutstandingKind,
+  scheduleEarliestStart,
+} from "./gantt-outstanding";
 import {
   buildChangeEvent,
   changeDiffPayload,
@@ -623,12 +627,9 @@ interface ProjectsApi {
   ) => void;
   /** Persist defaults for the current user if they have no prefs row yet */
   ensureProjectUserReminder: (projectId: string) => void;
-  /** Per-user Gantt Outstanding prefs (missing snooze / start approved) */
+  /** Shared Gantt Outstanding prefs (missing snooze / start approved) */
   projectGanttOutstanding: ProjectGanttOutstanding[];
-  getProjectGanttOutstanding: (
-    projectId: string,
-    userId?: string | null,
-  ) => ProjectGanttOutstanding;
+  getProjectGanttOutstanding: (projectId: string) => ProjectGanttOutstanding;
   approveGanttStartNotification: (projectId: string) => void;
   snoozeGanttMissingNotification: (projectId: string) => void;
   /** In-app notifications for the signed-in user */
@@ -1236,6 +1237,7 @@ function loadLocalGanttOutstanding(): ProjectGanttOutstanding[] {
                 r.startApprovedScheduleStart.slice(0, 10),
             }
           : {}),
+        ...(r.updatedAt ? { updatedAt: r.updatedAt } : {}),
       }));
   } catch {
     return [];
@@ -1250,6 +1252,7 @@ async function loadRemoteGanttOutstanding(): Promise<ProjectGanttOutstanding[]> 
     user_id: string;
     missing_snoozed_until: string | null;
     start_approved_schedule_start: string | null;
+    updated_at: string | null;
   }>).map((row) => ({
     projectId: row.project_id,
     userId: row.user_id,
@@ -1262,6 +1265,7 @@ async function loadRemoteGanttOutstanding(): Promise<ProjectGanttOutstanding[]> 
             row.start_approved_schedule_start.slice(0, 10),
         }
       : {}),
+    ...(row.updated_at ? { updatedAt: row.updated_at } : {}),
   }));
 }
 
@@ -3001,46 +3005,79 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getProjectGanttOutstanding = useCallback(
-    (projectId: string, userId?: string | null): ProjectGanttOutstanding => {
-      const uid = userId ?? currentUserIdRef.current;
-      if (!uid) {
-        return { projectId, userId: "" };
-      }
-      const existing = projectGanttOutstandingRef.current.find(
-        (r) => r.projectId === projectId && r.userId === uid,
-      );
-      if (existing) return existing;
-      return { projectId, userId: uid };
-    },
+    (projectId: string): ProjectGanttOutstanding =>
+      mergeProjectGanttOutstanding(
+        projectId,
+        projectGanttOutstandingRef.current,
+      ),
     [],
   );
 
-  const persistProjectGanttOutstanding = useCallback(
-    (prefs: ProjectGanttOutstanding) => {
-      setProjectGanttOutstanding((prev) => {
-        const idx = prev.findIndex(
-          (r) =>
-            r.projectId === prefs.projectId && r.userId === prefs.userId,
-        );
-        if (idx >= 0) {
-          const next = prev.slice();
-          next[idx] = prefs;
-          return next;
-        }
-        return [...prev, prefs];
-      });
+  const persistSharedGanttOutstanding = useCallback(
+    (
+      projectId: string,
+      patch: {
+        missingSnoozedUntil?: string | null;
+        startApprovedScheduleStart?: string | null;
+      },
+    ) => {
+      const current = mergeProjectGanttOutstanding(
+        projectId,
+        projectGanttOutstandingRef.current,
+      );
+      const missingSnoozedUntil =
+        patch.missingSnoozedUntil !== undefined
+          ? patch.missingSnoozedUntil
+          : (current.missingSnoozedUntil ?? null);
+      const startApprovedScheduleStart =
+        patch.startApprovedScheduleStart !== undefined
+          ? patch.startApprovedScheduleStart
+          : (current.startApprovedScheduleStart ?? null);
+      const updatedAt = new Date().toISOString();
+      const userIds = new Set<string>();
+      for (const member of teamMembersRef.current) {
+        if (member.id) userIds.add(member.id);
+      }
+      for (const row of projectGanttOutstandingRef.current) {
+        if (row.projectId === projectId && row.userId) userIds.add(row.userId);
+      }
+      const uid = currentUserIdRef.current;
+      if (uid) userIds.add(uid);
+      if (userIds.size === 0) return;
+
+      const rows: ProjectGanttOutstanding[] = [...userIds].map((userId) => ({
+        projectId,
+        userId,
+        ...(missingSnoozedUntil
+          ? { missingSnoozedUntil: missingSnoozedUntil.slice(0, 10) }
+          : {}),
+        ...(startApprovedScheduleStart
+          ? {
+              startApprovedScheduleStart: startApprovedScheduleStart.slice(
+                0,
+                10,
+              ),
+            }
+          : {}),
+        updatedAt,
+      }));
+
+      setProjectGanttOutstanding((prev) => [
+        ...prev.filter((r) => r.projectId !== projectId),
+        ...rows,
+      ]);
       if (supabase) {
         void supabase
           .from("project_gantt_outstanding")
           .upsert(
-            {
+            rows.map((prefs) => ({
               project_id: prefs.projectId,
               user_id: prefs.userId,
               missing_snoozed_until: prefs.missingSnoozedUntil ?? null,
               start_approved_schedule_start:
                 prefs.startApprovedScheduleStart ?? null,
-              updated_at: new Date().toISOString(),
-            },
+              updated_at: updatedAt,
+            })),
             { onConflict: "project_id,user_id" },
           )
           .then(logDbError("gantt outstanding upsert"));
@@ -3051,34 +3088,24 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
 
   const approveGanttStartNotification = useCallback(
     (projectId: string) => {
-      const uid = currentUserIdRef.current;
-      if (!uid) return;
       const project = projectsRef.current.find((p) => p.id === projectId);
       if (!project) return;
       const start = scheduleEarliestStart(project.schedule);
       if (!start) return;
-      const current = getProjectGanttOutstanding(projectId, uid);
-      persistProjectGanttOutstanding({
-        ...current,
-        userId: uid,
+      persistSharedGanttOutstanding(projectId, {
         startApprovedScheduleStart: start,
       });
     },
-    [getProjectGanttOutstanding, persistProjectGanttOutstanding],
+    [persistSharedGanttOutstanding],
   );
 
   const snoozeGanttMissingNotification = useCallback(
     (projectId: string) => {
-      const uid = currentUserIdRef.current;
-      if (!uid) return;
-      const current = getProjectGanttOutstanding(projectId, uid);
-      persistProjectGanttOutstanding({
-        ...current,
-        userId: uid,
+      persistSharedGanttOutstanding(projectId, {
         missingSnoozedUntil: addCalendarMonths(todayDate(), 1),
       });
     },
-    [getProjectGanttOutstanding, persistProjectGanttOutstanding],
+    [persistSharedGanttOutstanding],
   );
 
   const markClientContacted = useCallback(
@@ -6351,6 +6378,16 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         ),
       );
 
+      const prefs = getProjectGanttOutstanding(projectId);
+      if (resolveGanttOutstandingKind(current, prefs) === "started") {
+        const start = scheduleEarliestStart(nextSchedule);
+        if (start && start <= todayDate()) {
+          persistSharedGanttOutstanding(projectId, {
+            startApprovedScheduleStart: start,
+          });
+        }
+      }
+
       if (supabase && supportsGanttTables) {
         const includeActuals = shiftOpts.includeActuals;
         for (const phase of nextSchedule.phases) {
@@ -6394,7 +6431,7 @@ export function ProjectsProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [supportsGanttTables],
+    [supportsGanttTables, getProjectGanttOutstanding, persistSharedGanttOutstanding],
   );
 
   const replaceProjectSchedule = useCallback(

@@ -64,6 +64,40 @@ export function isGanttStartApproved(
   return prefs.startApprovedScheduleStart.slice(0, 10) === scheduleStart;
 }
 
+/**
+ * One shared Outstanding state per project. A snooze or approval from any
+ * user applies to everyone; the latest write of each field wins.
+ */
+export function mergeProjectGanttOutstanding(
+  projectId: string,
+  rows: ProjectGanttOutstanding[],
+): ProjectGanttOutstanding {
+  let missingSnoozedUntil: string | undefined;
+  let missingAt = "";
+  let startApprovedScheduleStart: string | undefined;
+  let approvedAt = "";
+
+  for (const row of rows) {
+    if (row.projectId !== projectId) continue;
+    const at = row.updatedAt ?? "";
+    if (row.missingSnoozedUntil && at >= missingAt) {
+      missingAt = at;
+      missingSnoozedUntil = row.missingSnoozedUntil.slice(0, 10);
+    }
+    if (row.startApprovedScheduleStart && at >= approvedAt) {
+      approvedAt = at;
+      startApprovedScheduleStart = row.startApprovedScheduleStart.slice(0, 10);
+    }
+  }
+
+  return {
+    projectId,
+    userId: "",
+    ...(missingSnoozedUntil ? { missingSnoozedUntil } : {}),
+    ...(startApprovedScheduleStart ? { startApprovedScheduleStart } : {}),
+  };
+}
+
 export type GanttOutstandingKind = "missing" | "started";
 
 export function resolveGanttOutstandingKind(

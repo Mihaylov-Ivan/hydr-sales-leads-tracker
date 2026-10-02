@@ -1433,7 +1433,7 @@ export default function OutstandingSidebar() {
       ) {
         continue;
       }
-      const prefs = getProjectGanttOutstanding(project.id, currentUserId);
+      const prefs = getProjectGanttOutstanding(project.id);
       const kind = resolveGanttOutstandingKind(project, prefs, today);
       if (!kind) continue;
       const start = scheduleEarliestStart(project.schedule);

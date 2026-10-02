@@ -1701,8 +1701,9 @@ export function defaultMetricsSettings(): CompanyMetricsSettings {
 }
 
 /**
- * Per-user Outstanding prefs for Gantt missing / started notifications
- * (technical_sales). Stored in project_gantt_outstanding.
+ * Outstanding prefs for Gantt missing / started notifications.
+ * Stored per user in project_gantt_outstanding, then merged so a snooze,
+ * approval, or schedule shift applies to every user.
  */
 export interface ProjectGanttOutstanding {
   projectId: string;
@@ -1714,6 +1715,8 @@ export interface ProjectGanttOutstanding {
    * reminder. Reappears if the schedule start changes.
    */
   startApprovedScheduleStart?: string;
+  /** Row write time, used to merge per-user rows into one shared state. */
+  updatedAt?: string;
 }
 
 /** Common follow-up windows */
