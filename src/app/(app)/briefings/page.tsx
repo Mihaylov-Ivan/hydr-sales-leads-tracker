@@ -311,17 +311,9 @@ export default function BriefingsPage() {
             <h1 className="mt-1 text-2xl font-semibold tracking-tight text-deep sm:text-3xl">
               Briefings
             </h1>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Daily, week-to-date and month-to-date summaries generated only from
-              CRM activity. The daily briefing opens first; longer periods stay
-              collapsed until you need them.
-            </p>
           </div>
 
           <div className="rounded-xl border border-line bg-surface px-3 py-2 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              ChatGPT write · email
-            </p>
             <p className="mt-0.5 text-sm font-semibold text-deep">
               20:00 · 20:30 Sofia
             </p>
@@ -382,11 +374,10 @@ export default function BriefingsPage() {
                 key={type}
                 type="button"
                 onClick={() => setHistoryType(type)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  historyType === type
-                    ? "bg-teal-accent text-white shadow-sm"
-                    : "text-muted hover:text-deep"
-                }`}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${historyType === type
+                  ? "bg-teal-accent text-white shadow-sm"
+                  : "text-muted hover:text-deep"
+                  }`}
               >
                 {TYPE_META[type].label}
               </button>
