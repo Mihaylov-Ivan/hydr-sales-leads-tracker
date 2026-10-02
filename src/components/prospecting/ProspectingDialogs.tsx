@@ -30,7 +30,10 @@ import {
   YesNoUnknown,
   allowedManualProspectStatuses,
   highestHeldProspectSection,
+  isCancelEngageResult,
+  isColdLeadEngageResult,
   promoteDefaultStage,
+  prospectFollowUpsCleared,
   prospectPipelineSection,
   todayDateOnly,
 } from "@/lib/prospecting-types";
@@ -980,7 +983,7 @@ export function MarkContactedDialog({
   );
 }
 
-/** Contacted / Engaged: log response. Negative stays engaged; Cancelled is separate. */
+/** Contacted → Cold Lead (positive) or Cancelled (negative). */
 export function MarkEngagedDialog({
   company,
   contact,
@@ -990,7 +993,8 @@ export function MarkEngagedDialog({
   contact: ProspectContact;
   onClose: () => void;
 }) {
-  const { logEngagement, contacts } = useProspecting();
+  "use no memo";
+  const { logEngagement, markCancelled, contacts } = useProspecting();
   const { currentUserId, teamMembers } = useProjects();
   const linkToColdLead = useLinkProspectToColdLead();
   const router = useRouter();
@@ -999,19 +1003,13 @@ export function MarkEngagedDialog({
       ? currentUserId
       : contact.ownerId || teamMembers[0]?.id || "";
 
-  const alreadyEngaged =
-    contact.status === "engaged" || contact.status === "qualified";
   const [responseDate, setResponseDate] = useState(todayDateOnly());
   const [result, setResult] = useState<OutreachResult>("positive");
   const [summary, setSummary] = useState("");
-  const [openColdLead, setOpenColdLead] = useState(!alreadyEngaged);
 
-  const createsColdLead =
-    openColdLead &&
-    (result === "positive" ||
-      result === "requested-info" ||
-      result === "requested-meeting" ||
-      result === "requested-offer");
+  const createsColdLead = isColdLeadEngageResult(result);
+  const cancelsProspect =
+    result === "negative" || result === "not-relevant" || isCancelEngageResult(result);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -1026,6 +1024,12 @@ export function MarkEngagedDialog({
       summary: text,
       occurredAt: responseDate,
     });
+
+    if (cancelsProspect) {
+      markCancelled(company.id, contact.id);
+      onClose();
+      return;
+    }
 
     if (createsColdLead) {
       const projectId = await linkToColdLead(
@@ -1042,17 +1046,12 @@ export function MarkEngagedDialog({
   }
 
   return (
-    <ModalShell
-      title={alreadyEngaged ? "Log communication" : "Engage"}
-      onClose={onClose}
-    >
+    <ModalShell title="Engage" onClose={onClose}>
       <p className="mb-3 text-sm text-muted">
         Record the response from{" "}
         <span className="font-semibold text-deep">{contact.name}</span> at{" "}
-        <span className="font-semibold text-deep">{company.name}</span>
-        {alreadyEngaged
-          ? ". Negative replies stay Engaged so you can keep communicating."
-          : "."}
+        <span className="font-semibold text-deep">{company.name}</span>.
+        Positive replies create a Cold Lead; negative replies move to Cancelled.
       </p>
       <form onSubmit={submit} className="grid gap-3">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1075,14 +1074,26 @@ export function MarkEngagedDialog({
               onChange={(e) => {
                 const next = e.target.value as OutreachResult;
                 setResult(next);
-                if (next === "negative") setOpenColdLead(false);
               }}
             >
-              {ENGAGED_RESULTS.map((r) => (
-                <option key={r} value={r}>
-                  {OUTREACH_RESULT_LABELS[r]}
-                </option>
-              ))}
+              <optgroup label="Move to Cold Lead">
+                {ENGAGED_RESULTS.filter((r) => isColdLeadEngageResult(r)).map(
+                  (r) => (
+                    <option key={r} value={r}>
+                      {OUTREACH_RESULT_LABELS[r]}
+                    </option>
+                  ),
+                )}
+              </optgroup>
+              <optgroup label="Move to Cancelled">
+                {ENGAGED_RESULTS.filter(
+                  (r) => r === "negative" || r === "not-relevant",
+                ).map((r) => (
+                  <option key={r} value={r}>
+                    {OUTREACH_RESULT_LABELS[r]}
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
         </div>
@@ -1096,19 +1107,11 @@ export function MarkEngagedDialog({
             placeholder="What did they say / ask for? (optional)"
           />
         </div>
-        {(result === "positive" ||
-          result === "requested-info" ||
-          result === "requested-meeting" ||
-          result === "requested-offer") && (
-          <label className="flex items-center gap-2 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={openColdLead}
-              onChange={(e) => setOpenColdLead(e.target.checked)}
-            />
-            Open cold lead on Sales Projects
-          </label>
-        )}
+        <p className="text-[11px] leading-4 text-muted">
+          {cancelsProspect
+            ? "Negative response — this will move the prospect to Cancelled."
+            : "This will create (or reopen) a Cold Lead on Sales Projects."}
+        </p>
         <div className="mt-2 flex justify-end gap-2">
           <button
             type="button"
@@ -1119,13 +1122,16 @@ export function MarkEngagedDialog({
           </button>
           <button
             type="submit"
-            className="rounded-lg bg-olive px-4 py-2 text-sm font-bold text-olive-ink"
+            key={cancelsProspect ? "cancelled" : "cold-lead"}
+            className={`rounded-lg px-4 py-2 text-sm font-bold ${
+              cancelsProspect
+                ? "bg-amber-accent text-white"
+                : "bg-olive text-olive-ink"
+            }`}
           >
-            {createsColdLead
-              ? "Save & create cold lead"
-              : alreadyEngaged
-                ? "Save communication"
-                : "Engage"}
+            {cancelsProspect
+              ? "Move to Cancelled"
+              : "Move to Cold Lead"}
           </button>
         </div>
       </form>
@@ -1211,6 +1217,14 @@ export function EditProspectDialog({
     contact.status === "not-interested" ? "cancelled" : contact.status,
   );
 
+  const hideFollowUpFields =
+    prospectPipelineSection(pipelineStatus, company) === "cancelled" ||
+    prospectPipelineSection(pipelineStatus, company) === "moved-to-cold-lead" ||
+    prospectFollowUpsCleared(
+      { status: pipelineStatus },
+      company,
+    );
+
   const [existingContacts, setExistingContacts] = useState<ExistingDraft[]>(
     () =>
       companyContacts.map((c) => ({
@@ -1280,14 +1294,18 @@ export function EditProspectDialog({
       existingContacts[0]?.followUpReason.trim() ||
       "";
 
-    const nextSection = prospectPipelineSection(pipelineStatus);
+    const nextSection = prospectPipelineSection(pipelineStatus, company);
+    const clearFollowUps =
+      nextSection === "cancelled" ||
+      nextSection === "moved-to-cold-lead" ||
+      prospectFollowUpsCleared({ status: pipelineStatus }, company);
     const companyStatusPatch: Partial<ProspectCompany> = {};
     if (statusChanged) {
       if (nextSection === "cancelled") {
         companyStatusPatch.status = "cancelled";
         companyStatusPatch.nextAction =
           nextAction.trim() || companyFollowUpReason || "Cancelled in Prospecting";
-      } else if (nextSection === "engaged") {
+      } else if (nextSection === "moved-to-cold-lead") {
         companyStatusPatch.status = "engaged";
         if (
           !nextAction.trim() ||
@@ -1319,7 +1337,7 @@ export function EditProspectDialog({
         companyStatusPatch.nextAction !== undefined
           ? companyStatusPatch.nextAction
           : nextAction.trim() || companyFollowUpReason,
-      nextActionAt: companyFollowUp,
+      nextActionAt: clearFollowUps ? null : companyFollowUp,
       sizeKw:
         Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : 0,
       ...companyStatusPatch,
@@ -1332,7 +1350,7 @@ export function EditProspectDialog({
         // or moving into Cancelled, so the company leaves that section cleanly.
         if (
           nextSection === "cancelled" ||
-          prospectPipelineSection(contact.status) === "cancelled"
+          prospectPipelineSection(contact.status, company) === "cancelled"
         ) {
           if (
             draft.id === contact.id ||
@@ -1356,8 +1374,10 @@ export function EditProspectDialog({
         ownerId: draft.ownerId,
         priority: draft.priority,
         isPrimary: draft.isPrimary,
-        nextFollowUpAt: draft.nextFollowUpAt.trim() || null,
-        followUpReason: draft.followUpReason.trim(),
+        nextFollowUpAt: clearFollowUps
+          ? null
+          : draft.nextFollowUpAt.trim() || null,
+        followUpReason: clearFollowUps ? "" : draft.followUpReason.trim(),
         notes: draft.notes.trim(),
         ...statusPatch,
       });
@@ -1421,8 +1441,8 @@ export function EditProspectDialog({
             ))}
           </select>
           <p className="mt-1 text-[11px] leading-4 text-muted">
-            {prospectPipelineSection(contact.status) === "cancelled"
-              ? `Cancelled can only return to ${heldSection === "engaged" ? "Engaged" : heldSection === "contacted" ? "Contacted" : "Prepare"} (highest section that already has info). You cannot skip or go further back.`
+            {prospectPipelineSection(contact.status, company) === "cancelled"
+              ? `Cancelled can only return to ${heldSection === "moved-to-cold-lead" ? "Moved to Cold Lead" : heldSection === "contacted" ? "Contacted" : "Prepare"} (highest section that already has info). You cannot skip or go further back.`
               : statusOptions.length <= 1
                 ? "No other section moves are available from here without skipping or losing stage history."
                 : "Manual moves cannot skip sections or go behind a stage that already has information."}
@@ -1666,32 +1686,36 @@ export function EditProspectDialog({
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className={labelCls}>Follow-up date</label>
-                    <input
-                      type="date"
-                      className={inputCls}
-                      value={draft.nextFollowUpAt}
-                      onChange={(e) =>
-                        updateExisting(draft.id, {
-                          nextFollowUpAt: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Follow-up reason</label>
-                    <input
-                      className={inputCls}
-                      value={draft.followUpReason}
-                      onChange={(e) =>
-                        updateExisting(draft.id, {
-                          followUpReason: e.target.value,
-                        })
-                      }
-                      placeholder="Why follow up"
-                    />
-                  </div>
+                  {!hideFollowUpFields && (
+                    <>
+                      <div>
+                        <label className={labelCls}>Follow-up date</label>
+                        <input
+                          type="date"
+                          className={inputCls}
+                          value={draft.nextFollowUpAt}
+                          onChange={(e) =>
+                            updateExisting(draft.id, {
+                              nextFollowUpAt: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className={labelCls}>Follow-up reason</label>
+                        <input
+                          className={inputCls}
+                          value={draft.followUpReason}
+                          onChange={(e) =>
+                            updateExisting(draft.id, {
+                              followUpReason: e.target.value,
+                            })
+                          }
+                          placeholder="Why follow up"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="sm:col-span-2">
                     <label className={labelCls}>Contact notes</label>
                     <textarea

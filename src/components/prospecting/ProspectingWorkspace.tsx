@@ -17,6 +17,10 @@ import {
   ProspectSource,
   ProspectView,
   ProspectWorkRow,
+  hasMovedToColdLead,
+  isContactedQueueStatus,
+  isEngagedLikeProspectStatus,
+  prospectFollowUpsCleared,
   todayDateOnly,
 } from "@/lib/prospecting-types";
 import { marketIncludesTag, STAGE_LABELS, Stage } from "@/lib/types";
@@ -138,7 +142,9 @@ export default function ProspectingWorkspace() {
       (saved.view !== "insights" || canSeeInsights)
     ) {
       setView(saved.view as ProspectView);
-    } else if (saved.view === "my-work" || saved.view === "insights") {
+    } else if (saved.view === "engaged" || saved.view === "my-work") {
+      setView(saved.view === "engaged" ? "contacted" : "prepare");
+    } else if (saved.view === "insights") {
       setView("prepare");
     }
     if (Array.isArray(saved.filterMarkets)) {
@@ -280,18 +286,14 @@ export default function ProspectingWorkspace() {
         }
       }
       if (view === "contacted") {
-        if (
-          contact.status !== "contacted" &&
-          contact.status !== "follow-up-due"
-        ) {
+        if (!isContactedQueueStatus(contact, company)) {
           return false;
         }
       }
-      if (view === "engaged") {
+      if (view === "moved-to-cold-lead") {
         if (
-          contact.status !== "engaged" &&
-          contact.status !== "qualified" &&
-          contact.status !== "promoted"
+          !isEngagedLikeProspectStatus(contact.status) ||
+          !hasMovedToColdLead(company)
         ) {
           return false;
         }
@@ -350,8 +352,15 @@ export default function ProspectingWorkspace() {
       return hay.includes(q);
     });
 
-    // Engaged / Cancelled / All are company-centric: one row per company (primary preferred).
-    if (view !== "engaged" && view !== "cancelled" && view !== "all") return matched;
+    // Moved to Cold Lead / Cancelled / All are company-centric:
+    // one row per company (primary preferred).
+    if (
+      view !== "moved-to-cold-lead" &&
+      view !== "cancelled" &&
+      view !== "all"
+    ) {
+      return matched;
+    }
 
     const byCompany = new Map<string, ProspectWorkRow>();
     for (const row of matched) {
@@ -472,17 +481,16 @@ export default function ProspectingWorkspace() {
   }, [contacts, companyById, targets.marketAllocation]);
 
   const viewCounts = useMemo(() => {
-    const engagedCompanyIds = new Set<string>();
+    const movedToColdLeadCompanyIds = new Set<string>();
     const cancelledCompanyIds = new Set<string>();
     const allCompanyIds = new Set<string>();
     for (const r of rows) {
       allCompanyIds.add(r.company.id);
       if (
-        r.contact.status === "engaged" ||
-        r.contact.status === "qualified" ||
-        r.contact.status === "promoted"
+        isEngagedLikeProspectStatus(r.contact.status) &&
+        hasMovedToColdLead(r.company)
       ) {
-        engagedCompanyIds.add(r.company.id);
+        movedToColdLeadCompanyIds.add(r.company.id);
       }
       if (
         r.contact.status === "cancelled" ||
@@ -495,12 +503,10 @@ export default function ProspectingWorkspace() {
       prepare: rows.filter(
         (r) => r.contact.status === "target-identified",
       ).length,
-      contacted: rows.filter(
-        (r) =>
-          r.contact.status === "contacted" ||
-          r.contact.status === "follow-up-due",
+      contacted: rows.filter((r) =>
+        isContactedQueueStatus(r.contact, r.company),
       ).length,
-      engaged: engagedCompanyIds.size,
+      "moved-to-cold-lead": movedToColdLeadCompanyIds.size,
       cancelled: cancelledCompanyIds.size,
       all: allCompanyIds.size,
       insights: 0,
@@ -514,6 +520,10 @@ export default function ProspectingWorkspace() {
       </div>
     );
   }
+
+  const showFollowUpColumn =
+    view !== "moved-to-cold-lead" && view !== "cancelled";
+  const tableColSpan = showFollowUpColumn ? 7 : 6;
 
   return (
     <div className="flex flex-col gap-4 pb-8">
@@ -741,7 +751,9 @@ export default function ProspectingWorkspace() {
                       <th className="px-3 py-2.5 font-semibold">Company</th>
                       <th className="px-3 py-2.5 font-semibold">Contact</th>
                       <th className="px-3 py-2.5 font-semibold">Market</th>
-                      <th className="px-3 py-2.5 font-semibold">Follow-up</th>
+                      {showFollowUpColumn && (
+                        <th className="px-3 py-2.5 font-semibold">Follow-up</th>
+                      )}
                       <th className="px-3 py-2.5 font-semibold">Attempts</th>
                       <th className="px-3 py-2.5 font-semibold">Owner</th>
                       <th className="px-3 py-2.5 font-semibold">Actions</th>
@@ -751,7 +763,7 @@ export default function ProspectingWorkspace() {
                     {filteredRows.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={tableColSpan}
                           className="px-3 pt-12 pb-16 text-center text-muted"
                         >
                           {rows.length === 0 ? (
@@ -810,10 +822,16 @@ export default function ProspectingWorkspace() {
                       </tr>
                     ) : (
                       filteredRows.map(({ contact, company }) => {
+                        const hideFollowUp = prospectFollowUpsCleared(
+                          contact,
+                          company,
+                        );
                         const overdue =
+                          !hideFollowUp &&
                           contact.nextFollowUpAt &&
                           contact.nextFollowUpAt < today;
-                        const dueToday = contact.nextFollowUpAt === today;
+                        const dueToday =
+                          !hideFollowUp && contact.nextFollowUpAt === today;
                         return (
                           <tr
                             key={contact.id}
@@ -861,19 +879,25 @@ export default function ProspectingWorkspace() {
                                 {PROSPECT_PRIORITY_LABELS[contact.priority]}
                               </div>
                             </td>
-                            <td className="px-3 py-2.5">
-                              <span
-                                className={
-                                  overdue
-                                    ? "font-semibold text-amber-accent"
-                                    : dueToday
-                                      ? "font-semibold text-teal-accent"
-                                      : "text-ink"
-                                }
-                              >
-                                {formatShortDate(contact.nextFollowUpAt)}
-                              </span>
-                            </td>
+                            {showFollowUpColumn && (
+                              <td className="px-3 py-2.5">
+                                {hideFollowUp ? (
+                                  <span className="text-muted">—</span>
+                                ) : (
+                                  <span
+                                    className={
+                                      overdue
+                                        ? "font-semibold text-amber-accent"
+                                        : dueToday
+                                          ? "font-semibold text-teal-accent"
+                                          : "text-ink"
+                                    }
+                                  >
+                                    {formatShortDate(contact.nextFollowUpAt)}
+                                  </span>
+                                )}
+                              </td>
+                            )}
                             <td className="px-3 py-2.5 text-muted">
                               {contact.outreachAttempts}
                             </td>
@@ -919,15 +943,11 @@ export default function ProspectingWorkspace() {
                                 {(contact.status === "contacted" ||
                                   contact.status === "follow-up-due" ||
                                   contact.status === "engaged" ||
-                                  contact.status === "qualified") && (
+                                  contact.status === "qualified") &&
+                                  !hasMovedToColdLead(company) && (
                                   <button
                                     type="button"
-                                    title={
-                                      contact.status === "engaged" ||
-                                      contact.status === "qualified"
-                                        ? "Log communication"
-                                        : "Engage"
-                                    }
+                                    title="Engage"
                                     onClick={() =>
                                       openDialog({
                                         type: "mark-engaged",
@@ -937,16 +957,14 @@ export default function ProspectingWorkspace() {
                                     }
                                     className="rounded-md bg-olive px-2 py-1 text-[10px] font-bold uppercase text-olive-ink"
                                   >
-                                    {contact.status === "engaged" ||
-                                    contact.status === "qualified"
-                                      ? "Log"
-                                      : "Engage"}
+                                    Engage
                                   </button>
                                 )}
-                                {(contact.status === "engaged" ||
+                                {((contact.status === "engaged" ||
                                   contact.status === "qualified" ||
                                   contact.status === "contacted" ||
-                                  contact.status === "follow-up-due") && (
+                                  contact.status === "follow-up-due") &&
+                                  !hasMovedToColdLead(company)) && (
                                   <button
                                     type="button"
                                     title="Move to Cancelled"
@@ -1159,9 +1177,14 @@ export default function ProspectingWorkspace() {
                       <div className="flex justify-between gap-2">
                         <dt className="text-muted">Follow-up</dt>
                         <dd className="text-right text-ink">
-                          {selected.contact.nextFollowUpAt
-                            ? formatShortDate(selected.contact.nextFollowUpAt)
-                            : "—"}
+                          {prospectFollowUpsCleared(
+                            selected.contact,
+                            selected.company,
+                          )
+                            ? "—"
+                            : selected.contact.nextFollowUpAt
+                              ? formatShortDate(selected.contact.nextFollowUpAt)
+                              : "—"}
                         </dd>
                       </div>
                       {(selected.contact.notes) && (
@@ -1268,7 +1291,8 @@ export default function ProspectingWorkspace() {
                   {(selected.contact.status === "contacted" ||
                     selected.contact.status === "follow-up-due" ||
                     selected.contact.status === "engaged" ||
-                    selected.contact.status === "qualified") && (
+                    selected.contact.status === "qualified") &&
+                    !hasMovedToColdLead(selected.company) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -1280,16 +1304,14 @@ export default function ProspectingWorkspace() {
                       }
                       className="rounded-lg bg-olive px-2.5 py-1.5 text-[10px] font-bold uppercase text-olive-ink"
                     >
-                      {selected.contact.status === "engaged" ||
-                      selected.contact.status === "qualified"
-                        ? "Log communication"
-                        : "Engage"}
+                      Engage
                     </button>
                   )}
-                  {(selected.contact.status === "engaged" ||
+                  {((selected.contact.status === "engaged" ||
                     selected.contact.status === "qualified" ||
                     selected.contact.status === "contacted" ||
-                    selected.contact.status === "follow-up-due") && (
+                    selected.contact.status === "follow-up-due") &&
+                    !hasMovedToColdLead(selected.company)) && (
                     <button
                       type="button"
                       onClick={() => {

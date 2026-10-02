@@ -255,7 +255,7 @@ export const PROSPECT_STATUS_LABELS: Record<ProspectStatus, string> = {
   "target-identified": "Target Identified",
   contacted: "Contacted",
   "follow-up-due": "Follow-Up Due",
-  engaged: "Engaged",
+  engaged: "Cold Lead",
   qualified: "Qualified",
   promoted: "Promoted to Sales Project",
   cancelled: "Cancelled",
@@ -351,14 +351,28 @@ export type OutreachResult =
 /** Results used when logging that outreach was sent (prepare list → Contacted). */
 export const CONTACTED_OUTREACH_RESULT: OutreachResult = "outreach-sent";
 
-/** Results used on the Engaged form (Contacted → Engaged). */
+/** Results used on the Engage form (Contacted → Cold Lead or Cancelled). */
 export const ENGAGED_RESULTS: OutreachResult[] = [
   "positive",
   "requested-info",
   "requested-meeting",
   "requested-offer",
   "negative",
+  "not-relevant",
 ];
+
+export function isColdLeadEngageResult(result: OutreachResult): boolean {
+  return (
+    result === "positive" ||
+    result === "requested-info" ||
+    result === "requested-meeting" ||
+    result === "requested-offer"
+  );
+}
+
+export function isCancelEngageResult(result: OutreachResult): boolean {
+  return result === "negative" || result === "not-relevant";
+}
 
 export const OUTREACH_RESULTS: OutreachResult[] = [
   "communication-started",
@@ -688,7 +702,7 @@ export interface ProspectingState {
 export type ProspectView =
   | "prepare"
   | "contacted"
-  | "engaged"
+  | "moved-to-cold-lead"
   | "cancelled"
   | "all"
   | "insights";
@@ -696,11 +710,61 @@ export type ProspectView =
 export const PROSPECT_VIEW_LABELS: Record<ProspectView, string> = {
   prepare: "Prepare",
   contacted: "Contacted",
-  engaged: "Engaged",
+  "moved-to-cold-lead": "Moved to Cold Lead",
   cancelled: "Cancelled",
   all: "All Prospects",
   insights: "Insights",
 };
+
+/** Statuses that belong in Moved to Cold Lead (once linked). */
+export function isEngagedLikeProspectStatus(status: ProspectStatus): boolean {
+  return (
+    status === "engaged" || status === "qualified" || status === "promoted"
+  );
+}
+
+/** True when an engaged prospect has already been linked to a Cold Lead project. */
+export function hasMovedToColdLead(
+  company: Pick<ProspectCompany, "promotedProjectId">,
+): boolean {
+  return Boolean(company.promotedProjectId);
+}
+
+/** Still in the Contacted queue (awaiting engage → cold lead or cancel). */
+export function isContactedQueueStatus(
+  contact: Pick<ProspectContact, "status">,
+  company: Pick<ProspectCompany, "promotedProjectId">,
+): boolean {
+  if (hasMovedToColdLead(company)) return false;
+  return (
+    contact.status === "contacted" ||
+    contact.status === "follow-up-due" ||
+    contact.status === "engaged" ||
+    contact.status === "qualified"
+  );
+}
+
+/** Follow-ups are only relevant while actively prospecting (not cold-lead / cancelled). */
+export function prospectFollowUpsCleared(
+  contact: Pick<ProspectContact, "status">,
+  company: Pick<ProspectCompany, "status" | "promotedProjectId">,
+): boolean {
+  if (
+    contact.status === "cancelled" ||
+    contact.status === "not-interested" ||
+    contact.status === "disqualified"
+  ) {
+    return true;
+  }
+  if (
+    company.status === "cancelled" ||
+    company.status === "not-interested" ||
+    company.status === "disqualified"
+  ) {
+    return true;
+  }
+  return hasMovedToColdLead(company);
+}
 
 /** Flattened row for the work table (one contact + company context). */
 export interface ProspectWorkRow {
@@ -852,10 +916,11 @@ export function statusAfterOutreachResult(
     case "requested-info":
     case "requested-meeting":
     case "requested-offer":
+      // Positive engage → cold lead (status engaged until markPromoted links the project).
+      return "engaged";
     case "negative":
     case "not-relevant":
-      // Negative / not-relevant stay in Engaged so further communications can continue.
-      return "engaged";
+      return "cancelled";
     case "no-response-cancel":
       return "cancelled";
     case "no-response-follow-up":
@@ -872,38 +937,39 @@ export function statusAfterOutreachResult(
 export type ProspectPipelineSection =
   | "prepare"
   | "contacted"
-  | "engaged"
+  | "moved-to-cold-lead"
   | "cancelled";
 
 export function prospectPipelineSection(
   status: ProspectStatus,
+  company?: Pick<ProspectCompany, "promotedProjectId">,
 ): ProspectPipelineSection {
   if (status === "cancelled" || status === "not-interested") return "cancelled";
+  if (company && hasMovedToColdLead(company)) return "moved-to-cold-lead";
   if (
     status === "engaged" ||
     status === "qualified" ||
     status === "promoted"
   ) {
-    return "engaged";
+    // Legacy engaged without a linked project stays actionable in Contacted.
+    return company ? "contacted" : "moved-to-cold-lead";
   }
   if (status === "contacted" || status === "follow-up-due") return "contacted";
   return "prepare";
 }
 
-const ENGAGED_ACTIVITY_RESULTS = new Set<string>([
-  ...ENGAGED_RESULTS,
-  "communication-started",
-  "not-relevant",
-]);
-
-function isEngagementResult(result: string | null | undefined): boolean {
-  return Boolean(result && ENGAGED_ACTIVITY_RESULTS.has(result));
+function isPositiveEngageStored(result: string | null | undefined): boolean {
+  return Boolean(
+    result &&
+      (isColdLeadEngageResult(result as OutreachResult) ||
+        result === "communication-started"),
+  );
 }
 
 /**
  * Highest pipeline section this prospect has substantive evidence for
  * (ignoring cancelled). Used so Cancelled can only restore to a section
- * that already “holds” the history — never skip back past engaged info.
+ * that already “holds” the history — never skip back past cold-lead info.
  */
 export function highestHeldProspectSection(
   contact: Pick<
@@ -924,19 +990,15 @@ export function highestHeldProspectSection(
   const companyActs = activities.filter((a) => a.companyId === company.id);
   const contactActs = companyActs.filter((a) => a.contactId === contact.id);
 
-  const hasEngagement =
-    isEngagementResult(contact.responseStatus) ||
-    contactActs.some((a) => isEngagementResult(a.result)) ||
-    companyActs.some((a) => isEngagementResult(a.result)) ||
+  const hasColdLead =
     Boolean(company.promotedProjectId) ||
-    company.status === "engaged" ||
-    company.status === "qualified" ||
     company.status === "promoted" ||
-    contact.status === "engaged" ||
-    contact.status === "qualified" ||
-    contact.status === "promoted";
+    contact.status === "promoted" ||
+    isPositiveEngageStored(contact.responseStatus) ||
+    contactActs.some((a) => isPositiveEngageStored(a.result)) ||
+    companyActs.some((a) => isPositiveEngageStored(a.result));
 
-  if (hasEngagement) return "engaged";
+  if (hasColdLead) return "moved-to-cold-lead";
 
   const hasContact =
     Boolean(contact.firstContactedAt) ||
@@ -946,8 +1008,12 @@ export function highestHeldProspectSection(
     companyActs.some((a) => a.result === "outreach-sent") ||
     contact.status === "contacted" ||
     contact.status === "follow-up-due" ||
+    contact.status === "engaged" ||
+    contact.status === "qualified" ||
     company.status === "contacted" ||
-    company.status === "follow-up-due";
+    company.status === "follow-up-due" ||
+    company.status === "engaged" ||
+    company.status === "qualified";
 
   if (hasContact) return "contacted";
   return "prepare";
@@ -957,7 +1023,7 @@ function statusForSection(
   section: Exclude<ProspectPipelineSection, "cancelled">,
   contact: Pick<ProspectContact, "nextFollowUpAt">,
 ): ProspectStatus {
-  if (section === "engaged") return "engaged";
+  if (section === "moved-to-cold-lead") return "engaged";
   if (section === "contacted") {
     return contact.nextFollowUpAt ? "follow-up-due" : "contacted";
   }
@@ -976,7 +1042,7 @@ export function allowedManualProspectStatuses(
 ): ProspectStatus[] {
   const current = normalizeProspectStatus(contact.status);
   const options = new Set<ProspectStatus>([current]);
-  const section = prospectPipelineSection(current);
+  const section = prospectPipelineSection(current, company);
   const held = highestHeldProspectSection(contact, company, activities);
 
   if (section === "cancelled") {
@@ -984,22 +1050,13 @@ export function allowedManualProspectStatuses(
     return [...options];
   }
 
-  // Stay put, or close out to Cancelled without skipping (only from engaged).
-  if (section === "engaged") {
+  // Cold lead or contacted: may close out to Cancelled.
+  if (section === "moved-to-cold-lead" || section === "contacted") {
     options.add("cancelled");
     return [...options];
   }
 
-  // Contacted: may cancel only if no engagement evidence yet would be skip
-  // of engaged — so from contacted, allow cancel as close-out when never engaged.
-  if (section === "contacted") {
-    if (held === "contacted" || held === "prepare") {
-      options.add("cancelled");
-    }
-    return [...options];
-  }
-
-  // Prepare: allow cancel (disengage early) without skipping engaged.
+  // Prepare: allow cancel (disengage early).
   if (section === "prepare") {
     options.add("cancelled");
   }

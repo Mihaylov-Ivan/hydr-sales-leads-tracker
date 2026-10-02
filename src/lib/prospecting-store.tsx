@@ -52,6 +52,7 @@ import {
   normalizeProspectSource,
   normalizeProspectStatus,
   normalizeProspectSystem,
+  prospectFollowUpsCleared,
   DEFAULT_PROSPECT_SYSTEM,
 } from "./prospecting-types";
 
@@ -720,6 +721,52 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
     }
   }, [ready, state.companies, state.contacts, persistContact]);
 
+  // Clear leftover follow-ups on cold-lead / cancelled prospects.
+  useEffect(() => {
+    if (!ready) return;
+    const companyById = new Map(
+      stateRef.current.companies.map((c) => [c.id, c] as const),
+    );
+    const now = new Date().toISOString();
+    let changed = false;
+
+    const contacts = stateRef.current.contacts.map((c) => {
+      const company = companyById.get(c.companyId);
+      if (!company) return c;
+      if (!prospectFollowUpsCleared(c, company)) return c;
+      if (!c.nextFollowUpAt && !c.followUpReason) return c;
+      changed = true;
+      const next: ProspectContact = {
+        ...c,
+        nextFollowUpAt: null,
+        followUpReason: "",
+        updatedAt: now,
+      };
+      void persistContact(next, "upsert");
+      return next;
+    });
+
+    const companies = stateRef.current.companies.map((co) => {
+      const shouldClear =
+        Boolean(co.promotedProjectId) ||
+        co.status === "cancelled" ||
+        co.status === "not-interested" ||
+        co.status === "disqualified";
+      if (!shouldClear || !co.nextActionAt) return co;
+      changed = true;
+      const next: ProspectCompany = {
+        ...co,
+        nextActionAt: null,
+        updatedAt: now,
+      };
+      void persistCompany(next, "upsert");
+      return next;
+    });
+
+    if (!changed) return;
+    setState((prev) => ({ ...prev, contacts, companies }));
+  }, [ready, state.companies, state.contacts, persistCompany, persistContact]);
+
   // (Company-only targets are shown in the work queue without inventing contacts.)
 
   const persistActivity = useCallback(async (a: ProspectActivity) => {
@@ -1146,6 +1193,10 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       setState((prev) => {
         const contacts = prev.contacts.map((c) => {
           if (c.id !== input.contactId) return c;
+          const clearingFollowUp =
+            newStatus === "cancelled" ||
+            newStatus === "not-interested" ||
+            newStatus === "disqualified";
           const next: ProspectContact = {
             ...c,
             status: newStatus,
@@ -1153,8 +1204,12 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             firstContactedAt: c.firstContactedAt ?? occurredAt,
             lastContactedAt: occurredAt,
             responseStatus: input.result,
-            nextFollowUpAt: input.nextActionAt ?? c.nextFollowUpAt,
-            followUpReason: input.nextAction?.trim() || c.followUpReason,
+            nextFollowUpAt: clearingFollowUp
+              ? null
+              : (input.nextActionAt ?? c.nextFollowUpAt),
+            followUpReason: clearingFollowUp
+              ? ""
+              : input.nextAction?.trim() || c.followUpReason,
             updatedAt: now,
           };
           persistContact(next, "upsert");
@@ -1183,12 +1238,18 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           } else if (co.status === "target-identified") {
             nextStatus = "contacted";
           }
+          const clearingFollowUp =
+            nextStatus === "cancelled" ||
+            nextStatus === "not-interested" ||
+            nextStatus === "disqualified";
           const next: ProspectCompany = {
             ...co,
             status: nextStatus,
             lastActivityAt: now,
             nextAction: input.nextAction?.trim() || co.nextAction,
-            nextActionAt: input.nextActionAt ?? co.nextActionAt,
+            nextActionAt: clearingFollowUp
+              ? null
+              : (input.nextActionAt ?? co.nextActionAt),
             updatedAt: now,
           };
           persistCompany(next, "upsert");
@@ -1488,13 +1549,14 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
       setState((prev) => {
         const companies = prev.companies.map((co) => {
           if (co.id !== companyId) return co;
-          if (co.status === "cancelled") return co;
+          if (co.status === "cancelled" && !co.nextActionAt) return co;
           const next: ProspectCompany = {
             ...co,
             status: "cancelled",
             lastActivityAt: now,
             updatedAt: now,
             nextAction: co.nextAction || "Cancelled in Prospecting",
+            nextActionAt: null,
           };
           persistCompany(next, "upsert");
           return next;
@@ -1506,7 +1568,15 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             c.status === "promoted" ||
             c.status === "disqualified"
           ) {
-            return c;
+            if (!c.nextFollowUpAt && !c.followUpReason) return c;
+            const cleared: ProspectContact = {
+              ...c,
+              nextFollowUpAt: null,
+              followUpReason: "",
+              updatedAt: now,
+            };
+            persistContact(cleared, "upsert");
+            return cleared;
           }
           const priorStatus = c.status as ProspectStatus;
           const wasEngaged =
@@ -1514,11 +1584,13 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           const next: ProspectContact = {
             ...c,
             status: "cancelled",
-            // Preserve an engagement marker so Cancelled → Engaged restore works
+            // Preserve an engagement marker so Cancelled → Cold Lead restore works
             // even when no engage activity row exists (e.g. markEngaged / Move to Cancelled).
             responseStatus:
               c.responseStatus ||
               (wasEngaged ? "communication-started" : c.responseStatus),
+            nextFollowUpAt: null,
+            followUpReason: "",
             updatedAt: now,
           };
           persistContact(next, "upsert");
@@ -1621,6 +1693,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             ...co,
             status: prospectStatus,
             promotedProjectId: projectId,
+            nextActionAt: null,
             lastActivityAt: now,
             updatedAt: now,
           };
@@ -1638,11 +1711,22 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
             return c;
           }
           if (contactIdsToUpdate && !contactIdsToUpdate.has(c.id)) {
-            return c;
+            // Still clear follow-ups for every contact once linked to a cold lead.
+            if (!c.nextFollowUpAt && !c.followUpReason) return c;
+            const cleared: ProspectContact = {
+              ...c,
+              nextFollowUpAt: null,
+              followUpReason: "",
+              updatedAt: now,
+            };
+            persistContact(cleared, "upsert");
+            return cleared;
           }
           const next: ProspectContact = {
             ...c,
             status: prospectStatus,
+            nextFollowUpAt: null,
+            followUpReason: "",
             updatedAt: now,
           };
           persistContact(next, "upsert");
@@ -1680,7 +1764,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           if (co.promotedProjectId !== projectId) return co;
           if (stage === "cancelled") {
             if (co.status === "cancelled" || co.status === "not-interested") {
-              if (co.status === "cancelled") return co;
+              if (co.status === "cancelled" && !co.nextActionAt) return co;
               changed = true;
               const next: ProspectCompany = {
                 ...co,
@@ -1688,6 +1772,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
                 lastActivityAt: now,
                 updatedAt: now,
                 nextAction: co.nextAction || "Cancelled in Sales Projects",
+                nextActionAt: null,
               };
               persistCompany(next, "upsert");
               return next;
@@ -1699,6 +1784,7 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
               lastActivityAt: now,
               updatedAt: now,
               nextAction: co.nextAction || "Cancelled in Sales Projects",
+              nextActionAt: null,
             };
             persistCompany(next, "upsert");
             return next;
@@ -1724,10 +1810,18 @@ export function ProspectingProvider({ children }: { children: React.ReactNode })
           const company = companies.find((co) => co.id === c.companyId);
           if (!company || company.promotedProjectId !== projectId) return c;
           if (stage === "cancelled") {
-            if (c.status === "cancelled") return c;
+            if (
+              c.status === "cancelled" &&
+              !c.nextFollowUpAt &&
+              !c.followUpReason
+            ) {
+              return c;
+            }
             const next: ProspectContact = {
               ...c,
               status: "cancelled",
+              nextFollowUpAt: null,
+              followUpReason: "",
               updatedAt: now,
             };
             persistContact(next, "upsert");
